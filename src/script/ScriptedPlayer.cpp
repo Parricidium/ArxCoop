@@ -43,6 +43,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "script/ScriptedPlayer.h"
 
+#include "coop/Replication.h"
+
 #include "core/Core.h"
 #include "game/EntityManager.h"
 #include "game/Inventory.h"
@@ -123,6 +125,7 @@ public:
 		}
 		
 		ARX_PLAYER_AddGold(util::to<long>(val));
+		coop::sharedGold(util::to<long>(val)); // quest rewards are everyone's
 		
 		return Success;
 	}

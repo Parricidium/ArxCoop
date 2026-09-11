@@ -301,7 +301,6 @@ void updateDraggedEntity() {
 	entity->soundcount = 0;
 	arx_assert(!locateInInventories(entity));
 	entity->show = SHOW_FLAG_IN_SCENE;
-	coop::itemDropped(*entity);
 	entity->obj->pbox->active = 0;
 	entity->gameFlags &= ~GFLAG_NOCOMPUTATION;
 	setDraggedEntity(nullptr);
@@ -342,15 +341,18 @@ void updateDraggedEntity() {
 		entity->pos = start;
 		EERIE_PHYSICS_BOX_Launch(entity->obj, entity->pos, entity->angle, direction);
 		ARX_SOUND_PlaySFX(g_snd.WHOOSH, &entity->pos);
+		coop::itemDropped(*entity, true, direction);
 		
 	} else if(glm::abs(result.offsetY) > threshold) {
 		
 		EERIE_PHYSICS_BOX_Launch(entity->obj, entity->pos, entity->angle, Vec3f(0.f, 0.1f, 0.f));
 		ARX_SOUND_PlaySFX(g_snd.WHOOSH, &entity->pos);
+		coop::itemDropped(*entity, true, Vec3f(0.f, 0.1f, 0.f));
 		
 	} else {
 		
 		ARX_SOUND_PlayInterface(g_snd.INVSTD);
+		coop::itemDropped(*entity);
 		
 	}
 	

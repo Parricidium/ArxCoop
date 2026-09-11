@@ -33,6 +33,8 @@
 #include "game/EntityManager.h"
 #include "game/Damage.h"
 #include "game/Inventory.h"
+#include "physics/Physics.h"
+#include "scene/GameSound.h"
 #include "game/Item.h"
 #include "game/Player.h"
 #include "coop/Puppets.h"
@@ -101,7 +103,7 @@ const std::map<std::string, Category> & commandTable() {
 		{ "setircolor", Category::World }, { "setweight", Category::World }, { "unset", Category::World },
 		{ "spawn", Category::World },
 		// Player
-		{ "addgold", Category::Player }, { "book", Category::Player }, { "note", Category::Player },
+		{ "book", Category::Player }, { "note", Category::Player },
 		{ "popup", Category::Player }, { "herosay", Category::Player }, { "playerinterface", Category::Player },
 		{ "setplayercontrols", Category::Player }, { "playerlookat", Category::Player },
 		{ "poison", Category::Player }, { "playermanadrain", Category::Player },
@@ -420,6 +422,12 @@ void applyShared(PlayerId from, MessageType type, Reader & reader) {
 			relay.s32_(amount);
 			break;
 		}
+		case MessageType::SharedGold: {
+			s32 amount = reader.s32_();
+			ARX_PLAYER_AddGold(long(amount));
+			relay.s32_(amount);
+			break;
+		}
 		default: break;
 	}
 	g_applyingRemote--;
@@ -569,8 +577,19 @@ void applyLevelState(Reader & reader) {
 }
 
 void applyDamagePlayer(Reader & reader) {
+	PlayerId target = reader.u8_();
 	float damage = reader.f32_();
 	u32 type = reader.u32_();
+	if(target != g_coop.localId()) {
+		if(g_coop.isHost()) {
+			Writer writer;
+			writer.u8_(target);
+			writer.f32_(damage);
+			writer.u32_(type);
+			g_coop.sendTo(target, MessageType::DamagePlayer, writer);
+		}
+		return;
+	}
 	g_applyingRemote++;
 	damagePlayer(damage, DamageType::load(type), nullptr);
 	g_applyingRemote--;
@@ -669,6 +688,8 @@ void applyDropItem(PlayerId from, Reader & reader) {
 	Vec3f pos = reader.vec3<Vec3f>();
 	float yaw = reader.f32_();
 	s16 count = reader.raw<s16>();
+	bool thrown = reader.remaining() ? reader.bool_() : false;
+	Vec3f direction = reader.remaining() ? reader.vec3<Vec3f>() : Vec3f(0.f);
 	g_applyingRemote++;
 	Entity * item = entities.getById(id);
 	if(!item) {
@@ -687,7 +708,11 @@ void applyDropItem(PlayerId from, Reader & reader) {
 		if((item->ioflags & IO_ITEM) && count > 0) {
 			item->_itemdata->count = count;
 		}
-		LogInfo << "[coop] " << item->idString() << " was dropped by another player";
+		if(thrown && item->obj && item->obj->pbox) {
+			EERIE_PHYSICS_BOX_Launch(item->obj, item->pos, item->angle, direction);
+			ARX_SOUND_PlaySFX(g_snd.WHOOSH, &item->pos);
+		}
+		LogInfo << "[coop] " << item->idString() << " was " << (thrown ? "thrown" : "dropped") << " by another player";
 	}
 	g_applyingRemote--;
 	if(g_coop.isHost()) {
@@ -700,6 +725,10 @@ void applyDropItem(PlayerId from, Reader & reader) {
 		writer.f32_(pos.z);
 		writer.f32_(yaw);
 		writer.raw<s16>(count);
+		writer.bool_(thrown);
+		writer.f32_(direction.x);
+		writer.f32_(direction.y);
+		writer.f32_(direction.z);
 		g_coop.broadcast(MessageType::DropItem, writer, from);
 	}
 }
@@ -737,9 +766,7 @@ void handleGameMessage(PlayerId from, MessageType type, Reader & reader) {
 			break;
 		}
 		case MessageType::DamagePlayer: {
-			if(g_coop.isClient()) {
-				applyDamagePlayer(reader);
-			}
+			applyDamagePlayer(reader);
 			break;
 		}
 		case MessageType::DamageNpc: {
@@ -792,7 +819,8 @@ void handleGameMessage(PlayerId from, MessageType type, Reader & reader) {
 		case MessageType::SharedQuest:
 		case MessageType::SharedKey:
 		case MessageType::SharedRune:
-		case MessageType::SharedXP: {
+		case MessageType::SharedXP:
+		case MessageType::SharedGold: {
 			applyShared(from, type, reader);
 			break;
 		}
@@ -948,7 +976,7 @@ void itemTaken(const Entity & item) {
 	g_coop.sendToOthers(MessageType::TakeItem, writer);
 }
 
-void itemDropped(const Entity & item) {
+void itemDropped(const Entity & item, bool thrown, const Vec3f & direction) {
 	if(!g_coop.isActive() || g_coop.state() != State::InGame || g_applyingRemote > 0 || !(item.ioflags & IO_ITEM)
 	   || (item.ioflags & IO_NOSAVE)) {
 		return;
@@ -962,6 +990,10 @@ void itemDropped(const Entity & item) {
 	writer.f32_(item.pos.z);
 	writer.f32_(item.angle.getYaw());
 	writer.raw<s16>(s16(item._itemdata->count));
+	writer.bool_(thrown);
+	writer.f32_(direction.x);
+	writer.f32_(direction.y);
+	writer.f32_(direction.z);
 	g_coop.sendToOthers(MessageType::DropItem, writer);
 }
 
@@ -981,9 +1013,14 @@ float damagePuppet(const Entity & puppet, float damage, unsigned type) {
 		return 0.f;
 	}
 	Writer writer;
+	writer.u8_(owner);
 	writer.f32_(damage);
 	writer.u32_(type);
-	g_coop.sendTo(owner, MessageType::DamagePlayer, writer);
+	if(g_coop.isHost()) {
+		g_coop.sendTo(owner, MessageType::DamagePlayer, writer);
+	} else {
+		g_coop.sendToHost(MessageType::DamagePlayer, writer);
+	}
 	return damage;
 }
 
@@ -1189,6 +1226,14 @@ void sharedRuneAdded(unsigned rune) {
 		Writer writer;
 		writer.u32_(rune);
 		g_coop.sendToOthers(MessageType::SharedRune, writer);
+	}
+}
+
+void sharedGold(long amount) {
+	if(g_coop.isActive() && g_applyingRemote == 0 && amount != 0) {
+		Writer writer;
+		writer.s32_(s32(amount));
+		g_coop.sendToOthers(MessageType::SharedGold, writer);
 	}
 }
 

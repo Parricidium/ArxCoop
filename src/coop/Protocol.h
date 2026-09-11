@@ -75,19 +75,20 @@ enum class MessageType : u16 {
 	SharedKey     = 44, //!< both: string key
 	SharedRune    = 45, //!< both: u32 rune
 	SharedXP      = 46, //!< both: s32 amount
+	SharedGold    = 61, //!< both: s32 amount (script rewards)
 	SpawnEntity   = 47, //!< H->C: u8 kind, string classPath, s32 instance, f32 pos[3], f32 angle[3]
 	LevelState    = 48, //!< H->C: u32 area, string levelBlob, string globalsBlob, f32 pos[3]
 	RequestLevel  = 49, //!< C->H: (empty)
 	WorldSync     = 50, //!< H->C: u16 n quests, strings, u16 n keys, strings, u32 rune flags
 	NpcState      = 51, //!< H->C: u16 n, then per NPC see coop/Puppets.cpp
-	DamagePlayer  = 52, //!< H->C: f32 damage, u32 type
+	DamagePlayer  = 52, //!< both: u8 target, f32 damage, u32 type (a client sends it to the host, which applies or relays)
 	DamageNpc     = 53, //!< C->H: string id, f32 damage, u32 type, u8 hasPos, f32 pos[3]
 	SaveRequest   = 54, //!< H->C: string name: save your character under this name too
 	LoadRequest   = 55, //!< H->C: string name: the host loaded this save, load your character from it
 	SpeechSkip    = 56, //!< both: (empty) someone skipped the current speech / cutscene
 	Revive        = 57, //!< C->H: u8 target id / H->C: (empty) you are revived
 	TakeItem      = 58, //!< both: string id: this world item is now in someone's inventory
-	DropItem      = 59, //!< both: string id, string classPath, s32 instance, f32 pos[3], f32 yaw, s16 count
+	DropItem      = 59, //!< both: string id, string classPath, s32 instance, f32 pos[3], f32 yaw, s16 count, u8 thrown, f32 dir[3]
 	PlayerEquipment = 60, //!< like PlayerState: u8 id, u8 combat, 3 x (string tweak, string skinFrom, string skinTo), string weapon, string shield
 
 };

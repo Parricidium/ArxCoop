@@ -101,6 +101,7 @@ void sharedQuestAdded(std::string_view quest);
 void sharedKeyAdded(std::string_view key);
 void sharedRuneAdded(unsigned rune);
 void sharedExperience(long amount);
+void sharedGold(long amount);
 
 //! True while applying something received from the network (prevents echoing it back).
 bool applyingRemote();
@@ -138,8 +139,8 @@ void speechSkipped();
 //! A world item went into the local player's hands: it leaves the shared world everywhere else.
 void itemTaken(const Entity & item);
 
-//! The local player put an item on the floor: it (re)enters the shared world everywhere.
-void itemDropped(const Entity & item);
+//! The local player put an item on the floor (or threw it): it (re)enters the shared world everywhere.
+void itemDropped(const Entity & item, bool thrown = false, const Vec3f & direction = Vec3f(0.f));
 
 } // namespace coop
 
