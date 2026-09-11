@@ -477,8 +477,30 @@ PlayerId lookedAtDownedPuppet() {
 
 void reviveUpdate() {
 	PlayerId target = lookedAtDownedPuppet();
+	{
+		static PlatformInstant lastLog; // TODO(dev) remove
+		bool anyDowned = false;
+		for(const auto & entry : g_remote) {
+			anyDowned = anyDowned || entry.second.downed;
+		}
+		if(anyDowned && platform::getTime() - lastLog > std::chrono::seconds(3)) {
+			lastLog = platform::getTime();
+			for(const auto & entry : g_remote) {
+				const Entity * io = findPuppet(entry.first);
+				if(!io || !entry.second.downed) {
+					continue;
+				}
+				Vec3f to = io->pos - entities.player()->pos;
+				Vec3f flat(to.x, 0.f, to.z);
+				float dot = glm::length(flat) > 1.f ? glm::dot(glm::normalize(flat), angleToVectorXZ(player.angle.getYaw())) : 0.f;
+				LogInfo << "[coop] revive check: " << io->idString() << " dist " << int(glm::length(to)) << " dot " << dot
+				        << " mouse " << GInput->getMouseButtonRepeat(Mouse::Button_0) << " block " << BLOCK_PLAYER_CONTROLS
+				        << " target " << int(target) << " progress " << g_reviveProgress;
+			}
+		}
+	}
 	bool holding = target != InvalidPlayerId && !BLOCK_PLAYER_CONTROLS
-	               && (GInput->getMouseButton(Mouse::Button_0) || g_testHoldRevive);
+	               && (GInput->getMouseButtonRepeat(Mouse::Button_0) || g_testHoldRevive);
 	if(!holding || target != g_reviveTarget) {
 		g_reviveTarget = target;
 		g_reviveProgress = 0.f;
@@ -925,6 +947,8 @@ void puppetsTestUpdate() {
 	static bool creationSkipped = false;
 	static bool creationSkippedDeathDone = false;
 	static bool lootTaken = false;
+	static bool equipDone = false;
+	static bool equipChecked = false;
 	static bool lootDropped = false;
 	static bool playing = false;
 	static PlatformInstant start;
@@ -1038,6 +1062,26 @@ void puppetsTestUpdate() {
 			LogInfo << "[coop] test: client takes " << item->idString();
 			giveToPlayer(item);
 		}
+	} else if(step >= 3 && elapsed > std::chrono::seconds(100) && g_coop.isClient() && !equipDone) {
+		equipDone = true;
+		if(Entity * item = AddItem("graph/obj3d/interactive/items/armor/legging_leather/legging_leather", -1, IO_IMMEDIATELOAD)) {
+			SendInitScriptEvent(item);
+			giveToPlayer(item);
+			ARX_EQUIPMENT_Equip(entities.player(), item);
+			LogInfo << "[coop] test: client equips " << item->idString();
+		}
+	} else if(step >= 3 && elapsed > std::chrono::seconds(110) && !equipChecked) {
+		equipChecked = true;
+		LogInfo << "[coop] test: my player mesh tweaked=" << (entities.player()->tweaky != nullptr)
+		        << " faces " << entities.player()->obj->facelist.size();
+		for(const auto & entry : g_remote) {
+			if(const Entity * io = findPuppet(entry.first)) {
+				LogInfo << "[coop] test: puppet " << io->idString() << " tweaked=" << (io->tweaky != nullptr)
+				        << " faces " << io->obj->facelist.size() << " weapon " << entry.second.equipment.weapon
+				        << " leggings " << entry.second.equipment.leggings.file;
+			}
+		}
+		Logger::flush();
 	} else if(step >= 3 && elapsed > std::chrono::seconds(75) && g_coop.isClient() && !lootDropped) {
 		lootDropped = true;
 		if(Entity * item = entities.getById("food_mushroom_0009")) {
