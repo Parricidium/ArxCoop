@@ -126,6 +126,9 @@ void gameLoaded(std::string_view name);
 //! Client: true while a save/load requested by the host is being performed.
 bool hostDrivenSaveLoad();
 
+//! Client joining a running game: loads the newest "coop: ..." character save, if any.
+bool loadSavedCoopCharacter();
+
 //! Host: true when a cinematic speech being executed belongs to another player (no camera here).
 bool cinematicSpeechIsSomeoneElses();
 

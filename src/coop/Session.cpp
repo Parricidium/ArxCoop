@@ -26,6 +26,7 @@
 
 #include "coop/Connection.h"
 #include "coop/Puppets.h"
+#include "coop/Replication.h"
 #include "core/Config.h"
 #include "cinematic/CinematicController.h"
 #include "gui/Menu.h"
@@ -168,6 +169,7 @@ void Session::reset() {
 	m_players.clear();
 	m_endpoint.clear();
 	m_startRequested = false;
+	m_joinedRunningGame = false;
 
 }
 
@@ -503,6 +505,7 @@ void Session::Impl::handleServerMessage(Session & session, MessageType type, Rea
 			if(inGame) {
 				// Joining a running game: start our own character right away
 				session.m_startRequested = true;
+				session.m_joinedRunningGame = true;
 				session.m_state = State::InGame;
 			}
 			break;
@@ -631,7 +634,11 @@ void Session::update() {
 				LogInfo << "[coop] starting the game";
 				flushLog();
 				puppetsReset();
-				ARX_MENU_Clicked_NEWQUEST();
+				bool joined = m_joinedRunningGame;
+				m_joinedRunningGame = false;
+				if(!joined || !loadSavedCoopCharacter()) {
+					ARX_MENU_Clicked_NEWQUEST();
+				}
 			}
 		}
 	}

@@ -20,6 +20,7 @@
 #include "coop/Replication.h"
 
 #include <algorithm>
+#include <ctime>
 #include <map>
 #include <set>
 #include <utility>
@@ -914,6 +915,27 @@ void gameLoaded(std::string_view name) {
 
 bool hostDrivenSaveLoad() {
 	return g_hostDrivenSaveLoad;
+}
+
+bool loadSavedCoopCharacter() {
+	SavegameHandle best;
+	std::time_t newest = 0;
+	for(size_t i = 0; i < savegames.size(); i++) {
+		const SaveGame & save = savegames[SavegameHandle(long(i))];
+		if(save.name.compare(0, 6, "coop: ") == 0 && save.stime >= newest) {
+			newest = save.stime;
+			best = SavegameHandle(long(i));
+		}
+	}
+	if(best == SavegameHandle()) {
+		return false;
+	}
+	LogInfo << "[coop] joining with my saved character \"" << savegames[best].name << "\"";
+	g_hostDrivenSaveLoad = true;
+	ARX_LoadGame(savegames[best]);
+	g_hostDrivenSaveLoad = false;
+	playthroughStarted();
+	return true;
 }
 
 void itemTaken(const Entity & item) {

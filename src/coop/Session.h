@@ -171,6 +171,7 @@ private:
 	std::string m_endpoint;
 	bool m_startRequested;
 	bool m_lobbyRequested = false;
+	bool m_joinedRunningGame = false;
 
 };
 
