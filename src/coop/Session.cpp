@@ -372,14 +372,16 @@ void Session::Impl::handleClientMessage(Session & session, PlayerId id, MessageT
 		}
 
 		case MessageType::PlayerState:
-		case MessageType::PlayerEquipment: {
+		case MessageType::PlayerEquipment:
+		case MessageType::SpellCast: {
 			payload.u8_(); // sender id is authoritative from the host side
 			// Relay to the other clients with the real id, then handle locally
 			Writer writer;
 			writer.u8_(id);
 			writer.bytes(payload.rest());
 			session.broadcast(type, writer, id);
-			auto & handler = (type == MessageType::PlayerState) ? session.onPlayerState : session.onPlayerEquipment;
+			auto & handler = (type == MessageType::PlayerState) ? session.onPlayerState
+			                 : (type == MessageType::PlayerEquipment) ? session.onPlayerEquipment : session.onSpellCast;
 			if(handler) {
 				handler(id, payload);
 			}
@@ -548,9 +550,11 @@ void Session::Impl::handleServerMessage(Session & session, MessageType type, Rea
 		}
 
 		case MessageType::PlayerState:
-		case MessageType::PlayerEquipment: {
+		case MessageType::PlayerEquipment:
+		case MessageType::SpellCast: {
 			PlayerId id = payload.u8_();
-			auto & handler = (type == MessageType::PlayerState) ? session.onPlayerState : session.onPlayerEquipment;
+			auto & handler = (type == MessageType::PlayerState) ? session.onPlayerState
+			                 : (type == MessageType::PlayerEquipment) ? session.onPlayerEquipment : session.onSpellCast;
 			if(id != session.m_localId && handler) {
 				handler(id, payload);
 			}
@@ -643,6 +647,15 @@ void Session::update() {
 		}
 	}
 
+}
+
+void Session::resumeFromSave() {
+	if(!isHost() || m_state != State::Lobby) {
+		return;
+	}
+	m_state = State::InGame;
+	LogInfo << "[coop] resuming a saved game";
+	flushLog();
 }
 
 void Session::startGame() {

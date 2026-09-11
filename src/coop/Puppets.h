@@ -60,6 +60,9 @@ PlayerId puppetOwner(const Entity & io);
  * NPC mirroring: the host streams the state of its NPCs (they only live there), clients
  * apply it and run no NPC AI or physics.
  */
+//! The local player launched a spell: the others see it cast by our puppet (visual only there).
+void spellCast(unsigned spell, float level, unsigned flags, const Entity * target, long long durationUs);
+
 //! Co-op death: the local player stays down until a teammate revives it, unless everyone is down.
 bool localPlayerDowned();
 bool allPlayersDowned();

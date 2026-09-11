@@ -76,6 +76,7 @@ enum class MessageType : u16 {
 	SharedRune    = 45, //!< both: u32 rune
 	SharedXP      = 46, //!< both: s32 amount
 	SharedGold    = 61, //!< both: s32 amount (script rewards)
+	SpellCast     = 62, //!< like PlayerState: u8 caster, u32 spell, f32 level, u32 flags, string target, s64 duration
 	SpawnEntity   = 47, //!< H->C: u8 kind, string classPath, s32 instance, f32 pos[3], f32 angle[3]
 	LevelState    = 48, //!< H->C: u32 area, string levelBlob, string globalsBlob, f32 pos[3]
 	RequestLevel  = 49, //!< C->H: (empty)

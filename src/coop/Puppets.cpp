@@ -37,6 +37,9 @@
 #include "game/EntityManager.h"
 #include "game/NPC.h"
 #include "game/Damage.h"
+#include "game/Spells.h"
+#include "game/magic/Spell.h"
+#include "util/Number.h"
 #include "game/Equipment.h"
 #include "graphics/data/MeshManipulation.h"
 #include "scene/LinkedObject.h"
@@ -66,6 +69,8 @@
 #include "script/Script.h"
 
 namespace coop {
+
+static bool puppetsAllowed();
 
 namespace {
 
@@ -537,6 +542,49 @@ void reviveLocalPlayer() {
 	LogInfo << "[coop] back on my feet";
 }
 
+int g_applyingRemoteSpell = 0;
+
+// Spells ------------------------------------------------------------------------------
+
+//! Translates an entity id as seen by another player into our own entity.
+Entity * mapRemoteEntity(PlayerId from, const std::string & id) {
+	if(id.empty()) {
+		return nullptr;
+	}
+	if(id == "player") {
+		return findPuppet(from);
+	}
+	if(id.compare(0, 12, "coop_player_") == 0) {
+		int instance = util::toInt(std::string_view(id).substr(12)).value_or(0);
+		PlayerId owner = PlayerId(instance - 1);
+		if(owner == g_coop.localId()) {
+			return entities.player();
+		}
+		return findPuppet(owner);
+	}
+	return entities.getById(id);
+}
+
+void handleSpellCast(PlayerId from, Reader & reader) {
+	u32 spell = reader.u32_();
+	float level = reader.f32_();
+	u32 flags = reader.u32_();
+	std::string targetId = reader.string();
+	s64 duration = reader.s64_();
+	Entity * caster = findPuppet(from);
+	if(!caster || !puppetsAllowed()) {
+		return;
+	}
+	Entity * target = mapRemoteEntity(from, targetId);
+	LogInfo << "[coop] player " << int(from) << " casts spell " << spell << " level " << level;
+	g_applyingRemoteSpell++;
+	ARX_SPELLS_Launch(SpellType(spell), *caster,
+	                  SpellcastFlags::load(flags) | SPELLCAST_FLAG_NOCHECKCANCAST | SPELLCAST_FLAG_NOMANA
+	                  | SPELLCAST_FLAG_NOANIM,
+	                  long(level), target, GameDuration::ofRaw(duration));
+	g_applyingRemoteSpell--;
+}
+
 // NPC mirroring ------------------------------------------------------------------------
 
 struct NpcSnapshot {
@@ -713,6 +761,7 @@ void npcMirrorFrame() {
 void puppetsInit() {
 	g_coop.onPlayerState = handlePlayerState;
 	g_coop.onPlayerEquipment = handlePlayerEquipment;
+	g_coop.onSpellCast = handleSpellCast;
 	g_coop.onNpcState = [](Reader & reader) {
 		if(npcsAreMirrored()) {
 			applyNpcState(reader);
@@ -735,6 +784,26 @@ void puppetsInit() {
 
 bool localPlayerDowned() {
 	return isLocalDowned();
+}
+
+void spellCast(unsigned spell, float level, unsigned flags, const Entity * target, long long durationUs) {
+	if(!puppetsAllowed() || g_applyingRemoteSpell > 0 || (flags & SPELLCAST_FLAG_PRECAST)) {
+		return;
+	}
+	Writer writer;
+	writer.u8_(g_coop.localId());
+	writer.u32_(spell);
+	writer.f32_(level);
+	writer.u32_(flags);
+	std::string targetId;
+	if(target == entities.player()) {
+		targetId = "player";
+	} else if(target) {
+		targetId = target->idString();
+	}
+	writer.string(targetId);
+	writer.s64_(durationUs);
+	g_coop.sendToOthers(MessageType::SpellCast, writer);
 }
 
 bool allPlayersDowned() {
@@ -948,6 +1017,7 @@ void puppetsTestUpdate() {
 	static bool creationSkippedDeathDone = false;
 	static bool lootTaken = false;
 	static bool equipDone = false;
+	static bool spellDone = false;
 	static bool equipChecked = false;
 	static bool lootDropped = false;
 	static bool playing = false;
@@ -1070,6 +1140,11 @@ void puppetsTestUpdate() {
 			ARX_EQUIPMENT_Equip(entities.player(), item);
 			LogInfo << "[coop] test: client equips " << item->idString();
 		}
+	} else if(step >= 3 && elapsed > std::chrono::seconds(105) && g_coop.isClient() && !spellDone) {
+		spellDone = true;
+		LogInfo << "[coop] test: client casts magic missile";
+		ARX_SPELLS_Launch(SPELL_MAGIC_MISSILE, *entities.player(), SPELLCAST_FLAG_NOCHECKCANCAST | SPELLCAST_FLAG_NOMANA,
+		                  3, nullptr, GameDuration::ofRaw(-1));
 	} else if(step >= 3 && elapsed > std::chrono::seconds(110) && !equipChecked) {
 		equipChecked = true;
 		LogInfo << "[coop] test: my player mesh tweaked=" << (entities.player()->tweaky != nullptr)

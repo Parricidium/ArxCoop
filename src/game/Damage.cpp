@@ -411,6 +411,10 @@ float damagePlayer(float dmg, DamageType type, Entity * source) {
 		return 0;
 	}
 	
+	if(source && source->coopPuppet) {
+		return 0; // another player's spell/attack seen locally: its damage comes through the network
+	}
+	
 	if(player.lifePool.current == 0.f) {
 		return 0.f;
 	}
@@ -779,6 +783,10 @@ float damageNpc(Entity & npc, float dmg, Entity * source, Spell * spell, DamageT
 	
 	arx_assert(npc.ioflags & IO_NPC);
 	arx_assert(npc != *entities.player());
+	
+	if(source && source->coopPuppet) {
+		return 0.f; // visual copy of another player's spell: its owner's machine deals the damage
+	}
 	
 	// Co-op: another player's puppet takes the hit on its own machine
 	if(npc.coopPuppet) {

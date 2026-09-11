@@ -82,6 +82,12 @@ public:
 	//! Host only: tells everyone to start a new quest, and does so locally too.
 	void startGame();
 
+	//! Host only: the session starts from a save the host just loaded (clients load theirs).
+	void resumeFromSave();
+
+	//! Client: the host resumed a saved game while we were in the lobby.
+	void resumeFromHost() { if(m_role == Role::Client && m_state == State::Lobby) { m_state = State::InGame; } }
+
 	Role role() const { return m_role; }
 	State state() const { return m_state; }
 	bool isActive() const { return m_role != Role::None; }
@@ -138,6 +144,9 @@ public:
 
 	//! Same routing as PlayerState, for the visible equipment.
 	std::function<void(PlayerId id, Reader & payload)> onPlayerEquipment;
+
+	//! Same routing as PlayerState, for spells cast by players.
+	std::function<void(PlayerId id, Reader & payload)> onSpellCast;
 
 	//! Called for game messages (type >= 40): on the host  from is the client, on clients it is 0.
 	std::function<void(PlayerId from, MessageType type, Reader & payload)> onGameMessage;

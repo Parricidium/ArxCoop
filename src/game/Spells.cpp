@@ -44,6 +44,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "game/Spells.h"
 
+#include "coop/Puppets.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -1003,6 +1005,10 @@ bool ARX_SPELLS_Launch(SpellType typ, Entity & source, SpellcastFlags flags, lon
 	Spell & addedSpell = spells.addSpell(std::move(spell));
 	
 	SPELLCAST_Notify(addedSpell);
+	
+	if(source == *entities.player()) {
+		coop::spellCast(unsigned(typ), addedSpell.m_level, unsigned(flags), target, duration.value().count());
+	}
 	
 	if(flags & SPELLCAST_FLAG_ORPHAN) {
 		addedSpell.m_caster = EntityHandle();

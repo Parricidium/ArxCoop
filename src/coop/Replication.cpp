@@ -40,7 +40,9 @@
 #include "coop/Puppets.h"
 #include "gui/Menu.h"
 #include "gui/book/Book.h"
+#include "cinematic/CinematicController.h"
 #include "core/Config.h"
+#include "gui/Menu.h"
 #include "core/Core.h"
 #include "core/SaveGame.h"
 #include "graphics/Renderer.h"
@@ -97,11 +99,13 @@ const std::map<std::string, Category> & commandTable() {
 		{ "setequip", Category::World }, { "setdurability", Category::World }, { "setprice", Category::World },
 		{ "setcount", Category::World }, { "setmaxcount", Category::World }, { "setpoisonous", Category::World },
 		{ "setsteal", Category::World }, { "setfood", Category::World }, { "setobjecttype", Category::World },
-		{ "equip", Category::World }, { "weapon", Category::World }, { "repair", Category::World },
+		{ "equip", Category::Player }, { "weapon", Category::Player }, { "repair", Category::Player },
 		{ "skin", Category::World }, { "dodamage", Category::World }, { "damager", Category::World },
 		{ "setblood", Category::World }, { "setspeed", Category::World }, { "setstarefactor", Category::World },
 		{ "setircolor", Category::World }, { "setweight", Category::World }, { "unset", Category::World },
 		{ "spawn", Category::World },
+		{ "set", Category::World }, { "inc", Category::World }, { "dec", Category::World },
+		{ "mul", Category::World }, { "div", Category::World },
 		// Player
 		{ "book", Category::Player }, { "note", Category::Player },
 		{ "popup", Category::Player }, { "herosay", Category::Player }, { "playerinterface", Category::Player },
@@ -643,10 +647,29 @@ void applySaveRequest(Reader & reader) {
 void applyLoadRequest(Reader & reader) {
 	std::string name = coopSaveName(reader.string());
 	SavegameHandle save = findSaveByName(name);
+	bool wasInLobby = g_coop.state() == State::Lobby;
+	if(wasInLobby) {
+		g_coop.resumeFromHost();
+	}
 	if(save == SavegameHandle()) {
+		if(wasInLobby) {
+			LogInfo << "[coop] the host resumed \"" << name << "\" and I have no such save: new character";
+			puppetsReset();
+			if(!cinematicIsStopped()) {
+				cinematicEnd();
+			}
+			ARX_MENU_Clicked_NEWQUEST();
+			return;
+		}
 		LogInfo << "[coop] the host loaded \"" << name << "\" but I have no such save: keeping my character";
 		g_levelSynced = false; // the host's world will be fetched again anyway
 		return;
+	}
+	if(wasInLobby) {
+		puppetsReset();
+		if(!cinematicIsStopped()) {
+			cinematicEnd();
+		}
 	}
 	LogInfo << "[coop] the host loaded a save: loading my character from \"" << name << "\"";
 	g_hostDrivenSaveLoad = true;
@@ -934,7 +957,13 @@ void gameSaved(std::string_view name) {
 }
 
 void gameLoaded(std::string_view name) {
-	if(g_coop.isHost() && g_coop.state() == State::InGame) {
+	if(!g_coop.isHost()) {
+		return;
+	}
+	if(g_coop.state() == State::Lobby) {
+		g_coop.resumeFromSave(); // the host resumed a saved game: this is the start of the session
+	}
+	if(g_coop.state() == State::InGame) {
 		Writer writer;
 		writer.string(name);
 		g_coop.broadcast(MessageType::LoadRequest, writer);
@@ -1055,8 +1084,9 @@ bool interceptScriptEvent(Entity * sender, Entity * entity, const ScriptEventNam
 
 	// Level load / appearance setup and local cinematic ends are fine to run locally
 	// ("reload" is not: the host runs it and replicates the effects, see Kultar's DESTROY SELF)
-	if(id == SM_INIT || id == SM_INITEND || id == SM_LOAD || id == SM_CINE_END) {
-		return false;
+	if(id == SM_INIT || id == SM_INITEND || id == SM_LOAD || id == SM_CINE_END
+	   || id == SM_INVENTORY2_OPEN || id == SM_INVENTORY2_CLOSE) {
+		return false; // query events: answered locally from the replicated entity variables
 	}
 
 	// Everything else about world entities is the host's business
@@ -1124,8 +1154,10 @@ void commandReplicated(std::string_view command, const std::vector<std::string> 
 		return;
 	}
 
-	if(command == "unset" && (words.empty() || isLocalVariable(words[0]))) {
-		return; // local variables of world entities are not needed on the clients
+	if((command == "set" || command == "inc" || command == "dec" || command == "mul" || command == "div")
+	   && (words.empty() || !isLocalVariable(words[0]))) {
+		return; // globals go through SetGlobal; local variables of world entities are replayed so
+		        // that query events (chest locked?) can be answered on the clients
 	}
 
 	std::vector<std::string> sent = words;
