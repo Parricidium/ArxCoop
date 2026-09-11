@@ -45,6 +45,8 @@ enum MENUSTATE {
 	Page_OptionsInputCustomizeKeys2,
 	Page_QuitConfirm,
 	Page_Localization,
+	Page_Coop,
+	Page_CoopLobby,
 };
 
 enum WidgetType {

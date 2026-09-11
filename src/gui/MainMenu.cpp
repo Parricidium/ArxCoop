@@ -47,6 +47,7 @@
 #include "gui/Text.h"
 #include "gui/TextManager.h"
 #include "gui/book/Book.h"
+#include "gui/menu/CoopMenuPages.h"
 #include "gui/menu/MenuCursor.h"
 #include "gui/menu/MenuFader.h"
 #include "gui/menu/MenuPage.h"
@@ -1810,6 +1811,8 @@ void MainMenu::initWindowPages() {
 	
 	m_window->add(std::make_unique<QuitConfirmMenuPage>());
 	m_window->add(std::make_unique<LocalizationMenuPage>());
+	m_window->add(createCoopMenuPage());
+	m_window->add(createCoopLobbyMenuPage());
 	
 }
 
@@ -1873,6 +1876,13 @@ void MainMenu::init() {
 	}
 	pos.y += yOffset;
 	{
+		auto txt = std::make_unique<TextWidget>(hFontMainMenu, getLocalised("system_menus_coop", "Coopération"));
+		txt->setTargetPage(Page_Coop);
+		txt->setPosition(pos);
+		m_widgets.add(std::move(txt));
+	}
+	pos.y += yOffset;
+	{
 		auto txt = std::make_unique<TextWidget>(hFontMainMenu, getLocalised("system_menus_main_options"));
 		txt->setTargetPage(Page_Options);
 		txt->setPosition(pos);
@@ -1926,6 +1936,8 @@ void MainMenu::init() {
 }
 
 void MainMenu::update() {
+	
+	coopMenuHandleStartup();
 	
 	if(m_resumeGame) {
 		m_resumeGame->setEnabled(g_canResumeGame || !savegames.empty());

@@ -46,6 +46,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "scene/Interactive.h"
 
+#include "coop/Replication.h"
+
 #include <cstdlib>
 #include <iomanip>
 #include <algorithm>
@@ -1198,7 +1200,7 @@ static EntityInstance getFreeEntityInstance(const res::path & classPath) {
 	std::string_view className = classPath.filename();
 	res::path classDir = classPath.parent();
 	
-	for(EntityInstance instance = 1; ; instance++) {
+	for(EntityInstance instance = coop::instanceBase(); ; instance++) {
 		
 		std::string idString = EntityId(className, instance).string();
 		

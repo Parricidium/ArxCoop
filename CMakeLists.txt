@@ -329,7 +329,7 @@ if(WIN32)
 	add_definitions(-DNOMINMAX)
 	add_definitions(-DWIN32_LEAN_AND_MEAN)
 	list(APPEND BASE_LIBRARIES version)
-	list(APPEND ARX_LIBRARIES gdi32 shell32 comdlg32 ole32 comctl32)
+	list(APPEND ARX_LIBRARIES gdi32 shell32 comdlg32 ole32 comctl32 ws2_32 mswsock)
 endif()
 
 # pthread / Win32 threads
@@ -1039,6 +1039,13 @@ set(GRAPHICS_SOURCES
 	src/graphics/texture/TextureStage.cpp
 )
 
+set(COOP_SOURCES
+	src/coop/Connection.cpp
+	src/coop/Puppets.cpp
+	src/coop/Replication.cpp
+	src/coop/Session.cpp
+)
+
 set(GRAPHICS_OPENGL_SOURCES
 	src/graphics/opengl/GLDebug.cpp
 	src/graphics/opengl/GLTexture.cpp
@@ -1071,6 +1078,7 @@ set(GUI_SOURCES
 	src/gui/TextManager.cpp
 	src/gui/book/Book.cpp
 	src/gui/book/Necklace.cpp
+	src/gui/menu/CoopMenuPages.cpp
 	src/gui/debug/DebugHud.cpp
 	src/gui/debug/DebugHudAudio.cpp
 	src/gui/debug/DebugHudCulling.cpp
@@ -1400,6 +1408,7 @@ set(ARX_SOURCES
 	${ANIMATION_SOURCES}
 	${CINEMATIC_SOURCES}
 	${AUDIO_SOURCES}
+	${COOP_SOURCES}
 	${CORE_SOURCES}
 	${GAME_SOURCES}
 	${GRAPHICS_SOURCES}

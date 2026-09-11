@@ -19,6 +19,8 @@
 
 #include "gui/Dragging.h"
 
+#include "coop/Replication.h"
+
 #include "core/Core.h"
 #include "game/Camera.h"
 #include "game/Entity.h"
@@ -299,6 +301,7 @@ void updateDraggedEntity() {
 	entity->soundcount = 0;
 	arx_assert(!locateInInventories(entity));
 	entity->show = SHOW_FLAG_IN_SCENE;
+	coop::itemDropped(*entity);
 	entity->obj->pbox->active = 0;
 	entity->gameFlags &= ~GFLAG_NOCOMPUTATION;
 	setDraggedEntity(nullptr);

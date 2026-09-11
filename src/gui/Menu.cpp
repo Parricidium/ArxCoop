@@ -46,6 +46,9 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "gui/Menu.h"
 
+#include "coop/Replication.h"
+#include "coop/Session.h"
+
 #include <cstdlib>
 #include <sstream>
 #include <iterator>
@@ -142,7 +145,9 @@ void ARX_MENU_Launch(bool allowResume) {
 	
 	g_canResumeGame = allowResume;
 
-	g_gameTime.pause(GameTime::PauseMenu);
+	if(!g_coop.worldMustKeepRunning()) {
+		g_gameTime.pause(GameTime::PauseMenu);
+	}
 
 	// Synchronize menu mixers with game mixers and switch between them
 	ARX_SOUND_MixerPause(ARX_SOUND_MixerGame);
@@ -172,6 +177,7 @@ void ARX_Menu_Manage() {
 					if(!FADEDIR && cinematicBorder.elapsedTime() >= 3s) {
 						if(SendMsgToAllIO(nullptr, SM_KEY_PRESSED) != REFUSE) {
 							REQUEST_SPEECH_SKIP = true;
+							coop::speechSkipped();
 						}
 					}
 				} else if((player.Interface & INTER_PLAYERBOOK) || g_note.isOpen()) {
@@ -180,7 +186,9 @@ void ARX_Menu_Manage() {
 				} else {
 					GRenderer->getSnapshot(savegame_thumbnail, config.interface.thumbnailSize.x, config.interface.thumbnailSize.y);
 					
-					g_gameTime.pause(GameTime::PauseMenu);
+					if(!g_coop.worldMustKeepRunning()) {
+						g_gameTime.pause(GameTime::PauseMenu);
+					}
 					
 					ARX_MENU_Launch(true);
 					MenuFader_start(Fade_Out, -1); // TODO: does this fader even work ?

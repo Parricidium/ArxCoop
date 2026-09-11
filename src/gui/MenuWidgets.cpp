@@ -43,6 +43,10 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "gui/MenuWidgets.h"
 
+#include "coop/Replication.h"
+#include "coop/Session.h"
+#include "io/log/Logger.h"
+
 #include <cctype>
 #include <cmath>
 #include <cstring>
@@ -103,8 +107,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 void ARX_QuickSave() {
 	
-	if(!g_canResumeGame) {
-		return;
+	if(!g_canResumeGame || (g_coop.isClient() && !coop::hostDrivenSaveLoad())) {
+		return; // co-op clients do not own the world: saving/loading is the host's business
 	}
 	
 	ARX_SOUND_MixerPause(ARX_SOUND_MixerGame);
@@ -115,6 +119,11 @@ void ARX_QuickSave() {
 }
 
 void ARX_LoadGame(const SaveGame & save) {
+	
+	if(g_coop.isClient() && g_coop.state() == coop::State::InGame && !coop::hostDrivenSaveLoad()) {
+		LogWarning << "[coop] loading a save is not possible while playing as a client";
+		return;
+	}
 	
 	ARXmenu.requestMode(Mode_InGame);
 	
@@ -132,9 +141,16 @@ void ARX_LoadGame(const SaveGame & save) {
 	ARX_CHANGELEVEL_Load(save.savefile);
 	
 	g_canResumeGame = true;
+	
+	coop::playthroughStarted();
+	coop::gameLoaded(save.name);
 }
 
 void ARX_QuickLoad() {
+	
+	if(g_coop.isClient() && g_coop.state() == coop::State::InGame) {
+		return;
+	}
 	
 	SavegameHandle save = savegames.quickload();
 	if(save == SavegameHandle()) {

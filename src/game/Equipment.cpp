@@ -154,18 +154,7 @@ void ARX_EQUIPMENT_ReleaseAll(Entity * io) {
 extern long EXITING;
 
 //! \brief Recreates player mesh from scratch
-static void applyTweak(EquipmentSlot equip, TweakType tw, std::string_view selection) {
-	
-	Entity * item = entities.get(player.equiped[equip]);
-	if(!item) {
-		return;
-	}
-	
-	Entity * io = entities.player();
-	
-	arx_assert(item->tweakerinfo != nullptr);
-	
-	const IO_TWEAKER_INFO & tweak = *item->tweakerinfo;
+void ARX_EQUIPMENT_ApplyTweak(Entity * io, const IO_TWEAKER_INFO & tweak, TweakType tw, std::string_view selection) {
 	
 	if(!tweak.filename.empty()) {
 		res::path mesh = "graph/obj3d/interactive/npc/human_base/tweaks" / tweak.filename;
@@ -211,6 +200,15 @@ static void applyTweak(EquipmentSlot equip, TweakType tw, std::string_view selec
 		}
 	}
 	
+}
+
+static void applyTweak(EquipmentSlot equip, TweakType tw, std::string_view selection) {
+	Entity * item = entities.get(player.equiped[equip]);
+	if(!item) {
+		return;
+	}
+	arx_assert(item->tweakerinfo != nullptr);
+	ARX_EQUIPMENT_ApplyTweak(entities.player(), *item->tweakerinfo, tw, selection);
 }
 
 void ARX_EQUIPMENT_RecreatePlayerMesh() {

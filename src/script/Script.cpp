@@ -46,6 +46,9 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "script/Script.h"
 
+#include "coop/Puppets.h"
+#include "coop/Replication.h"
+
 #include <stddef.h>
 #include <cstdio>
 #include <algorithm>
@@ -522,7 +525,7 @@ ValueType getSystemVar(const script::Context & context, std::string_view name,
 			
 			if(name == "^&playerdist") {
 				if(context.getEntity()) {
-					*fcontent = fdist(player.pos, context.getEntity()->pos);
+					*fcontent = fdist(coop::nearestPlayerEyePos(context.getEntity()->pos), context.getEntity()->pos);
 					return TYPE_FLOAT;
 				}
 			}
@@ -545,7 +548,7 @@ ValueType getSystemVar(const script::Context & context, std::string_view name,
 			
 			if(name == "^#playerdist") {
 				if(context.getEntity()) {
-					*lcontent = long(fdist(player.pos, context.getEntity()->pos));
+					*lcontent = long(fdist(coop::nearestPlayerEyePos(context.getEntity()->pos), context.getEntity()->pos));
 					return TYPE_LONG;
 				}
 			}
@@ -775,7 +778,7 @@ ValueType getSystemVar(const script::Context & context, std::string_view name,
 				if(context.getEntity()) {
 					Entity * target = entities.getById(name.substr(6));
 					if(target == entities.player()) {
-						*fcontent = fdist(player.pos, context.getEntity()->pos);
+						*fcontent = fdist(coop::nearestPlayerEyePos(context.getEntity()->pos), context.getEntity()->pos);
 					} else if(target
 					          && (context.getEntity()->show == SHOW_FLAG_IN_SCENE
 					              || context.getEntity()->show == SHOW_FLAG_IN_INVENTORY)
@@ -1209,8 +1212,9 @@ ValueType getSystemVar(const script::Context & context, std::string_view name,
 						if(context.getEntity()->requestRoomUpdate) {
 							UpdateIORoom(context.getEntity());
 						}
-						RoomHandle playerRoom = ARX_PORTALS_GetRoomNumForPosition(player.pos, RoomPositionForCamera);
-						*fcontent = SP_GetRoomDist(context.getEntity()->pos, player.pos, context.getEntity()->room, playerRoom);
+						Vec3f playerPos = coop::nearestPlayerEyePos(context.getEntity()->pos);
+						RoomHandle playerRoom = ARX_PORTALS_GetRoomNumForPosition(playerPos, RoomPositionForCamera);
+						*fcontent = SP_GetRoomDist(context.getEntity()->pos, playerPos, context.getEntity()->room, playerRoom);
 					} else if(target
 					          && (context.getEntity()->show == SHOW_FLAG_IN_SCENE
 					              || context.getEntity()->show == SHOW_FLAG_IN_INVENTORY)
@@ -1477,18 +1481,27 @@ std::string_view GETVarValueText(const SCRIPT_VARIABLES & svf, std::string_view 
 SCRIPT_VAR * SETVarValueLong(SCRIPT_VARIABLES & svf, std::string_view name, long val) {
 	SCRIPT_VAR * tsv = getOrCreateScriptVariable(svf, name);
 	tsv->ival = val;
+	if(&svf == &svar) {
+		coop::globalVariableChanged(name, *tsv);
+	}
 	return tsv;
 }
 
 SCRIPT_VAR * SETVarValueFloat(SCRIPT_VARIABLES & svf, std::string_view name, float val) {
 	SCRIPT_VAR * tsv = getOrCreateScriptVariable(svf, name);
 	tsv->fval = val;
+	if(&svf == &svar) {
+		coop::globalVariableChanged(name, *tsv);
+	}
 	return tsv;
 }
 
 SCRIPT_VAR * SETVarValueText(SCRIPT_VARIABLES & svf, std::string_view name, std::string && val) {
 	SCRIPT_VAR * tsv = getOrCreateScriptVariable(svf, name);
 	tsv->text = std::move(val);
+	if(&svf == &svar) {
+		coop::globalVariableChanged(name, *tsv);
+	}
 	return tsv;
 }
 

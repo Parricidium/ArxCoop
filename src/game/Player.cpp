@@ -46,6 +46,9 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "game/Player.h"
 
+#include "coop/Puppets.h"
+#include "coop/Replication.h"
+
 #include <stddef.h>
 #include <cstdlib>
 #include <cstring>
@@ -220,6 +223,7 @@ void ARX_KEYRING_Init() {
 //! Add a key to Keyring
 void ARX_KEYRING_Add(std::string_view key) {
 	g_playerKeyring.emplace_back(key);
+	coop::sharedKeyAdded(key);
 }
 
 /*!
@@ -329,6 +333,7 @@ void ARX_Player_Rune_Add(RuneFlag rune) {
 	});
 	
 	player.rune_flags |= rune;
+	coop::sharedRuneAdded(rune);
 	
 	size_t spellsAfter = std::count_if(spellicons.begin(), spellicons.end(), [](const SPELL_ICON & spell) {
 		return !spell.bSecret && player.hasAllRunes(spell.symbols);
@@ -349,6 +354,7 @@ void ARX_Player_Rune_Remove(RuneFlag rune) {
 void ARX_PLAYER_Quest_Add(std::string_view quest) {
 	g_playerQuestLogEntries.emplace_back(quest);
 	g_playerBook.clearJournal();
+	coop::sharedQuestAdded(quest);
 }
 
 //! Removes player invisibility by killing Invisibility spells on him
@@ -906,6 +912,7 @@ static void ARX_PLAYER_LEVEL_UP() {
 void ARX_PLAYER_Modify_XP(long val) {
 	
 	player.xp += val;
+	coop::sharedExperience(val);
 	
 	for(short i = player.level + 1; i < 11; i++) {
 		if(player.xp >= GetXPforLevel(i)) {
@@ -2282,6 +2289,14 @@ void ARX_PLAYER_Manage_Death() {
 		return;
 
 	player.m_paralysed = false;
+
+	// Co-op: stay down and wait for a teammate, unless nobody is left standing
+	if(coop::localPlayerDowned() && !coop::allPlayersDowned()) {
+		if(player.DeadTime > 5s) {
+			player.DeadTime = 5s;
+		}
+	}
+
 	float ratio = (player.DeadTime - 2s) / 5s;
 
 	if(ratio >= 1.f) {
@@ -2354,6 +2369,7 @@ void ARX_PLAYER_AddGold(Entity * gold) {
 void ARX_PLAYER_Start_New_Quest() {
 	
 	LogInfo << "Starting a new playthrough";
+	coop::playthroughStarted();
 	
 	DanaeClearLevel();
 	SetEditMode();

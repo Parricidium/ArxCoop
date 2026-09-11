@@ -43,6 +43,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "script/ScriptedConversation.h"
 
+#include "coop/Replication.h"
+
 #include <sstream>
 
 #include "core/Localisation.h"
@@ -350,6 +352,9 @@ public:
 			
 			if(flg & flag('c')) {
 				parseCinematicSpeech(acs, context, speaker);
+				if(coop::cinematicSpeechIsSomeoneElses()) {
+					acs.type = ARX_CINE_SPEECH_NONE; // the camera belongs to the player who started this
+				}
 			}
 			
 		}

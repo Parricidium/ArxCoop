@@ -19,6 +19,8 @@
 
 #include "core/SaveGame.h"
 
+#include "coop/Replication.h"
+
 #include <sstream>
 #include <iomanip>
 #include <algorithm>
@@ -235,6 +237,7 @@ bool SaveGameList::save(std::string_view name, SavegameHandle overwrite, const I
 	if(!ARX_CHANGELEVEL_Save(name, savefile)) {
 		return false;
 	}
+	coop::gameSaved(name);
 	
 	if(thumbnail.isValid() && !thumbnail.save(savefile.parent() / SAVEGAME_THUMBNAIL)) {
 		LogWarning << "Failed to save screenshot to " << (savefile.parent() / SAVEGAME_THUMBNAIL);

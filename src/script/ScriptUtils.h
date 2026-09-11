@@ -91,10 +91,19 @@ class Context {
 	ScriptParameters m_parameters;
 	std::vector<size_t> m_stack;
 	
+	/*!
+	 * Co-op: while non-null, every word fetched by a command is recorded here, with variables
+	 * replaced by the value they resolved to. The result is a self-contained command line that
+	 * can be replayed on another machine (see coop/Replication.cpp).
+	 */
+	mutable std::vector<std::string> * m_transcript = nullptr;
+	
 public:
 	
 	explicit Context(const EERIE_SCRIPT * script, size_t pos, Entity * sender, Entity * entity,
 	                 ScriptMessage msg, ScriptParameters parameters);
+	
+	void setTranscript(std::vector<std::string> * transcript) { m_transcript = transcript; }
 	
 	std::string getStringVar(std::string_view name) const;
 	std::string getFlags();
@@ -115,6 +124,13 @@ public:
 	float getFloat();
 	
 	float getFloatVar(std::string_view name) const;
+	
+private:
+	
+	std::string resolveStringVar(std::string_view name) const;
+	float resolveFloatVar(std::string_view name) const;
+	
+public:
 	
 	/*!
 	 * Skip input until the end of the current line.

@@ -43,6 +43,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "game/Entity.h"
 
+#include "coop/Replication.h"
+
 #include <sstream>
 #include <iomanip>
 #include <cstring>
@@ -267,6 +269,10 @@ void Entity::setOwner(Entity * owner) {
 		}
 		
 		m_owner = owner;
+		
+		if(m_owner == entities.player()) {
+			coop::itemTaken(*this);
+		}
 		
 	}
 	

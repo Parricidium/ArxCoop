@@ -46,6 +46,9 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "scene/ChangeLevel.h"
 
+#include "coop/Puppets.h"
+#include "coop/Replication.h"
+
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
@@ -132,6 +135,7 @@ static bool ARX_CHANGELEVEL_Push_Globals();
 static void ARX_CHANGELEVEL_Pop_Globals();
 static bool ARX_CHANGELEVEL_Push_Player(AreaId area);
 static bool ARX_CHANGELEVEL_Push_AllIO(AreaId area);
+static bool isInPlayerInventoryOrEquipment(const Entity & entity);
 static bool ARX_CHANGELEVEL_Push_IO(const Entity * io, AreaId area);
 static Entity * ARX_CHANGELEVEL_Pop_IO(std::string_view idString, EntityInstance instance, AreaId area = { });
 
@@ -323,6 +327,12 @@ void ARX_CHANGELEVEL_Change(AreaId area, std::string_view target, float angle) {
 	
 	LogDebug("ARX_CHANGELEVEL_Change " << area << " " << target << " " << angle);
 	
+	// Co-op: clients only change level when the host does (its new level state is pushed to them)
+	if(coop::npcsAreMirrored() && !coop::applyingRemote() && area != g_currentArea) {
+		LogInfo << "[coop] level change to " << area << " ignored: waiting for the host";
+		return;
+	}
+	
 	// not changing level, just teleported
 	if(area == g_currentArea) {
 		if(Entity * targetEntity = entities.getById(target)) {
@@ -356,6 +366,102 @@ void ARX_CHANGELEVEL_Change(AreaId area, std::string_view target, float angle) {
 	ARX_PLAYER_RectifyPosition();
 	GMOD_RESET = true;
 	
+}
+
+bool ARX_CHANGELEVEL_ExportLevel(std::vector<std::pair<std::string, std::string>> & files) {
+	
+	if(!g_currentArea || !openCurrentSavedGameFile()) {
+		return false;
+	}
+	
+	ARX_SCRIPT_EventStackExecuteAll();
+	
+	if(!ARX_CHANGELEVEL_Push_Index(g_currentArea)) {
+		return false;
+	}
+	ARX_CHANGELEVEL_Push_Globals();
+	ARX_CHANGELEVEL_Push_AllIO(g_currentArea);
+	
+	std::ostringstream levelName;
+	levelName << "lvl" << std::setfill('0') << std::setw(3) << u32(g_currentArea);
+	std::string index = g_currentSavedGame->load(levelName.str());
+	if(index.size() < sizeof(ARX_CHANGELEVEL_INDEX)) {
+		return false;
+	}
+	files.emplace_back(levelName.str(), index);
+	files.emplace_back("globals", g_currentSavedGame->load("globals"));
+	
+	const ARX_CHANGELEVEL_INDEX * asi = reinterpret_cast<const ARX_CHANGELEVEL_INDEX *>(index.data());
+	const ARX_CHANGELEVEL_IO_INDEX * idx_io = reinterpret_cast<const ARX_CHANGELEVEL_IO_INDEX *>(index.data() + sizeof(ARX_CHANGELEVEL_INDEX));
+	arx_assert(sizeof(ARX_CHANGELEVEL_INDEX) + sizeof(ARX_CHANGELEVEL_IO_INDEX) * asi->nb_inter <= index.size());
+	for(s32 i = 0; i < asi->nb_inter; i++) {
+		std::string idString = EntityId(res::path::load(util::loadString(idx_io[i].filename)).basename(),
+		                                idx_io[i].ident).string();
+		std::string data = g_currentSavedGame->load(idString);
+		if(!data.empty()) {
+			files.emplace_back(idString, std::move(data));
+		}
+	}
+	
+	// Entities referenced from others (inventory contents, linked objects) are stored under their own name too
+	for(const Entity & entity : entities) {
+		if((entity.ioflags & IO_NOSAVE) || entity == *entities.player() || isInPlayerInventoryOrEquipment(entity)) {
+			continue;
+		}
+		bool listed = false;
+		for(const auto & file : files) {
+			if(file.first == entity.idString()) {
+				listed = true;
+				break;
+			}
+		}
+		if(!listed) {
+			std::string data = g_currentSavedGame->load(entity.idString());
+			if(!data.empty()) {
+				files.emplace_back(entity.idString(), std::move(data));
+			}
+		}
+	}
+	
+	return true;
+}
+
+bool ARX_CHANGELEVEL_ImportLevel(AreaId area, const std::vector<std::pair<std::string, std::string>> & files,
+                                 const Vec3f & playerPos) {
+	
+	if(!openCurrentSavedGameFile()) {
+		return false;
+	}
+	
+	for(const auto & file : files) {
+		g_currentSavedGame->save(file.first, file.second.data(), file.second.size());
+	}
+	
+	progressBarSetTotal(238);
+	progressBarReset();
+	LoadLevelScreen(area);
+	ARX_PLAYER_Reset_Fall();
+	
+	ARX_SCRIPT_EventStackExecuteAll();
+	g_secondaryInventoryHud.close();
+	if(g_currentArea && g_currentArea != area) {
+		ARX_CHANGELEVEL_Push_Index(g_currentArea);
+	}
+	// Our own character always comes from this machine
+	ARX_CHANGELEVEL_Push_Player(area);
+	
+	// Like loading a save: no "reload" events, the host never ran them either
+	if(!ARX_CHANGELEVEL_PopLevel(area, false, std::string_view(), 0.f)) {
+		return false;
+	}
+	
+	player.pos = playerPos;
+	g_moveto = player.pos;
+	entities.player()->inzone = nullptr;
+	ARX_PLAYER_RectifyPosition();
+	GMOD_RESET = true;
+	
+	return true;
 }
 
 static bool ARX_CHANGELEVEL_PushLevel(AreaId oldArea, AreaId newArea) {
@@ -2407,6 +2513,9 @@ static void ARX_CHANGELEVEL_Pop_Globals() {
 }
 
 static bool ARX_CHANGELEVEL_PopLevel(AreaId area, bool reloadflag, std::string_view target, float angle) {
+	
+	coop::levelLoadBegin();
+	struct LoadScope { ~LoadScope() { coop::levelLoadEnd(); } } loadScope;
 	
 	DanaeClearLevel();
 	

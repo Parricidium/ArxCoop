@@ -68,6 +68,8 @@ constexpr const std::string_view
 	             BOOST_PP_STRINGIZE(ARX_DEFAULT_HEIGHT),
 	debugLevels,
 	realtimeOverride,
+	coopNickname = "Joueur",
+	coopAddress = "127.0.0.1",
 	bufferUpload,
 	extensionOverride,
 	thumbnailSize = BOOST_PP_STRINGIZE(THUMBNAIL_DEFAULT_WIDTH) "x"
@@ -89,6 +91,7 @@ constexpr const int
 	mouseAcceleration = 0,
 	migration = Config::OriginalAssets,
 	quicksaveSlots = 3,
+	coopPort = 27015,
 	bufferSize = 0,
 	quickLevelTransition = JumpToChangeLevel;
 
@@ -193,7 +196,8 @@ constexpr const std::string_view
 	Audio = "audio",
 	Input = "input",
 	Key = "key",
-	Misc = "misc";
+	Misc = "misc",
+	Coop = "coop";
 
 } // namespace Section
 
@@ -329,6 +333,12 @@ constexpr const std::string_view
 	quicksaveSlots = "quicksave_slots",
 	debugLevels = "debug",
 	realtimeOverride = "realtime_override";
+
+// Coop options
+constexpr const std::string_view
+	coopNickname = "nickname",
+	coopAddress = "address",
+	coopPort = "port";
 
 } // namespace Key
 
@@ -554,6 +564,12 @@ bool Config::save() {
 	writer.writeKey(Key::debugLevels, misc.debug);
 	writer.writeKey(Key::realtimeOverride, misc.realtimeOverride);
 	
+	// coop
+	writer.beginSection(Section::Coop);
+	writer.writeKey(Key::coopNickname, coop.nickname);
+	writer.writeKey(Key::coopAddress, coop.address);
+	writer.writeKey(Key::coopPort, coop.port);
+	
 	return writer.flush();
 }
 
@@ -688,6 +704,11 @@ bool Config::init(const fs::path & file) {
 	misc.quicksaveSlots = std::max(reader.getKey(Section::Misc, Key::quicksaveSlots, Default::quicksaveSlots), 1);
 	misc.debug = reader.getKey(Section::Misc, Key::debugLevels, Default::debugLevels);
 	misc.realtimeOverride = reader.getKey(Section::Misc, Key::realtimeOverride, Default::realtimeOverride);
+	
+	// coop
+	coop.nickname = reader.getKey(Section::Coop, Key::coopNickname, Default::coopNickname);
+	coop.address = reader.getKey(Section::Coop, Key::coopAddress, Default::coopAddress);
+	coop.port = reader.getKey(Section::Coop, Key::coopPort, Default::coopPort);
 	
 	return loaded;
 }

@@ -43,6 +43,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "script/ScriptEvent.h"
 
+#include "coop/Replication.h"
+
 #include <utility>
 
 #include <boost/algorithm/string/predicate.hpp>
@@ -249,6 +251,14 @@ ScriptResult ScriptEvent::send(const EERIE_SCRIPT * es, Entity * sender, Entity 
 	
 	arx_assert(entity);
 	
+	{
+		ScriptResult intercepted;
+		if(coop::interceptScriptEvent(sender, entity, event, parameters, intercepted)) {
+			return intercepted;
+		}
+	}
+	coop::ActorScope actorScope(sender, entity);
+	
 	if(checkInteractiveObject(entity, event.getId(), ret)) {
 		return ret;
 	}
@@ -323,7 +333,19 @@ ScriptResult ScriptEvent::send(const EERIE_SCRIPT * es, Entity * sender, Entity 
 			} else if(context.getParameters().isPeekOnly()) {
 				res = command.peek(context);
 			} else {
-				res = command.execute(context);
+				coop::CommandSync sync = coop::commandSync(word, context);
+				if(sync == coop::CommandSync::Redirect) {
+					coop::commandRedirected(word, context);
+					res = script::Command::Success;
+				} else if(sync == coop::CommandSync::Replicate) {
+					std::vector<std::string> transcript;
+					context.setTranscript(&transcript);
+					res = command.execute(context);
+					context.setTranscript(nullptr);
+					coop::commandReplicated(word, transcript, context);
+				} else {
+					res = command.execute(context);
+				}
 			}
 			
 			if(res == script::Command::AbortAccept) {

@@ -243,6 +243,17 @@ public:
 		
 	} misc;
 	
+	// section 'coop'
+	struct {
+		
+		std::string nickname;
+		
+		std::string address; //!< Last host address used to join
+		
+		int port;
+		
+	} coop;
+	
 	bool setActionKey(ControlAction actionId, size_t index, InputKeyId key);
 	void setDefaultActionKeys();
 	

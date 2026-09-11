@@ -46,6 +46,9 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "game/Damage.h"
 
+#include "coop/Puppets.h"
+#include "coop/Replication.h"
+
 #include <cstring>
 #include <cstdio>
 #include <algorithm>
@@ -776,6 +779,17 @@ float damageNpc(Entity & npc, float dmg, Entity * source, Spell * spell, DamageT
 	
 	arx_assert(npc.ioflags & IO_NPC);
 	arx_assert(npc != *entities.player());
+	
+	// Co-op: another player's puppet takes the hit on its own machine
+	if(npc.coopPuppet) {
+		return coop::damagePuppet(npc, dmg, type);
+	}
+	
+	// Co-op: NPCs only live on the host
+	if(coop::npcsAreMirrored()) {
+		coop::forwardNpcDamage(npc, dmg, type, pos);
+		return dmg;
+	}
 	
 	if((npc.ioflags & IO_INVULNERABILITY)) {
 		return 0.f;

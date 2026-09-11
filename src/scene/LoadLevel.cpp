@@ -46,6 +46,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "scene/LoadLevel.h"
 
+#include "coop/Replication.h"
+
 #include <stddef.h>
 #include <cstdio>
 #include <ctime>
@@ -221,6 +223,9 @@ static void loadLighting(const char * dat, size_t & pos, bool compact, bool skip
 }
 
 bool DanaeLoadLevel(AreaId area, bool loadEntities) {
+	
+	coop::levelLoadBegin();
+	struct LoadScope { ~LoadScope() { coop::levelLoadEnd(); } } loadScope;
 	
 	arx_assume(area);
 	

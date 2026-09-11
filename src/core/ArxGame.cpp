@@ -51,6 +51,10 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include <string_view>
 
 #include "ai/PathFinderManager.h"
+
+#include "coop/Puppets.h"
+#include "coop/Replication.h"
+#include "coop/Session.h"
 #include "ai/Paths.h"
 
 #include "animation/Animation.h"
@@ -165,6 +169,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "script/ScriptEvent.h"
 
+#include "util/Number.h"
 #include "util/String.h"
 
 #include "Configure.h"
@@ -585,6 +590,36 @@ static void loadSave(const std::string & saveFile) {
 }
 ARX_PROGRAM_OPTION_ARG("loadsave", "", "Load a specific savegame file", &loadSave, "SAVEFILE")
 
+static void coopHost(const std::string & port) {
+	g_coop.startup.host = true;
+	g_coop.startup.port = u16(util::toInt(port).value_or(0));
+	skipLogo();
+}
+ARX_PROGRAM_OPTION_ARG("coop-host", "", "Host a co-op game on the given port (0 = configured port)", &coopHost, "PORT")
+
+static void coopJoin(const std::string & target) {
+	g_coop.startup.join = true;
+	size_t colon = target.rfind(':');
+	if(colon != std::string::npos) {
+		g_coop.startup.address = target.substr(0, colon);
+		g_coop.startup.port = u16(util::toInt(std::string_view(target).substr(colon + 1)).value_or(0));
+	} else {
+		g_coop.startup.address = target;
+	}
+	skipLogo();
+}
+ARX_PROGRAM_OPTION_ARG("coop-join", "", "Join a co-op game at ADDRESS[:PORT]", &coopJoin, "ADDRESS")
+
+static void coopTest() {
+	coop::g_puppetsTestMode = true;
+}
+ARX_PROGRAM_OPTION("coop-test", "", "Developer: step back, screenshot and quit once in a level", &coopTest)
+
+static void coopNickname(const std::string & name) {
+	g_coop.startup.nickname = name;
+}
+ARX_PROGRAM_OPTION_ARG("nickname", "", "Nickname to use in co-op games", &coopNickname, "NAME")
+
 static bool HandleGameFlowTransitions() {
 	
 	const PlatformDuration TRANSITION_DURATION = 3600ms;
@@ -728,6 +763,8 @@ bool ArxGame::initGame()
 	LogDebug("Svars Init");
 	
 	entities.init();
+	coop::puppetsInit();
+	coop::replicationInit();
 	
 	player = ARXCHARACTER();
 	ARX_PLAYER_InitPlayer();
@@ -1129,6 +1166,9 @@ void ArxGame::doFrame() {
 	updateTime();
 
 	updateInput();
+
+	g_coop.update();
+	coop::puppetsTestUpdate();
 
 	if(m_wasResized) {
 		LogDebug("was resized");
@@ -1655,6 +1695,11 @@ void ArxGame::updateLevel() {
 
 	ARX_PLAYER_Manage_Visual();
 
+	coop::puppetsSendLocalState();
+	coop::puppetsUpdate();
+	coop::npcSyncUpdate();
+	coop::replicationUpdate();
+
 	g_miniMap.setActiveBackground(g_tiles);
 	g_miniMap.validatePlayerPos(g_currentArea, BLOCK_PLAYER_CONTROLS, g_playerBook.currentPage());
 
@@ -1796,6 +1841,7 @@ void ArxGame::renderLevel() {
 	ARX_SCENE_Render();
 	
 	drawDebugRender();
+	coop::puppetsDrawNames();
 
 	// Begin Particles
 	g_particleManager.Render();
@@ -1945,6 +1991,14 @@ void ArxGame::render() {
 	}
 	
 	if(ARXmenu.mode() != Mode_InGame) {
+		if(ARXmenu.mode() == Mode_MainMenu && g_coop.worldMustKeepRunning() && g_currentArea
+		   && entities.player() && !isInCinematic()) {
+			// Co-op host: the other players keep playing while we browse the menu
+			bool blocked = BLOCK_PLAYER_CONTROLS;
+			BLOCK_PLAYER_CONTROLS = true;
+			updateLevel();
+			BLOCK_PLAYER_CONTROLS = blocked;
+		}
 		benchmark::begin(benchmark::Menu);
 		ARX_Menu_Render();
 	} else if(isInCinematic()) {

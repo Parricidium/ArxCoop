@@ -536,6 +536,11 @@ static void CheckAnythingInCylinder_Inner(const Cylinder & cylinder, Entity * so
 	   && !(flags & CFLAG_NO_NPC_COLLIDE) // MUST be checked here only (not before...)
 	   && !(source && (source->ioflags & IO_NO_COLLISIONS))
 	   && target->_npcdata->lifePool.current > 0.f) {
+		// Co-op: players spawn on the same spot, so never let an overlapping puppet trap the player
+		if(target->coopPuppet && source == entities.player()
+		   && CylinderInCylinder(getEntityCylinder(*source), target->physics.cyl)) {
+			return;
+		}
 		if(CylinderInCylinder(cylinder, target->physics.cyl)) {
 			NPC_IN_CYLINDER = 1;
 			anything = std::min(anything, target->physics.cyl.origin.y + target->physics.cyl.height);

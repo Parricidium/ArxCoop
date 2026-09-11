@@ -49,6 +49,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "graphics/BaseGraphicsTypes.h"
 
@@ -56,6 +58,20 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 namespace fs { class path; }
 
 void ARX_CHANGELEVEL_Change(AreaId area, std::string_view target, float angle);
+
+/*!
+ * Co-op: serializes the current level (index, globals and every saved entity) using the
+ * savegame format, so that the host can send it to the clients.
+ * \param files receives (name, data) pairs to store in the clients' current game.
+ */
+bool ARX_CHANGELEVEL_ExportLevel(std::vector<std::pair<std::string, std::string>> & files);
+
+/*!
+ * Co-op: stores level data received from the host in the current game and (re)loads  area
+ * from it, keeping our own player. The player is then moved to  playerPos.
+ */
+bool ARX_CHANGELEVEL_ImportLevel(AreaId area, const std::vector<std::pair<std::string, std::string>> & files,
+                                 const Vec3f & playerPos);
 
 bool ARX_CHANGELEVEL_GetInfo(const fs::path & savefile, std::string & name, float & version, AreaId & level);
 

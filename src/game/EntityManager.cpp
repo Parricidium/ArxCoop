@@ -98,6 +98,17 @@ void EntityManager::init() {
 
 void EntityManager::clear() {
 	
+	/*
+	 * Detach entities owned by entities that are about to be deleted (e.g. NPC weapons:
+	 * UnlinkAllLinkedObjects() keeps their owner pointer). Otherwise ~Entity() of the
+	 * owned entity would dereference its already deleted owner when the owner has a lower index.
+	 */
+	for(size_t i = 1; i < size(); i++) {
+		if(entries[i] && entries[i]->owner() && entries[i]->owner() != player()) {
+			entries[i]->setOwner(nullptr);
+		}
+	}
+	
 	// Free all entities, ignoring the player.
 	for(size_t i = 1; i < size(); i++) {
 		delete entries[i];

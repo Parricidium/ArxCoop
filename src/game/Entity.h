@@ -311,6 +311,15 @@ public:
 
 	Vec3f initpos; // Initial Position
 	Anglef initangle; // Initial Angle
+	
+	/*!
+	 * Co-op: this entity represents another player and is driven by the network.
+	 * It must be ignored by NPC AI, physics, damage and script systems (see coop/Puppets.h).
+	 */
+	bool coopPuppet = false;
+	
+	//! Co-op (host only): temporary stand-in for an item that lives in a client's inventory.
+	bool coopProxy = false;
 	float scale;
 	
 	ARX_USE_PATH * usepath;

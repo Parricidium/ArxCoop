@@ -57,6 +57,14 @@ Context::Context(const EERIE_SCRIPT * script, size_t pos, Entity * sender, Entit
 { }
 
 std::string Context::getStringVar(std::string_view name) const {
+	std::string result = resolveStringVar(name);
+	if(m_transcript && !m_transcript->empty() && m_transcript->back() == name && result != name) {
+		m_transcript->back() = result;
+	}
+	return result;
+}
+
+std::string Context::resolveStringVar(std::string_view name) const {
 	
 	if(name.empty()) {
 		return std::string();
@@ -200,6 +208,10 @@ std::string Context::getWord() {
 		ScriptParserWarning << "unmatched '~'";
 	}
 	
+	if(m_transcript) {
+		m_transcript->push_back(word);
+	}
+	
 	return word;
 }
 
@@ -286,6 +298,15 @@ bool Context::getBool() {
 }
 
 float Context::getFloatVar(std::string_view name) const {
+	float result = resolveFloatVar(name);
+	if(m_transcript && !m_transcript->empty() && m_transcript->back() == name && !name.empty()
+	   && (name[0] == '^' || name[0] == '#' || name[0] == '&' || name[0] == '\xA7' || name[0] == '@')) {
+		m_transcript->back() = boost::lexical_cast<std::string>(result);
+	}
+	return result;
+}
+
+float Context::resolveFloatVar(std::string_view name) const {
 	
 	if(name.empty()) {
 		return 0.f;

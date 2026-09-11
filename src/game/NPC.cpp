@@ -46,6 +46,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "game/NPC.h"
 
+#include "coop/Puppets.h"
+
 #include <stddef.h>
 #include <cmath>
 #include <cstdio>
@@ -928,6 +930,10 @@ void ARX_PHYSICS_Apply() {
 		
 		if(IsDeadNPC(*io)) {
 			continue;
+		}
+		
+		if(io->coopPuppet || coop::npcsAreMirrored()) {
+			continue; // Driven by the network, see coop/Puppets.cpp
 		}
 		
 		if(io->ioflags & IO_PHYSICAL_OFF) {
@@ -2455,7 +2461,7 @@ Entity * getFirstNpcInSight(const Entity & source) {
 	
 	for(Entity & npc : entities.inScene(IO_NPC)) {
 		
-		if(IsDeadNPC(npc) || npc == source) {
+		if(IsDeadNPC(npc) || npc == source || npc.coopPuppet) {
 			continue;
 		}
 		
@@ -2539,8 +2545,11 @@ void CheckNPCEx(Entity & io) {
 	
 	ARX_PROFILE_FUNC();
 
+	// Co-op: the "player" an NPC may notice is whichever player is closest
+	const Vec3f playerPos = coop::nearestPlayerEyePos(io.pos);
+
 	// Distance Between Player and IO
-	float ds = arx::distance2(io.pos, player.basePosition());
+	float ds = arx::distance2(io.pos, playerPos - player.baseOffset());
 	
 	// Start as not visible
 	long Visible = 0;
@@ -2553,21 +2562,21 @@ void CheckNPCEx(Entity & io) {
 			UpdateIORoom(&io);
 		}
 		
-		RoomHandle playerRoom = ARX_PORTALS_GetRoomNumForPosition(player.pos, RoomPositionForCamera);
+		RoomHandle playerRoom = ARX_PORTALS_GetRoomNumForPosition(playerPos, RoomPositionForCamera);
 		
-		float fdist = SP_GetRoomDist(io.pos, player.pos, io.room, playerRoom);
+		float fdist = SP_GetRoomDist(io.pos, playerPos, io.room, playerRoom);
 		
 		// Use Portal Room Distance for Extra Visibility Clipping.
 		if(playerRoom && io.room && fdist > 2000.f) {
 			// nothing to do
 		} else if(ds < square(getEntityRadius(io) + getEntityRadius(*entities.player()) + 15.f)
-		          && glm::abs(player.pos.y - io.pos.y) < 200.f) {
+		          && glm::abs(playerPos.y - io.pos.y) < 200.f) {
 			Visible = 1;
 		} else { // Make full visibility test
 			
 			// Retreives Head group position for "eye" pos.
 			Vec3f orgn = io.pos - Vec3f(0.f, io.obj->fastaccess.head_group_origin ? 120.f : 90.f, 0.f);
-			Vec3f dest = player.pos + Vec3f(0.f, 90.f, 0.f);
+			Vec3f dest = playerPos + Vec3f(0.f, 90.f, 0.f);
 
 			// Check for Field of vision angle
 			float aa = getAngle(orgn.x, orgn.z, dest.x, dest.z);
@@ -2850,7 +2859,7 @@ void GetTargetPos(Entity * io, unsigned long smoothing) {
 	}
 	
 	if(io->targetinfo == EntityHandle_Player || io->targetinfo == EntityHandle()) {
-		io->target = player.pos + Vec3f(0.f, player.size.y, 0.f);
+		io->target = coop::nearestPlayerEyePos(io->pos) + Vec3f(0.f, player.size.y, 0.f);
 	} else if(Entity * target = entities.get(io->targetinfo)) {
 		io->target = GetItemWorldPosition(target);
 	} else {
