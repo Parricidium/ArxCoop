@@ -52,7 +52,9 @@
 #include "platform/Time.h"
 #include "scene/ChangeLevel.h"
 #include "io/log/Logger.h"
+#include "io/resource/PakReader.h"
 #include "io/resource/ResourcePath.h"
+#include "script/Script.h"
 #include "scene/Interactive.h"
 #include "script/ScriptEvent.h"
 #include "script/ScriptUtils.h"
@@ -322,6 +324,17 @@ void applySpawn(Reader & reader) {
 	g_applyingRemote--;
 }
 
+/*!
+ * Items placed in a level carry an instance script (note_0003/note.asl: the text of that note,
+ * the spell of that scroll...). AddItem() only loads the class script: give a copy created from
+ * another player's item the same instance script its original has.
+ */
+void loadInstanceScript(Entity & io) {
+	if(PakDirectory * dir = g_resources->getDirectory(io.instancePath())) {
+		loadScript(io.over_script, dir->getFile(io.className() + ".asl"));
+	}
+}
+
 // Client -> host event forwarding ---------------------------------------------------------
 
 const std::set<ScriptMessage> & forwardedEvents() {
@@ -345,10 +358,12 @@ void forwardEvent(Entity * sender, Entity * entity, const ScriptEventName & even
 		writer.string(sender->idString());
 		writer.string(sender->classPath().string());
 		writer.s32_(sender->instance());
+		writer.bool_(sender->over_script.valid);
 	} else {
 		writer.string("player");
 		writer.string("");
 		writer.s32_(0);
+		writer.bool_(false);
 	}
 	g_coop.sendToHost(MessageType::EventForward, writer);
 	LogDebug("[coop] forwarded " << event << " to " << entity->idString());
@@ -367,6 +382,7 @@ void applyForwardedEvent(PlayerId from, Reader & reader) {
 	std::string senderId = reader.string();
 	std::string senderClass = reader.string();
 	EntityInstance senderInstance = reader.s32_();
+	bool senderHasInstanceScript = reader.bool_();
 
 	Entity * entity = entities.getById(entityId);
 	if(!entity) {
@@ -383,6 +399,10 @@ void applyForwardedEvent(PlayerId from, Reader & reader) {
 		if(!sender && !senderClass.empty()) {
 			g_creatingProxy = true;
 			proxy = AddItem(res::path::load(senderClass), senderInstance, IO_IMMEDIATELOAD);
+			if(proxy && senderHasInstanceScript) {
+				loadInstanceScript(*proxy);
+				SendInitScriptEvent(proxy);
+			}
 			g_creatingProxy = false;
 			if(proxy) {
 				proxy->coopProxy = true;
@@ -737,6 +757,7 @@ struct ItemPlacement {
 	EntityInstance instance = 0;
 	Vec3f pos = Vec3f(0.f);
 	Anglef angle;
+	bool hasInstanceScript = false;
 };
 
 ItemPlacement readItemPlacement(Reader & reader) {
@@ -749,6 +770,7 @@ ItemPlacement readItemPlacement(Reader & reader) {
 	float yaw = reader.f32_();
 	float roll = reader.f32_();
 	placement.angle = Anglef(pitch, yaw, roll);
+	placement.hasInstanceScript = reader.bool_();
 	return placement;
 }
 
@@ -762,6 +784,7 @@ void writeItemPlacement(Writer & writer, const ItemPlacement & placement) {
 	writer.f32_(placement.angle.getPitch());
 	writer.f32_(placement.angle.getYaw());
 	writer.f32_(placement.angle.getRoll());
+	writer.bool_(placement.hasInstanceScript);
 }
 
 //! The world item another player is handling, created on the spot if we do not have it yet.
@@ -771,6 +794,9 @@ Entity * placedItem(const ItemPlacement & placement, bool create) {
 		item = AddItem(placement.classPath, placement.instance, IO_IMMEDIATELOAD);
 		if(item) {
 			item->scriptload = 1;
+			if(placement.hasInstanceScript) {
+				loadInstanceScript(*item);
+			}
 			SendInitScriptEvent(item);
 		}
 	}
@@ -798,6 +824,7 @@ void writeItemPlacement(Writer & writer, const Entity & item) {
 	writer.f32_(item.angle.getPitch());
 	writer.f32_(item.angle.getYaw());
 	writer.f32_(item.angle.getRoll());
+	writer.bool_(item.over_script.valid);
 }
 
 bool sharedWorldItem(const Entity & item) {

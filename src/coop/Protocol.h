@@ -37,7 +37,7 @@
  */
 namespace coop {
 
-constexpr u32 ProtocolVersion = 3;
+constexpr u32 ProtocolVersion = 4;
 constexpr u16 DefaultPort = 27015;
 constexpr size_t MaxPlayers = 4;
 constexpr size_t MaxNicknameLength = 24;
@@ -68,7 +68,7 @@ enum class MessageType : u16 {
 	PlayerState   = 30, //!< u8 id, then see coop/Puppets.cpp
 
 	// World synchronization, see coop/Replication.cpp
-	EventForward  = 40, //!< C->H: string entity, u16 event id, string event name, u8 n, string params[n], string sender, string senderClass, s32 senderInstance
+	EventForward  = 40, //!< C->H: string entity, u16 event id, string event name, u8 n, string params[n], string sender, string senderClass, s32 senderInstance, u8 senderHasInstanceScript
 	ScriptCommand = 41, //!< H->C: string entity, u8 n, string words[n]
 	SetGlobal     = 42, //!< H->C: string name, u8 type, (string | s32 | f32)
 	SharedQuest   = 43, //!< both: string quest
@@ -89,9 +89,9 @@ enum class MessageType : u16 {
 	SpeechSkip    = 56, //!< both: (empty) someone skipped the current speech / cutscene
 	Revive        = 57, //!< C->H: u8 target id / H->C: (empty) you are revived
 	TakeItem      = 58, //!< both: string id: this world item is now in someone's inventory
-	DropItem      = 59, //!< both: string id, string classPath, s32 instance, f32 pos[3], f32 angle[3], s16 count, u8 thrown, f32 dir[3]
+	DropItem      = 59, //!< both: string id, string classPath, s32 instance, f32 pos[3], f32 angle[3], u8 hasInstanceScript, s16 count, u8 thrown, f32 dir[3]
 	PlayerEquipment = 60, //!< like PlayerState: u8 id, u8 skin, u8 combat, 3 x (string tweak, string skinFrom, string skinTo), string weapon, string shield
-	DragItem      = 63, //!< both: string id, f32 pos[3], f32 angle[3]: a world item is being carried around
+	DragItem      = 63, //!< both: like DropItem up to hasInstanceScript, then u8 inScene: a world item is being carried around
 	SharedBag     = 64, //!< both: (empty) someone used a backpack: everyone gets the extra inventory
 	TeleportPlayer = 65, //!< both: u8 target, u32 area, f32 pos[3], f32 yaw (a client sends it to the host, which applies or relays)
 
