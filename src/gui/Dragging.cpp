@@ -20,6 +20,7 @@
 #include "gui/Dragging.h"
 
 #include "coop/Replication.h"
+#include "io/log/Logger.h"
 
 #include "core/Core.h"
 #include "game/Camera.h"
@@ -344,6 +345,7 @@ void updateDraggedEntity() {
 		EERIE_PHYSICS_BOX_Launch(entity->obj, entity->pos, entity->angle, direction);
 		ARX_SOUND_PlaySFX(g_snd.WHOOSH, &entity->pos);
 		coop::itemDropped(*entity, true, direction);
+		LogInfo << "[coop] I threw " << entity->idString() << " from " << int(start.x) << "," << int(start.y) << "," << int(start.z);
 		
 	} else if(glm::abs(result.offsetY) > threshold) {
 		

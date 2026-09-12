@@ -428,7 +428,9 @@ static bool ARX_INTERACTIVE_CheckFULLCollision(const PHYSICS_BOX_DATA & pbox, En
 		}
 		
 		Entity & entity = *entry.io;
-		if(entity == source || !entity.obj || &entity == entities.player()
+		// Co-op: thrown items pass through the other players like they pass through us, otherwise
+		// an item thrown by another player stops dead against its own puppet
+		if(entity == source || !entity.obj || &entity == entities.player() || entity.coopPuppet
 		   || entity.index() == source.no_collide
 		   || (entity.ioflags & (IO_CAMERA | IO_MARKER | IO_ITEM))
 		   || entity.usepath

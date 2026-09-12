@@ -1078,11 +1078,15 @@ void puppetsTestUpdate() {
 	static bool throwTaken = false;
 	static bool throwDone = false;
 	static bool throwChecked = false;
+	static bool throwChecked2 = false;
+	static bool hostThrowDone = false;
+	static int hostThrowChecks = 0;
 	static bool tpDone = false;
 	static bool killDone = false;
 	static bool killChecked = false;
 	static bool tpChecked = false;
 	static std::string testDoor;
+	static std::string testThrown;
 	static bool playing = false;
 	static PlatformInstant start;
 	static int step = 0;
@@ -1289,26 +1293,60 @@ void puppetsTestUpdate() {
 		Logger::flush();
 	} else if(step >= 3 && elapsed > std::chrono::seconds(78) && g_coop.isClient() && !throwTaken) {
 		throwTaken = true;
-		if(Entity * item = entities.getById("food_mushroom_0010")) {
-			LogInfo << "[coop] test: client takes " << item->idString() << " to throw it";
+		// A brand new inventory item of ours (client id range), like a bottle bought in town
+		if(Entity * item = AddItem("graph/obj3d/interactive/items/provisions/mushroom/food_mushroom", -1, IO_IMMEDIATELOAD)) {
+			SendInitScriptEvent(item);
 			giveToPlayer(item);
+			testThrown = item->idString();
+			LogInfo << "[coop] test: client got " << testThrown << " to throw it";
 		}
 	} else if(step >= 3 && elapsed > std::chrono::seconds(80) && g_coop.isClient() && !throwDone) {
 		throwDone = true;
-		if(Entity * item = entities.getById("food_mushroom_0010")) {
+		if(Entity * item = entities.getById(testThrown)) {
 			removeFromInventories(item);
 			item->pos = entities.player()->pos + Vec3f(0.f, -100.f, 0.f);
+			item->show = SHOW_FLAG_ON_PLAYER;
+			coop::itemDragged(*item); // like a real drag: carried (hidden) first
 			item->show = SHOW_FLAG_IN_SCENE;
 			Vec3f direction = glm::normalize(angleToVectorXZ(player.angle.getYaw()) + Vec3f(0.f, -0.3f, 0.f));
 			EERIE_PHYSICS_BOX_Launch(item->obj, item->pos, item->angle, direction);
 			coop::itemDropped(*item, true, direction);
 			LogInfo << "[coop] test: client throws " << item->idString();
 		}
-	} else if(step >= 3 && elapsed > std::chrono::seconds(86) && !throwChecked) {
+	} else if(step >= 3 && elapsed > std::chrono::seconds(82) && (!throwChecked || (elapsed > std::chrono::seconds(88) && !throwChecked2))) {
+		if(throwChecked) {
+			throwChecked2 = true;
+		}
 		throwChecked = true;
-		if(Entity * item = entities.getById("food_mushroom_0010")) {
+		if(Entity * item = entities.getById(testThrown.empty() ? std::string("food_mushroom_10001") : testThrown)) {
 			LogInfo << "[coop] test: thrown " << item->idString() << " pos " << int(item->pos.x) << "," << int(item->pos.y) << "," << int(item->pos.z)
-			        << " show " << int(item->show) << " pbox " << (item->obj && item->obj->pbox ? int(item->obj->pbox->active) : -1);
+			        << " show " << int(item->show) << " pbox " << (item->obj && item->obj->pbox ? int(item->obj->pbox->active) : -1)
+			        << " treat " << bool(item->gameFlags & GFLAG_ISINTREATZONE) << " nocomp " << bool(item->gameFlags & GFLAG_NOCOMPUTATION);
+		}
+		Logger::flush();
+	} else if(step >= 3 && elapsed > std::chrono::seconds(84) && g_coop.isHost() && !hostThrowDone) {
+		hostThrowDone = true;
+		// The host throws one of its own inventory items too
+		if(Entity * item = AddItem("graph/obj3d/interactive/items/provisions/mushroom/food_mushroom", -1, IO_IMMEDIATELOAD)) {
+			SendInitScriptEvent(item);
+			giveToPlayer(item);
+			removeFromInventories(item);
+			item->pos = entities.player()->pos + Vec3f(0.f, -100.f, 0.f);
+			item->show = SHOW_FLAG_ON_PLAYER;
+			coop::itemDragged(*item);
+			item->show = SHOW_FLAG_IN_SCENE;
+			Vec3f direction = glm::normalize(angleToVectorXZ(player.angle.getYaw()) + Vec3f(0.f, -0.3f, 0.f));
+			EERIE_PHYSICS_BOX_Launch(item->obj, item->pos, item->angle, direction);
+			coop::itemDropped(*item, true, direction);
+			LogInfo << "[coop] test: host throws " << item->idString();
+		}
+	} else if(step >= 3 && elapsed > std::chrono::seconds(86 + 3 * hostThrowChecks) && hostThrowChecks < 3) {
+		hostThrowChecks++;
+		for(const Entity & io : entities.inScene(IO_ITEM)) {
+			if(io.idString().compare(0, 14, "food_mushroom_") == 0 && io.obj && io.obj->pbox && io.idString() != "food_mushroom_0009") {
+				LogInfo << "[coop] test: mushroom " << io.idString() << " pos " << int(io.pos.x) << "," << int(io.pos.y) << "," << int(io.pos.z)
+				        << " pbox " << int(io.obj->pbox->active) << " treat " << bool(io.gameFlags & GFLAG_ISINTREATZONE);
+			}
 		}
 		Logger::flush();
 	} else if(step >= 4 && elapsed > std::chrono::seconds(118) && g_coop.isHost() && !tpDone) {

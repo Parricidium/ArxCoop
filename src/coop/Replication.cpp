@@ -825,6 +825,8 @@ void settleThrownItems() {
 		writer.f32_(0.f);
 		writer.f32_(0.f);
 		g_coop.sendToOthers(MessageType::DropItem, writer);
+		LogInfo << "[coop] my thrown " << item->idString() << " came to rest at " << int(item->pos.x) << "," << int(item->pos.y) << "," << int(item->pos.z)
+		        << " (pbox " << int(item->obj->pbox->active) << ")";
 		it = g_inFlight.erase(it);
 	}
 }
@@ -901,7 +903,8 @@ void applyDropItem(PlayerId from, Reader & reader) {
 			}
 		}
 		g_inFlight.erase(item->idString());
-		LogInfo << "[coop] " << item->idString() << " was " << (thrown ? "thrown" : "placed") << " by another player";
+		LogInfo << "[coop] " << item->idString() << " was " << (thrown ? "thrown" : "placed") << " by another player at "
+		        << int(item->pos.x) << "," << int(item->pos.y) << "," << int(item->pos.z) << " pbox " << (item->obj && item->obj->pbox ? int(item->obj->pbox->active) : -1);
 	}
 	g_applyingRemote--;
 	if(g_coop.isHost()) {
