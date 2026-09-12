@@ -770,7 +770,16 @@ void npcMirrorFrame() {
 			target.fresh = false;
 			io->_npcdata->lifePool.current = target.life;
 			if(target.dead && io->mainevent != SM_DEAD) {
+				// The host ran the real death (script, loot...): here the corpse must just stop being
+				// an enemy, so that looking at it shows the loot cursor and not the sword
 				io->mainevent = SM_DEAD;
+				resetNpcBehavior(*io);
+				io->_npcdata->weaponinhand = 0;
+				io->_npcdata->lifePool.current = 0.f;
+				io->infracolor = Color3f::blue;
+				for(size_t i = 1; i < MAX_ANIM_LAYERS; i++) {
+					io->animlayer[i].cur_anim = nullptr;
+				}
 			}
 			if(io->show != EntityShowState(target.show)
 			   && (target.show == SHOW_FLAG_IN_SCENE || target.show == SHOW_FLAG_HIDDEN)) {
@@ -1058,6 +1067,8 @@ void puppetsTestUpdate() {
 	static bool throwDone = false;
 	static bool throwChecked = false;
 	static bool tpDone = false;
+	static bool killDone = false;
+	static bool killChecked = false;
 	static bool tpChecked = false;
 	static std::string testDoor;
 	static bool playing = false;
@@ -1249,6 +1260,19 @@ void puppetsTestUpdate() {
 			        << (door->animlayer[0].cur_anim ? door->animlayer[0].cur_anim->path.string() : "none")
 			        << " open=" << GETVarValueLong(door->m_variables, "\xA7open")
 			        << " collision=" << !(door->ioflags & IO_NO_COLLISIONS);
+		}
+		Logger::flush();
+	} else if(step >= 3 && elapsed > std::chrono::seconds(70) && g_coop.isHost() && !killDone) {
+		killDone = true;
+		if(Entity * goblin = entities.getById("goblin_base_0006")) {
+			LogInfo << "[coop] test: host kills " << goblin->idString();
+			ARX_DAMAGES_ForceDeath(*goblin, entities.player());
+		}
+	} else if(step >= 3 && elapsed > std::chrono::seconds(74) && !killChecked) {
+		killChecked = true;
+		if(Entity * goblin = entities.getById("goblin_base_0006")) {
+			LogInfo << "[coop] test: goblin dead=" << (goblin->mainevent == SM_DEAD) << " life " << goblin->_npcdata->lifePool.current
+			        << " enemy=" << isEnemy(goblin) << " behavior " << goblin->_npcdata->behavior;
 		}
 		Logger::flush();
 	} else if(step >= 3 && elapsed > std::chrono::seconds(78) && g_coop.isClient() && !throwTaken) {
