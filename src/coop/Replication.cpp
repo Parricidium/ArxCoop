@@ -32,12 +32,14 @@
 #include "game/Entity.h"
 #include "game/EntityManager.h"
 #include "game/Damage.h"
+#include "game/Equipment.h"
 #include "game/Inventory.h"
 #include "physics/Physics.h"
 #include "scene/GameSound.h"
 #include "game/Item.h"
 #include "game/Player.h"
 #include "coop/Puppets.h"
+#include "gui/Dragging.h"
 #include "gui/Menu.h"
 #include "gui/book/Book.h"
 #include "cinematic/CinematicController.h"
@@ -137,7 +139,7 @@ bool isPlayerSide(const Entity * io) {
 	if(!io) {
 		return false;
 	}
-	if(io == entities.player() || io->coopProxy) {
+	if(io == entities.player() || io->coopProxy || isEquippedByPlayer(io)) {
 		return true;
 	}
 	for(const Entity * owner = io->owner(); owner; owner = owner->owner()) {
@@ -702,6 +704,12 @@ void applyLoadRequest(Reader & reader) {
 
 void hideTakenItem(Entity & item) {
 	removeFromInventories(&item);
+	if(&item == g_draggedEntity) {
+		setDraggedEntity(nullptr);
+	}
+	// Its owner's machine has the real one now: keep this copy out of saves and level states,
+	// otherwise the owner would get a duplicate back with the next level sync
+	item.ioflags |= IO_NOSAVE;
 	if(item.show != SHOW_FLAG_MEGAHIDE) {
 		item.show = SHOW_FLAG_MEGAHIDE;
 		LogInfo << "[coop] " << item.idString() << " was taken by another player";
@@ -757,9 +765,9 @@ void writeItemPlacement(Writer & writer, const ItemPlacement & placement) {
 }
 
 //! The world item another player is handling, created on the spot if we do not have it yet.
-Entity * placedItem(const ItemPlacement & placement) {
+Entity * placedItem(const ItemPlacement & placement, bool create) {
 	Entity * item = entities.getById(placement.id);
-	if(!item) {
+	if(!item && create) {
 		item = AddItem(placement.classPath, placement.instance, IO_IMMEDIATELOAD);
 		if(item) {
 			item->scriptload = 1;
@@ -770,6 +778,9 @@ Entity * placedItem(const ItemPlacement & placement) {
 		return nullptr;
 	}
 	removeFromInventories(item);
+	if(create) {
+		item->ioflags &= ~IO_NOSAVE; // back in the shared world
+	}
 	item->pos = placement.pos;
 	item->angle = placement.angle;
 	item->requestRoomUpdate = true;
@@ -855,7 +866,7 @@ void applyDragItem(PlayerId from, Reader & reader) {
 	ItemPlacement placement = readItemPlacement(reader);
 	bool inScene = reader.bool_();
 	g_applyingRemote++;
-	if(Entity * item = placedItem(placement)) {
+	if(Entity * item = placedItem(placement, false)) {
 		item->show = inScene ? SHOW_FLAG_IN_SCENE : SHOW_FLAG_HIDDEN;
 		if(item->obj && item->obj->pbox) {
 			item->obj->pbox->active = 0; // in someone's hand: no physics
@@ -876,7 +887,7 @@ void applyDropItem(PlayerId from, Reader & reader) {
 	bool thrown = reader.bool_();
 	Vec3f direction = reader.vec3<Vec3f>();
 	g_applyingRemote++;
-	if(Entity * item = placedItem(placement)) {
+	if(Entity * item = placedItem(placement, true)) {
 		item->show = SHOW_FLAG_IN_SCENE;
 		if((item->ioflags & IO_ITEM) && count > 0) {
 			item->_itemdata->count = count;
@@ -1204,6 +1215,10 @@ void itemDropped(const Entity & item, bool thrown, const Vec3f & direction) {
 	g_lastDragSend = PlatformInstant();
 }
 
+bool keptOverLevelState(const Entity & io) {
+	return g_coop.isClient() && g_coop.state() == State::InGame && isPlayerSide(&io);
+}
+
 bool consoleCommand(std::string_view line) {
 	std::string text = util::toLowercase(std::string(boost::trim_copy(std::string(line))));
 	if(text != "tp" && text.compare(0, 3, "tp ") != 0) {
@@ -1331,6 +1346,11 @@ bool interceptScriptEvent(Entity * sender, Entity * entity, const ScriptEventNam
 
 	if(parameters.isPeekOnly()) {
 		return false; // "would this combine do something?" for the cursor: answered locally, never forwarded
+	}
+
+	if(event.getId() == SM_INVENTORYUSE && isPlayerSide(sender) && (entity->ioflags & IO_ITEM)) {
+		itemTaken(*entity); // F on an item on the ground: it is ours now, equip/eat it locally
+		return false;
 	}
 
 	ScriptMessage id = event.getId();

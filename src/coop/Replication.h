@@ -154,6 +154,9 @@ void speechSkipped();
 //! A world item went into the local player's hands: it leaves the shared world everywhere else.
 void itemTaken(const Entity & item);
 
+//! Client: an entity of ours (inventory, equipment) that a level state from the host must not replace.
+bool keptOverLevelState(const Entity & io);
+
 //! Co-op console commands ("tp p2": teleport player 2 to me). Returns true if the line was one.
 bool consoleCommand(std::string_view line);
 

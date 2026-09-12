@@ -1898,6 +1898,7 @@ void ArxGame::renderLevel() {
 		
 		ARX_INTERFACE_NoteManage();
 		g_hudRoot.draw();
+		coop::partyHudDraw();
 		
 		if((player.Interface & INTER_PLAYERBOOK) && !(player.Interface & INTER_COMBATMODE)) {
 			ARX_MAGICAL_FLARES_Update();

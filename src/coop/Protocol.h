@@ -37,7 +37,7 @@
  */
 namespace coop {
 
-constexpr u32 ProtocolVersion = 2;
+constexpr u32 ProtocolVersion = 3;
 constexpr u16 DefaultPort = 27015;
 constexpr size_t MaxPlayers = 4;
 constexpr size_t MaxNicknameLength = 24;

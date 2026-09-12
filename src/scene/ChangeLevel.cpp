@@ -1783,6 +1783,11 @@ static Entity * ARX_CHANGELEVEL_Pop_IO(std::string_view idString, EntityInstance
 	
 	LogDebug("--> loading interactive object " << idString);
 	
+	if(Entity * mine = entities.getById(idString); mine && coop::keptOverLevelState(*mine)) {
+		LogInfo << "[coop] keeping my own " << idString << " over the host's copy";
+		return mine;
+	}
+	
 	std::string buffer = g_currentSavedGame->load(idString);
 	if(buffer.empty()) {
 		LogError << "Unable to read " << idString;

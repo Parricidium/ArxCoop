@@ -46,6 +46,7 @@ void puppetsUpdate();
 
 //! Draws the nicknames above the puppets. Call during 3D rendering with the game camera active.
 void puppetsDrawNames();
+void partyHudDraw(); //!< 2D overlay: game clock, teammates' life and hunger
 
 //! Forgets every remote state and puppet (level change, session end).
 void puppetsReset();

@@ -50,7 +50,13 @@
 #include "gui/CinematicBorder.h"
 #include "gui/Menu.h"
 #include "gui/MenuPublic.h"
+#include "gui/CinematicBorder.h"
 #include "gui/Interface.h"
+#include "graphics/DrawLine.h"
+#include "graphics/Renderer.h"
+#include "graphics/font/Font.h"
+#include "core/Core.h"
+#include "core/GameTime.h"
 #include "gui/Text.h"
 #include "input/Input.h"
 #include "gui/menu/MenuFader.h"
@@ -117,6 +123,8 @@ struct PlayerSnapshot {
 	AnimState layers[SyncedAnimLayers];
 	bool visible = true;
 	bool downed = false;
+	float life = 1.f;   // ratio
+	float hunger = 1.f; // ratio (1 = full)
 	PlatformInstant received;
 };
 
@@ -485,6 +493,8 @@ void handlePlayerState(PlayerId id, Reader & reader) {
 	for(size_t i = 0; i < SyncedAnimLayers; i++) {
 		readAnim(reader, state.layers[i]);
 	}
+	state.life = reader.f32_();
+	state.hunger = reader.f32_();
 	state.received = platform::getTime();
 
 }
@@ -982,6 +992,8 @@ void puppetsSendLocalState() {
 	for(size_t i = 0; i < SyncedAnimLayers; i++) {
 		writeAnim(writer, io.animlayer[i]);
 	}
+	writer.f32_(player.lifePool.max > 0.f ? player.lifePool.current / player.lifePool.max : 0.f);
+	writer.f32_(player.hunger * 0.01f);
 
 	g_coop.sendToOthers(MessageType::PlayerState, writer);
 	sendEquipmentIfNeeded(false);
@@ -1364,6 +1376,79 @@ void puppetsTestUpdate() {
 	} else if(((step == 4 && !g_coop.isHost()) || step == 7) && elapsed > std::chrono::seconds(g_coop.isHost() ? 200 : 190)) {
 		mainApp->quit();
 		step = 8;
+	}
+
+}
+
+
+// Party HUD ------------------------------------------------------------------------------
+
+void fillRect(Vec2f origin, float width, float height, Color color) {
+	EERIEDrawFill2DRectDegrad(origin, origin + Vec2f(width, height), 0.01f, color, color);
+}
+
+void partyHudDraw() {
+
+	if(!g_coop.isActive() || g_coop.state() != State::InGame || ARXmenu.mode() != Mode_InGame
+	   || !(player.Interface & INTER_LIFE_MANA) || (player.Interface & INTER_PLAYERBOOK) || cinematicBorder.isActive()) {
+		return;
+	}
+
+	UseRenderState state(render2D());
+	float s = std::max(1.f, float(g_size.height()) / 720.f);
+
+	// Game clock, top center
+	{
+		s64 seconds = toMsi(g_gameTime.now()) / 1000;
+		char clock[32];
+		std::snprintf(clock, sizeof(clock), "%02lld:%02lld:%02lld", (long long)(seconds / 3600), (long long)((seconds / 60) % 60),
+		              (long long)(seconds % 60));
+		Font::TextSize size = hFontInGame->getTextSize(clock);
+		Vec2i pos(g_size.center().x - size.width() / 2, int(6.f * s));
+		fillRect(Vec2f(float(pos.x) - 6.f * s, float(pos.y) - 2.f * s), float(size.width()) + 12.f * s, float(size.height()) + 4.f * s,
+		         Color(0, 0, 0, 110));
+		hFontInGame->draw(pos, clock, Color(232, 204, 142));
+	}
+
+	// Teammates, left side: name, life bar, hunger bar
+	float barWidth = 150.f * s;
+	float x = 12.f * s;
+	float y = float(g_size.height()) * 0.30f;
+	for(const Player & other : g_coop.players()) {
+		if(other.id == g_coop.localId()) {
+			continue;
+		}
+		auto it = g_remote.find(other.id);
+		const PlayerSnapshot * snap = (it != g_remote.end()) ? &it->second : nullptr;
+		bool downed = snap && snap->downed;
+		float life = snap ? glm::clamp(snap->life, 0.f, 1.f) : 0.f;
+		float hunger = snap ? glm::clamp(snap->hunger, 0.f, 1.f) : 0.f;
+		bool here = snap && snap->area == g_currentArea.handleData();
+
+		std::string label = other.name;
+		if(!snap) {
+			label += " (?)";
+		} else if(downed) {
+			label += " - \xC3\xA0 terre";
+		} else if(!here) {
+			label += " - ailleurs";
+		}
+		Font::TextSize size = hFontInGame->draw(Vec2i(int(x), int(y)), label, downed ? Color(255, 90, 90) : Color(232, 204, 142));
+		y += float(size.height()) + 3.f * s;
+
+		float lifeHeight = 9.f * s;
+		fillRect(Vec2f(x, y), barWidth, lifeHeight, Color(25, 25, 25, 170));
+		if(life > 0.f) {
+			fillRect(Vec2f(x, y), barWidth * life, lifeHeight, downed ? Color(120, 30, 30) : Color(200, 30, 30));
+		}
+		y += lifeHeight + 2.f * s;
+
+		float hungerHeight = 5.f * s;
+		fillRect(Vec2f(x, y), barWidth, hungerHeight, Color(25, 25, 25, 170));
+		if(hunger > 0.f) {
+			fillRect(Vec2f(x, y), barWidth * hunger, hungerHeight, Color(215, 140, 40));
+		}
+		y += hungerHeight + 12.f * s;
 	}
 
 }

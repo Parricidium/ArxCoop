@@ -58,6 +58,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "game/Damage.h"
 #include "game/EntityManager.h"
 #include "game/Equipment.h"
+
+#include "coop/Replication.h"
 #include "game/Inventory.h"
 #include "game/Item.h"
 #include "game/NPC.h"
@@ -871,6 +873,9 @@ void ARX_EQUIPMENT_Equip(Entity * target, Entity * toequip) {
 		return;
 	}
 	
+	if(toequip->show == SHOW_FLAG_IN_SCENE) {
+		coop::itemTaken(*toequip); // equipped straight from the ground: gone from the shared world
+	}
 	toequip->setOwner(nullptr);
 	toequip->show = SHOW_FLAG_ON_PLAYER;
 	if(toequip == g_draggedEntity) {
