@@ -292,6 +292,8 @@ void updateDraggedEntity() {
 		g_dragStatus = EntityDragStatus_OnGround;
 	}
 	
+	coop::itemDragged(*entity);
+	
 	if(!drop) {
 		return;
 	}

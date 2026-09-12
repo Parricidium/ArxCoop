@@ -1012,14 +1012,9 @@ void ARX_PLAYER_FrameCheck(PlatformDuration delta) {
 }
 TextureContainer * PLAYER_SKIN_TC = nullptr;
 
-void ARX_PLAYER_Restore_Skin() {
+void ARX_PLAYER_SkinTextures(unsigned char skin, res::path & tx, res::path & tx2, res::path & tx3, res::path & tx4) {
 	
-	res::path tx;
-	res::path tx2;
-	res::path tx3;
-	res::path tx4;
-	
-	switch(player.skin) {
+	switch(skin) {
 		case 0:
 			tx  = "graph/obj3d/textures/npc_human_base_hero_head";
 			tx2 = "graph/obj3d/textures/npc_human_chainmail_hero_head";
@@ -1063,6 +1058,16 @@ void ARX_PLAYER_Restore_Skin() {
 			tx4 = "graph/obj3d/textures/npc_human_leather_hero_head";
 			break;
 	}
+	
+}
+
+void ARX_PLAYER_Restore_Skin() {
+	
+	res::path tx;
+	res::path tx2;
+	res::path tx3;
+	res::path tx4;
+	ARX_PLAYER_SkinTextures(player.skin, tx, tx2, tx3, tx4);
 
 	TextureContainer * tmpTC;
 	

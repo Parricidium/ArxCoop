@@ -44,6 +44,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "script/ScriptedConversation.h"
 
 #include "coop/Replication.h"
+#include "gui/Speech.h"
 
 #include <sstream>
 
@@ -332,7 +333,13 @@ public:
 		
 		SpeechFlags flags = 0;
 		AnimationNumber mood = ANIM_TALK_NEUTRAL;
-		HandleFlags("tuphaoc") {
+		long forcedVariant = 0;
+		g_lastSpeechVariant = 0;
+		HandleFlags("tuphaocv") {
+			
+			if(flg & flag('v')) {
+				forcedVariant = long(context.getFloat()); // co-op: same random line as the host
+			}
 			
 			flags |= (flg & flag('t')) ? ARX_SPEECH_FLAG_NOTEXT : SpeechFlags(0);
 			flags |= (flg & flag('u')) ? ARX_SPEECH_FLAG_UNBREAKABLE : SpeechFlags(0);
@@ -384,7 +391,7 @@ public:
 			flags |= ARX_SPEECH_FLAG_NOTEXT;
 		}
 		
-		Speech * speech = ARX_SPEECH_AddSpeech(*speaker, data, mood, flags);
+		Speech * speech = ARX_SPEECH_AddSpeech(*speaker, data, mood, flags, forcedVariant);
 		if(!speech) {
 			return Failed;
 		}
@@ -402,7 +409,11 @@ public:
 	
 	Result peek(Context & context) override {
 		
-		HandleFlags("tuphaoc") {
+		HandleFlags("tuphaocv") {
+			
+			if(flg & flag('v')) {
+				context.getFloat();
+			}
 			
 			if(flg & flag('c')) {
 				CinematicSpeech acs;

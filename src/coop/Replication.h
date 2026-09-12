@@ -63,7 +63,7 @@ EntityInstance instanceBase();
  * \return true if the event must not be executed locally (\a result is then set).
  */
 bool interceptScriptEvent(Entity * sender, Entity * entity, const ScriptEventName & event,
-                          const ScriptParameters & parameters, ScriptResult & result);
+                          const ScriptParameters & parameters, bool baseScript, ScriptResult & result);
 
 enum class CommandSync {
 	Local,     //!< Execute normally, nothing to send
@@ -86,6 +86,18 @@ public:
 	~ActorScope();
 };
 
+/*!
+ * While an event caused by another player's puppet is processed on the host (walking into a
+ * guarded zone...), the player-directed effects go to that player.
+ */
+class PuppetActorScope {
+	bool m_active = false;
+	unsigned m_previous = 0;
+public:
+	explicit PuppetActorScope(const Entity * io);
+	~PuppetActorScope();
+};
+
 //! Sends a recorded (executed) command to the players that need it.
 void commandReplicated(std::string_view command, const std::vector<std::string> & words,
                        const script::Context & context);
@@ -102,6 +114,9 @@ void sharedKeyAdded(std::string_view key);
 void sharedRuneAdded(unsigned rune);
 void sharedExperience(long amount);
 void sharedGold(long amount);
+
+//! The local player used a backpack: the others get the extra inventory too.
+void sharedBag();
 
 //! True while applying something received from the network (prevents echoing it back).
 bool applyingRemote();
@@ -138,6 +153,12 @@ void speechSkipped();
 
 //! A world item went into the local player's hands: it leaves the shared world everywhere else.
 void itemTaken(const Entity & item);
+
+//! Co-op console commands ("tp p2": teleport player 2 to me). Returns true if the line was one.
+bool consoleCommand(std::string_view line);
+
+//! The local player is carrying a world item around with the mouse: the others see it move.
+void itemDragged(const Entity & item);
 
 //! The local player put an item on the floor (or threw it): it (re)enters the shared world everywhere.
 void itemDropped(const Entity & item, bool thrown = false, const Vec3f & direction = Vec3f(0.f));

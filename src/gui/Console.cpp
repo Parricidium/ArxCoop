@@ -25,6 +25,7 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 
+#include "coop/Replication.h"
 #include "core/Application.h"
 #include "core/Config.h"
 #include "core/Core.h"
@@ -403,6 +404,10 @@ void ScriptConsole::execute() {
 	}
 	
 	ARX_LOG(Logger::Console) << "> " << text();
+	
+	if(coop::consoleCommand(text())) {
+		return;
+	}
 	
 	Entity * entity = contextEntity();
 	if(!entity) {

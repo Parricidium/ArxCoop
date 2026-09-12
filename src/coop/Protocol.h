@@ -37,7 +37,7 @@
  */
 namespace coop {
 
-constexpr u32 ProtocolVersion = 1;
+constexpr u32 ProtocolVersion = 2;
 constexpr u16 DefaultPort = 27015;
 constexpr size_t MaxPlayers = 4;
 constexpr size_t MaxNicknameLength = 24;
@@ -89,8 +89,11 @@ enum class MessageType : u16 {
 	SpeechSkip    = 56, //!< both: (empty) someone skipped the current speech / cutscene
 	Revive        = 57, //!< C->H: u8 target id / H->C: (empty) you are revived
 	TakeItem      = 58, //!< both: string id: this world item is now in someone's inventory
-	DropItem      = 59, //!< both: string id, string classPath, s32 instance, f32 pos[3], f32 yaw, s16 count, u8 thrown, f32 dir[3]
-	PlayerEquipment = 60, //!< like PlayerState: u8 id, u8 combat, 3 x (string tweak, string skinFrom, string skinTo), string weapon, string shield
+	DropItem      = 59, //!< both: string id, string classPath, s32 instance, f32 pos[3], f32 angle[3], s16 count, u8 thrown, f32 dir[3]
+	PlayerEquipment = 60, //!< like PlayerState: u8 id, u8 skin, u8 combat, 3 x (string tweak, string skinFrom, string skinTo), string weapon, string shield
+	DragItem      = 63, //!< both: string id, f32 pos[3], f32 angle[3]: a world item is being carried around
+	SharedBag     = 64, //!< both: (empty) someone used a backpack: everyone gets the extra inventory
+	TeleportPlayer = 65, //!< both: u8 target, u32 area, f32 pos[3], f32 yaw (a client sends it to the host, which applies or relays)
 
 };
 

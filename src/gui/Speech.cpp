@@ -60,6 +60,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "game/EntityManager.h"
 #include "game/NPC.h"
+#include "coop/Session.h"
 #include "game/Player.h"
 
 #include "gui/Interface.h"
@@ -179,7 +180,12 @@ void ARX_SPEECH_ClearIOSpeech(const Entity & entity) {
 	
 }
 
-Speech * ARX_SPEECH_AddSpeech(Entity & speaker, std::string_view data, long mood, SpeechFlags flags) {
+long g_lastSpeechVariant = 0;
+
+Speech * ARX_SPEECH_AddSpeech(Entity & speaker, std::string_view data, long mood, SpeechFlags flags,
+                              long forcedVariant) {
+	
+	g_lastSpeechVariant = 0;
 	
 	if(data.empty()) {
 		return nullptr;
@@ -212,11 +218,15 @@ Speech * ARX_SPEECH_AddSpeech(Entity & speaker, std::string_view data, long mood
 		// in the localization file  (utext_*.ini) -> count will be 0
 		// We should probably just count the number of sample files
 		
-		if(count > 1) {
+		if(forcedVariant > 0) {
+			variant = forcedVariant; // co-op: the host already rolled the dice
+			speaker.lastspeechflag = util::to<short>(variant);
+		} else if(count > 1) {
 			do {
 				variant = Random::get(1, count);
 			} while(speaker.lastspeechflag == variant);
 			speaker.lastspeechflag = util::to<short>(variant);
+			g_lastSpeechVariant = variant;
 		}
 		
 		LogDebug(" -> " << variant << " / " << count);
@@ -239,6 +249,9 @@ Speech * ARX_SPEECH_AddSpeech(Entity & speaker, std::string_view data, long mood
 	
 	Entity * source = (speech.flags & ARX_SPEECH_FLAG_OFFVOICE) ? nullptr : &speaker;
 	speech.sample = ARX_SOUND_PlaySpeech(sample, nullptr, source);
+	if(g_coop.isActive()) {
+		LogInfo << "[coop] speech " << speaker.idString() << ": " << sample;
+	}
 	
 	// TODO Next lines must be removed (use callback instead)
 	speech.duration = ARX_SOUND_GetDuration(speech.sample.getSampleId());

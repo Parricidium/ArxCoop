@@ -54,6 +54,11 @@
 #include "scene/Interactive.h"
 #include "script/ScriptEvent.h"
 #include "script/ScriptUtils.h"
+#include "gui/Speech.h"
+#include "util/Number.h"
+#include "util/String.h"
+
+#include <boost/algorithm/string/trim.hpp>
 
 extern Entity * LASTSPAWNED;
 extern bool REQUEST_SPEECH_SKIP;
@@ -67,6 +72,11 @@ bool g_playthroughStarted = false;         //!< Client: our own character is rea
 int g_levelLoading = 0;                    //!< > 0 while a level is being loaded
 int g_applyingRemote = 0;      //!< > 0 while applying something received from the network
 bool g_creatingProxy = false;  //!< Host: suppress replication while a proxy item initializes
+std::set<std::string> g_inFlight;    //!< Items we threw and that are still flying
+std::string g_lastDragId;            //!< Carried item last streamed to the others
+bool g_lastDragInScene = false;
+PlatformInstant g_lastDragSend;
+constexpr PlatformDuration DragSendInterval = std::chrono::milliseconds(50);
 
 enum class Category {
 	World,  //!< Affects the shared world: executed on the host, replayed on every client
@@ -162,17 +172,11 @@ bool peekPlayerDirected(std::string_view command, const script::Context & contex
 	if(command != "inventory" && command != "teleport" && command != "speak" && command != "dodamage") {
 		return false;
 	}
-	// Look at the raw first word without consuming it
-	std::string_view data = context.getScript()->data;
-	size_t pos = context.getPosition();
-	while(pos < data.size() && (data[pos] == ' ' || data[pos] == '\t')) {
-		pos++;
-	}
-	size_t end = pos;
-	while(end < data.size() && data[end] != ' ' && data[end] != '\t' && data[end] != '\n' && data[end] != '\r') {
-		end++;
-	}
-	std::string_view first = data.substr(pos, end - pos);
+	// Read the first word the way the command will, without consuming it (a copy of the
+	// context does the variable expansion: "speak -~^$param2~" is not "speak -p")
+	script::Context probe(context);
+	probe.setTranscript(nullptr);
+	std::string first = probe.getWord();
 	if(command == "inventory") {
 		return first == "playeradd" || first == "playeraddfromscene" || first == "playeraddmulti";
 	}
@@ -211,6 +215,16 @@ std::vector<std::string> stripCinematicSpeech(const std::vector<std::string> & w
 		plain.erase(plain.begin());
 	}
 	return plain;
+}
+
+//! Inserts "-v N" (voice line variant) right after the flags of a recorded speak command.
+void addSpeechVariant(std::vector<std::string> & words, long variant) {
+	if(!words.empty() && words[0].size() > 1 && words[0][0] == '-') {
+		words[0] += 'v';
+	} else {
+		words.insert(words.begin(), "-v");
+	}
+	words.insert(words.begin() + 1, std::to_string(variant));
 }
 
 void sendScriptCommand(PlayerId to, const std::string & entityId, std::string_view command,
@@ -378,7 +392,7 @@ void applyForwardedEvent(PlayerId from, Reader & reader) {
 	}
 
 	ScriptEventName event = eventName.empty() ? ScriptEventName(ScriptMessage(eventId)) : ScriptEventName(eventName);
-	LogDebug("[coop] player " << int(from) << " -> " << event << " on " << entity->idString());
+	LogInfo << "[coop] player " << int(from) << " -> " << event << " on " << entity->idString();
 
 	PlayerId previous = g_actingPlayer;
 	g_actingPlayer = from;
@@ -430,6 +444,11 @@ void applyShared(PlayerId from, MessageType type, Reader & reader) {
 			s32 amount = reader.s32_();
 			ARX_PLAYER_AddGold(long(amount));
 			relay.s32_(amount);
+			break;
+		}
+		case MessageType::SharedBag: {
+			ARX_PLAYER_AddBag();
+			LogInfo << "[coop] another player found a backpack: extra inventory for everyone";
 			break;
 		}
 		default: break;
@@ -704,49 +723,179 @@ void applyTakeItem(PlayerId from, Reader & reader) {
 	}
 }
 
-void applyDropItem(PlayerId from, Reader & reader) {
-	std::string id = reader.string();
-	res::path classPath = res::path::load(reader.string());
-	EntityInstance instance = reader.s32_();
-	Vec3f pos = reader.vec3<Vec3f>();
+struct ItemPlacement {
+	std::string id;
+	res::path classPath;
+	EntityInstance instance = 0;
+	Vec3f pos = Vec3f(0.f);
+	Anglef angle;
+};
+
+ItemPlacement readItemPlacement(Reader & reader) {
+	ItemPlacement placement;
+	placement.id = reader.string();
+	placement.classPath = res::path::load(reader.string());
+	placement.instance = reader.s32_();
+	placement.pos = reader.vec3<Vec3f>();
+	float pitch = reader.f32_();
 	float yaw = reader.f32_();
-	s16 count = reader.raw<s16>();
-	bool thrown = reader.remaining() ? reader.bool_() : false;
-	Vec3f direction = reader.remaining() ? reader.vec3<Vec3f>() : Vec3f(0.f);
-	g_applyingRemote++;
-	Entity * item = entities.getById(id);
+	float roll = reader.f32_();
+	placement.angle = Anglef(pitch, yaw, roll);
+	return placement;
+}
+
+void writeItemPlacement(Writer & writer, const ItemPlacement & placement) {
+	writer.string(placement.id);
+	writer.string(placement.classPath.string());
+	writer.s32_(placement.instance);
+	writer.f32_(placement.pos.x);
+	writer.f32_(placement.pos.y);
+	writer.f32_(placement.pos.z);
+	writer.f32_(placement.angle.getPitch());
+	writer.f32_(placement.angle.getYaw());
+	writer.f32_(placement.angle.getRoll());
+}
+
+//! The world item another player is handling, created on the spot if we do not have it yet.
+Entity * placedItem(const ItemPlacement & placement) {
+	Entity * item = entities.getById(placement.id);
 	if(!item) {
-		item = AddItem(classPath, instance, IO_IMMEDIATELOAD);
+		item = AddItem(placement.classPath, placement.instance, IO_IMMEDIATELOAD);
 		if(item) {
 			item->scriptload = 1;
 			SendInitScriptEvent(item);
 		}
 	}
-	if(item && !isPlayerSide(item)) {
-		removeFromInventories(item);
-		item->pos = pos;
-		item->angle.setYaw(yaw);
-		item->show = SHOW_FLAG_IN_SCENE;
-		item->requestRoomUpdate = true;
-		if((item->ioflags & IO_ITEM) && count > 0) {
-			item->_itemdata->count = count;
+	if(!item || isPlayerSide(item)) {
+		return nullptr;
+	}
+	removeFromInventories(item);
+	item->pos = placement.pos;
+	item->angle = placement.angle;
+	item->requestRoomUpdate = true;
+	item->gameFlags &= ~GFLAG_NOCOMPUTATION;
+	return item;
+}
+
+void writeItemPlacement(Writer & writer, const Entity & item) {
+	writer.string(item.idString());
+	writer.string(item.classPath().string());
+	writer.s32_(item.instance());
+	writer.f32_(item.pos.x);
+	writer.f32_(item.pos.y);
+	writer.f32_(item.pos.z);
+	writer.f32_(item.angle.getPitch());
+	writer.f32_(item.angle.getYaw());
+	writer.f32_(item.angle.getRoll());
+}
+
+bool sharedWorldItem(const Entity & item) {
+	return g_coop.isActive() && g_coop.state() == State::InGame && g_applyingRemote == 0 && (item.ioflags & IO_ITEM)
+	       && !(item.ioflags & IO_NOSAVE) && !item.coopPuppet;
+}
+
+//! Thrown items: once ours comes to rest, tell the others where it ended up.
+void settleThrownItems() {
+	for(auto it = g_inFlight.begin(); it != g_inFlight.end(); ) {
+		Entity * item = entities.getById(*it);
+		if(!item || item->show != SHOW_FLAG_IN_SCENE || !item->obj || !item->obj->pbox) {
+			it = g_inFlight.erase(it);
+			continue;
 		}
-		if(thrown && item->obj && item->obj->pbox) {
-			EERIE_PHYSICS_BOX_Launch(item->obj, item->pos, item->angle, direction);
-			ARX_SOUND_PlaySFX(g_snd.WHOOSH, &item->pos);
+		if(item->obj->pbox->active == 1) {
+			++it;
+			continue;
 		}
-		LogInfo << "[coop] " << item->idString() << " was " << (thrown ? "thrown" : "dropped") << " by another player";
+		Writer writer;
+		writeItemPlacement(writer, *item);
+		writer.raw<s16>(s16(item->_itemdata->count));
+		writer.bool_(false);
+		writer.f32_(0.f);
+		writer.f32_(0.f);
+		writer.f32_(0.f);
+		g_coop.sendToOthers(MessageType::DropItem, writer);
+		it = g_inFlight.erase(it);
+	}
+}
+
+void applyTeleportPlayer(PlayerId from, Reader & reader) {
+	PlayerId target = reader.u8_();
+	u32 area = reader.u32_();
+	Vec3f pos = reader.vec3<Vec3f>();
+	float yaw = reader.f32_();
+	if(target != g_coop.localId()) {
+		if(g_coop.isHost() && g_coop.player(target)) {
+			Writer writer;
+			writer.u8_(target);
+			writer.u32_(area);
+			writer.f32_(pos.x);
+			writer.f32_(pos.y);
+			writer.f32_(pos.z);
+			writer.f32_(yaw);
+			g_coop.sendTo(target, MessageType::TeleportPlayer, writer);
+		}
+		return;
+	}
+	const Player * who = g_coop.player(from);
+	std::string name = who ? who->name : std::string("?");
+	if(!inLevel() || area != g_currentArea.handleData()) {
+		ARX_LOG(Logger::Console) << "[coop] " << name << " veut me t\xC3\xA9l\xC3\xA9porter mais n'est pas dans le m\xC3\xAAme niveau";
+		return;
+	}
+	LogInfo << "[coop] teleport request from player " << int(from);
+	Logger::flush();
+	ARX_INTERACTIVE_Teleport(entities.player(), pos);
+	player.desiredangle.setYaw(yaw);
+	player.angle.setYaw(yaw);
+	ARX_LOG(Logger::Console) << "[coop] t\xC3\xA9l\xC3\xA9port\xC3\xA9 vers " << name;
+	LogInfo << "[coop] teleported to player " << int(from);
+}
+
+void applyDragItem(PlayerId from, Reader & reader) {
+	ItemPlacement placement = readItemPlacement(reader);
+	bool inScene = reader.bool_();
+	g_applyingRemote++;
+	if(Entity * item = placedItem(placement)) {
+		item->show = inScene ? SHOW_FLAG_IN_SCENE : SHOW_FLAG_HIDDEN;
+		if(item->obj && item->obj->pbox) {
+			item->obj->pbox->active = 0; // in someone's hand: no physics
+		}
 	}
 	g_applyingRemote--;
 	if(g_coop.isHost()) {
 		Writer writer;
-		writer.string(id);
-		writer.string(classPath.string());
-		writer.s32_(instance);
-		writer.f32_(pos.x);
-		writer.f32_(pos.y);
-		writer.f32_(pos.z);
-		writer.f32_(yaw);
+		writeItemPlacement(writer, placement);
+		writer.bool_(inScene);
+		g_coop.broadcast(MessageType::DragItem, writer, from);
+	}
+}
+
+void applyDropItem(PlayerId from, Reader & reader) {
+	ItemPlacement placement = readItemPlacement(reader);
+	s16 count = reader.raw<s16>();
+	bool thrown = reader.bool_();
+	Vec3f direction = reader.vec3<Vec3f>();
+	g_applyingRemote++;
+	if(Entity * item = placedItem(placement)) {
+		item->show = SHOW_FLAG_IN_SCENE;
+		if((item->ioflags & IO_ITEM) && count > 0) {
+			item->_itemdata->count = count;
+		}
+		if(item->obj && item->obj->pbox) {
+			if(thrown) {
+				EERIE_PHYSICS_BOX_Launch(item->obj, item->pos, item->angle, direction);
+				ARX_SOUND_PlaySFX(g_snd.WHOOSH, &item->pos);
+			} else {
+				item->obj->pbox->active = 0; // at rest where its owner says it is
+			}
+		}
+		g_inFlight.erase(item->idString());
+		LogInfo << "[coop] " << item->idString() << " was " << (thrown ? "thrown" : "placed") << " by another player";
+	}
+	g_applyingRemote--;
+	if(g_coop.isHost()) {
+		Writer writer;
+		writeItemPlacement(writer, placement);
 		writer.raw<s16>(count);
 		writer.bool_(thrown);
 		writer.f32_(direction.x);
@@ -764,6 +913,14 @@ void handleGameMessage(PlayerId from, MessageType type, Reader & reader) {
 		}
 		case MessageType::DropItem: {
 			applyDropItem(from, reader);
+			break;
+		}
+		case MessageType::DragItem: {
+			applyDragItem(from, reader);
+			break;
+		}
+		case MessageType::TeleportPlayer: {
+			applyTeleportPlayer(from, reader);
 			break;
 		}
 		case MessageType::SpeechSkip: {
@@ -843,7 +1000,8 @@ void handleGameMessage(PlayerId from, MessageType type, Reader & reader) {
 		case MessageType::SharedKey:
 		case MessageType::SharedRune:
 		case MessageType::SharedXP:
-		case MessageType::SharedGold: {
+		case MessageType::SharedGold:
+		case MessageType::SharedBag: {
 			applyShared(from, type, reader);
 			break;
 		}
@@ -889,6 +1047,10 @@ void replicationUpdate() {
 		return;
 	}
 
+	if(inLevel()) {
+		settleThrownItems();
+	}
+
 	if(g_coop.isHost()) {
 		if(!g_pendingLevelRequests.empty() && inLevel()) {
 			for(PlayerId id : g_pendingLevelRequests) {
@@ -924,6 +1086,23 @@ ActorScope::ActorScope(const Entity * sender, const Entity * entity) {
 }
 
 ActorScope::~ActorScope() {
+	if(m_active) {
+		g_actingPlayer = PlayerId(m_previous);
+	}
+}
+
+PuppetActorScope::PuppetActorScope(const Entity * io) {
+	if(g_coop.isHost() && g_applyingRemote == 0 && io && io->coopPuppet) {
+		PlayerId owner = puppetOwner(*io);
+		if(owner != InvalidPlayerId) {
+			m_active = true;
+			m_previous = g_actingPlayer;
+			g_actingPlayer = owner;
+		}
+	}
+}
+
+PuppetActorScope::~PuppetActorScope() {
 	if(m_active) {
 		g_actingPlayer = PlayerId(m_previous);
 	}
@@ -1006,24 +1185,94 @@ void itemTaken(const Entity & item) {
 }
 
 void itemDropped(const Entity & item, bool thrown, const Vec3f & direction) {
-	if(!g_coop.isActive() || g_coop.state() != State::InGame || g_applyingRemote > 0 || !(item.ioflags & IO_ITEM)
-	   || (item.ioflags & IO_NOSAVE)) {
+	if(!sharedWorldItem(item)) {
 		return;
 	}
 	Writer writer;
-	writer.string(item.idString());
-	writer.string(item.classPath().string());
-	writer.s32_(item.instance());
-	writer.f32_(item.pos.x);
-	writer.f32_(item.pos.y);
-	writer.f32_(item.pos.z);
-	writer.f32_(item.angle.getYaw());
+	writeItemPlacement(writer, item);
 	writer.raw<s16>(s16(item._itemdata->count));
 	writer.bool_(thrown);
 	writer.f32_(direction.x);
 	writer.f32_(direction.y);
 	writer.f32_(direction.z);
 	g_coop.sendToOthers(MessageType::DropItem, writer);
+	if(thrown) {
+		g_inFlight.insert(item.idString()); // everyone simulates the flight, we say where it lands
+	} else {
+		g_inFlight.erase(item.idString());
+	}
+	g_lastDragSend = PlatformInstant();
+}
+
+bool consoleCommand(std::string_view line) {
+	std::string text = util::toLowercase(std::string(boost::trim_copy(std::string(line))));
+	if(text != "tp" && text.compare(0, 3, "tp ") != 0) {
+		return false;
+	}
+	if(!g_coop.isActive() || g_coop.state() != State::InGame || !inLevel()) {
+		ARX_LOG(Logger::Console) << "[coop] pas de partie coop en cours";
+		return true;
+	}
+	std::string arg = text.size() > 3 ? boost::trim_copy(text.substr(3)) : std::string();
+	std::vector<PlayerId> targets;
+	if(arg.empty() || arg == "all" || arg == "tous") {
+		for(const Player & other : g_coop.players()) {
+			if(other.id != g_coop.localId()) {
+				targets.push_back(other.id);
+			}
+		}
+	} else {
+		std::string number = (arg[0] == 'p' || arg[0] == 'j') ? arg.substr(1) : arg;
+		bool numeric = !number.empty() && std::all_of(number.begin(), number.end(), [](char c) { return c >= '0' && c <= '9'; });
+		for(const Player & other : g_coop.players()) {
+			if((numeric && other.id == PlayerId(util::toInt(number).value_or(0) - 1))
+			   || util::toLowercase(other.name) == arg) {
+				targets.push_back(other.id);
+			}
+		}
+		if(targets.empty()) {
+			ARX_LOG(Logger::Console) << "[coop] joueur inconnu: " << arg << " (tp p2, tp <pseudo>, tp all)";
+			return true;
+		}
+	}
+	for(PlayerId target : targets) {
+		if(target == g_coop.localId()) {
+			continue;
+		}
+		Writer writer;
+		writer.u8_(target);
+		writer.u32_(g_currentArea.handleData());
+		writer.f32_(entities.player()->pos.x);
+		writer.f32_(entities.player()->pos.y);
+		writer.f32_(entities.player()->pos.z);
+		writer.f32_(player.angle.getYaw());
+		if(g_coop.isHost()) {
+			g_coop.sendTo(target, MessageType::TeleportPlayer, writer);
+		} else {
+			g_coop.sendToHost(MessageType::TeleportPlayer, writer);
+		}
+		const Player * who = g_coop.player(target);
+		ARX_LOG(Logger::Console) << "[coop] " << (who ? who->name : std::string("?")) << " arrive";
+	}
+	return true;
+}
+
+void itemDragged(const Entity & item) {
+	if(!sharedWorldItem(item)) {
+		return;
+	}
+	bool inScene = item.show == SHOW_FLAG_IN_SCENE;
+	PlatformInstant now = platform::getTime();
+	if(item.idString() == g_lastDragId && inScene == g_lastDragInScene && now - g_lastDragSend < DragSendInterval) {
+		return;
+	}
+	g_lastDragId = item.idString();
+	g_lastDragInScene = inScene;
+	g_lastDragSend = now;
+	Writer writer;
+	writeItemPlacement(writer, item);
+	writer.bool_(inScene);
+	g_coop.sendToOthers(MessageType::DragItem, writer);
 }
 
 bool cinematicSpeechIsSomeoneElses() {
@@ -1069,7 +1318,7 @@ void forwardNpcDamage(const Entity & npc, float damage, unsigned type, const Vec
 }
 
 bool interceptScriptEvent(Entity * sender, Entity * entity, const ScriptEventName & event,
-                          const ScriptParameters & parameters, ScriptResult & result) {
+                          const ScriptParameters & parameters, bool baseScript, ScriptResult & result) {
 
 	if(!g_coop.isClient() || g_coop.state() != State::InGame || g_applyingRemote > 0 || !entity
 	   || !g_playthroughStarted) {
@@ -1078,6 +1327,10 @@ bool interceptScriptEvent(Entity * sender, Entity * entity, const ScriptEventNam
 
 	if(isPlayerSide(entity)) {
 		return false;
+	}
+
+	if(parameters.isPeekOnly()) {
+		return false; // "would this combine do something?" for the cursor: answered locally, never forwarded
 	}
 
 	ScriptMessage id = event.getId();
@@ -1090,7 +1343,7 @@ bool interceptScriptEvent(Entity * sender, Entity * entity, const ScriptEventNam
 	}
 
 	// Everything else about world entities is the host's business
-	if(forwardedEvents().count(id) && isPlayerSide(sender)) {
+	if(baseScript && forwardedEvents().count(id) && isPlayerSide(sender)) {
 		forwardEvent(sender, entity, event, parameters);
 	}
 
@@ -1169,11 +1422,20 @@ void commandReplicated(std::string_view command, const std::vector<std::string> 
 		}
 	}
 
-	if(command == "speak" && !sent.empty() && sent[0].size() > 1 && sent[0][0] == '-'
-	   && sent[0].find('c') != std::string::npos) {
+	if(command == "speak") {
+		bool cine = !sent.empty() && sent[0].size() > 1 && sent[0][0] == '-' && sent[0].find('c') != std::string::npos;
 		// Cinematic camera only for the acting player (or the host when nobody in particular
 		// triggered it); the others just hear the line.
-		std::vector<std::string> plain = stripCinematicSpeech(sent);
+		std::vector<std::string> plain = cine ? stripCinematicSpeech(sent) : sent;
+		if(g_lastSpeechVariant > 0) {
+			// Random voice line: everyone plays the variant the host picked
+			addSpeechVariant(sent, g_lastSpeechVariant);
+			addSpeechVariant(plain, g_lastSpeechVariant);
+		}
+		if(!cine) {
+			sendScriptCommand(InvalidPlayerId, entity->idString(), command, plain);
+			return;
+		}
 		for(const Player & player : g_coop.players()) {
 			if(player.id == g_coop.localId()) {
 				continue;
@@ -1266,6 +1528,12 @@ void sharedGold(long amount) {
 		Writer writer;
 		writer.s32_(s32(amount));
 		g_coop.sendToOthers(MessageType::SharedGold, writer);
+	}
+}
+
+void sharedBag() {
+	if(g_coop.isActive() && g_applyingRemote == 0) {
+		g_coop.sendToOthers(MessageType::SharedBag, Writer());
 	}
 }
 

@@ -253,7 +253,8 @@ ScriptResult ScriptEvent::send(const EERIE_SCRIPT * es, Entity * sender, Entity 
 	
 	{
 		ScriptResult intercepted;
-		if(coop::interceptScriptEvent(sender, entity, event, parameters, intercepted)) {
+		// An entity with an instance script gets every event twice (override, then base): forward once
+		if(coop::interceptScriptEvent(sender, entity, event, parameters, es == &entity->script, intercepted)) {
 			return intercepted;
 		}
 	}

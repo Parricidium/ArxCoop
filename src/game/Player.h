@@ -456,6 +456,8 @@ void ARX_PLAYER_Start_New_Quest();
 void ARX_PLAYER_Rune_Add_All();
  
 void ARX_PLAYER_Restore_Skin();
+//! The head textures used by a player skin (base, chainmail, mithril chainmail, leather).
+void ARX_PLAYER_SkinTextures(unsigned char skin, res::path & tx, res::path & tx2, res::path & tx3, res::path & tx4);
 float GetPlayerStealth();
 
 void ARX_GAME_Reset();

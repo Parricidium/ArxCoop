@@ -54,6 +54,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "core/GameTime.h"
 #include "core/Core.h"
 
+#include "coop/Replication.h"
 #include "game/Player.h"
 #include "game/EntityManager.h"
 #include "game/Inventory.h"
@@ -153,8 +154,10 @@ static void EntityEnteringCurrentZone(Entity * io, Zone * current) {
 	SendIOScriptEvent(nullptr, io, SM_ENTERZONE, current->name);
 	
 	if(Entity * controller = entities.getById(current->controled)) {
+		// Co-op: another player's puppet is "player" as far as the zone scripts are concerned
+		coop::PuppetActorScope actor(io);
 		ScriptParameters parameters;
-		parameters.push_back(io->idString());
+		parameters.push_back(io->coopPuppet ? std::string("player") : io->idString());
 		parameters.push_back(current->name);
 		SendIOScriptEvent(nullptr, controller, SM_CONTROLLEDZONE_ENTER, parameters);
 	}
@@ -166,8 +169,9 @@ static void EntityLeavingLastZone(Entity * io, Zone * last) {
 	SendIOScriptEvent(nullptr, io, SM_LEAVEZONE, last->name);
 	
 	if(Entity * controller = entities.getById(last->controled)) {
+		coop::PuppetActorScope actor(io);
 		ScriptParameters parameters;
-		parameters.push_back(io->idString());
+		parameters.push_back(io->coopPuppet ? std::string("player") : io->idString());
 		parameters.push_back(last->name);
 		SendIOScriptEvent(nullptr, controller, SM_CONTROLLEDZONE_LEAVE, parameters);
 	}

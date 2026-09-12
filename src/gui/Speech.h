@@ -128,7 +128,11 @@ Speech * getSpeechForEntity(const Entity & entity);
  * Add an entry to the conversation view.
  * \param data is a sample name / localised string id
  */
-Speech * ARX_SPEECH_AddSpeech(Entity & speaker, std::string_view data, long mood, SpeechFlags flags = 0);
+//! Variant chosen by the last ARX_SPEECH_AddSpeech call for a random voice line (0 = not random)
+extern long g_lastSpeechVariant;
+
+Speech * ARX_SPEECH_AddSpeech(Entity & speaker, std::string_view data, long mood, SpeechFlags flags = 0,
+                              long forcedVariant = 0);
 void ARX_SPEECH_ReleaseIOSpeech(const Entity & entity);
 void ARX_SPEECH_ClearIOSpeech(const Entity & entity);
 

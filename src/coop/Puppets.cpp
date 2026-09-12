@@ -45,6 +45,7 @@
 #include "scene/LinkedObject.h"
 #include "game/Inventory.h"
 #include "game/Player.h"
+#include "graphics/data/TextureContainer.h"
 #include "graphics/Math.h"
 #include "gui/CinematicBorder.h"
 #include "gui/Menu.h"
@@ -66,6 +67,7 @@
 #include "core/Config.h"
 #include "graphics/Renderer.h"
 #include "gui/MenuWidgets.h"
+#include "physics/Physics.h"
 #include "script/Script.h"
 
 namespace coop {
@@ -95,11 +97,12 @@ struct TweakInfo {
 };
 
 struct EquipmentState {
+	u8 skin = 0;
 	bool combat = false;
 	TweakInfo helmet, armor, leggings;
 	std::string weapon, shield;
 	bool operator==(const EquipmentState & o) const {
-		return combat == o.combat && helmet == o.helmet && armor == o.armor && leggings == o.leggings
+		return skin == o.skin && combat == o.combat && helmet == o.helmet && armor == o.armor && leggings == o.leggings
 		       && weapon == o.weapon && shield == o.shield;
 	}
 	bool operator!=(const EquipmentState & o) const { return !(*this == o); }
@@ -298,6 +301,7 @@ TweakInfo tweakOf(EquipmentSlot slot) {
 
 EquipmentState localEquipment() {
 	EquipmentState state;
+	state.skin = player.skin;
 	state.combat = (player.Interface & INTER_COMBATMODE) != 0;
 	state.helmet = tweakOf(EQUIP_SLOT_HELMET);
 	state.armor = tweakOf(EQUIP_SLOT_ARMOR);
@@ -336,6 +340,7 @@ void sendEquipmentIfNeeded(bool force) {
 	g_lastEquipmentSend = now;
 	Writer writer;
 	writer.u8_(g_coop.localId());
+	writer.u8_(state.skin);
 	writer.bool_(state.combat);
 	writeTweak(writer, state.helmet);
 	writeTweak(writer, state.armor);
@@ -348,6 +353,7 @@ void sendEquipmentIfNeeded(bool force) {
 void handlePlayerEquipment(PlayerId id, Reader & reader) {
 	PlayerSnapshot & snap = g_remote[id];
 	EquipmentState state;
+	state.skin = reader.u8_();
 	state.combat = reader.bool_();
 	readTweak(reader, state.helmet);
 	readTweak(reader, state.armor);
@@ -369,6 +375,48 @@ void applyTweakTo(Entity * io, const TweakInfo & info, TweakType type, std::stri
 	tweak.skintochange = info.skinFrom;
 	tweak.skinchangeto = res::path::load(info.skinTo);
 	ARX_EQUIPMENT_ApplyTweak(io, tweak, type, selection);
+}
+
+
+/*!
+ * The engine gives the player its chosen face by overwriting the shared "hero head" texture
+ * data, so every human mesh using those textures (our puppets included) would show the local
+ * player's face. Point the puppet's mesh at the texture files of its own player's skin instead.
+ */
+void applySkin(EERIE_3DOBJ & obj, u8 skin) {
+	res::path replacements[4];
+	ARX_PLAYER_SkinTextures(skin, replacements[0], replacements[1], replacements[2], replacements[3]);
+	const char * const shared[4] = {
+		"graph/obj3d/textures/npc_human_base_hero_head",
+		"graph/obj3d/textures/npc_human_chainmail_hero_head",
+		"graph/obj3d/textures/npc_human_chainmail_mithril_hero_head",
+		"graph/obj3d/textures/npc_human_leather_hero_head",
+	};
+	for(TextureContainer * & tc : obj.materials) {
+		if(!tc) {
+			continue;
+		}
+		for(size_t i = 0; i < 4; i++) {
+			if(replacements[i].empty() || tc->m_texName != res::path(shared[i])) {
+				continue;
+			}
+			// A private copy of the skin's texture file, under a name the engine never overwrites
+			res::path name = replacements[i].string() + "_coopskin";
+			TextureContainer * variant = TextureContainer::Find(name);
+			if(!variant) {
+				variant = new TextureContainer(name, 0);
+				if(!variant->LoadFile(replacements[i])) {
+					LogWarning << "[coop] cannot load skin texture " << replacements[i];
+					delete variant;
+					variant = nullptr;
+				}
+			}
+			if(variant) {
+				tc = variant;
+			}
+			break;
+		}
+	}
 }
 
 //! Creates a display-only item linked to the puppet (destroyed with it or when replaced).
@@ -413,6 +461,7 @@ void applyEquipment(Entity & io, const EquipmentState & state) {
 	if(!state.shield.empty()) {
 		attachPuppetItem(io, state.shield, "shield_attach", "shield_attach");
 	}
+	applySkin(*io.obj, state.skin);
 	ARX_INTERACTIVE_HideGore(&io, false);
 	EERIE_Object_Precompute_Fast_Access(io.obj);
 	EERIE_COLLISION_Cylinder_Create(&io);
@@ -482,28 +531,6 @@ PlayerId lookedAtDownedPuppet() {
 
 void reviveUpdate() {
 	PlayerId target = lookedAtDownedPuppet();
-	{
-		static PlatformInstant lastLog; // TODO(dev) remove
-		bool anyDowned = false;
-		for(const auto & entry : g_remote) {
-			anyDowned = anyDowned || entry.second.downed;
-		}
-		if(anyDowned && platform::getTime() - lastLog > std::chrono::seconds(3)) {
-			lastLog = platform::getTime();
-			for(const auto & entry : g_remote) {
-				const Entity * io = findPuppet(entry.first);
-				if(!io || !entry.second.downed) {
-					continue;
-				}
-				Vec3f to = io->pos - entities.player()->pos;
-				Vec3f flat(to.x, 0.f, to.z);
-				float dot = glm::length(flat) > 1.f ? glm::dot(glm::normalize(flat), angleToVectorXZ(player.angle.getYaw())) : 0.f;
-				LogInfo << "[coop] revive check: " << io->idString() << " dist " << int(glm::length(to)) << " dot " << dot
-				        << " mouse " << GInput->getMouseButtonRepeat(Mouse::Button_0) << " block " << BLOCK_PLAYER_CONTROLS
-				        << " target " << int(target) << " progress " << g_reviveProgress;
-			}
-		}
-	}
 	bool holding = target != InvalidPlayerId && !BLOCK_PLAYER_CONTROLS
 	               && (GInput->getMouseButtonRepeat(Mouse::Button_0) || g_testHoldRevive);
 	if(!holding || target != g_reviveTarget) {
@@ -995,6 +1022,9 @@ void puppetsUpdate() {
 			}
 		}
 		applySnapshot(*io, state, created);
+		if(created) {
+			it->second.equipmentApplied = false; // a fresh mesh: dress it again
+		}
 		if(!state.equipmentApplied) {
 			it->second.equipmentApplied = true;
 			applyEquipment(*io, state.equipment);
@@ -1020,6 +1050,16 @@ void puppetsTestUpdate() {
 	static bool spellDone = false;
 	static bool equipChecked = false;
 	static bool lootDropped = false;
+	static bool chatDone = false;
+	static bool doorFound = false;
+	static bool doorActed = false;
+	static bool doorChecked = false;
+	static bool throwTaken = false;
+	static bool throwDone = false;
+	static bool throwChecked = false;
+	static bool tpDone = false;
+	static bool tpChecked = false;
+	static std::string testDoor;
 	static bool playing = false;
 	static PlatformInstant start;
 	static int step = 0;
@@ -1166,6 +1206,88 @@ void puppetsTestUpdate() {
 			item->show = SHOW_FLAG_IN_SCENE;
 			coop::itemDropped(*item);
 		}
+	} else if(step >= 3 && elapsed > std::chrono::seconds(56) && g_coop.isClient() && !chatDone) {
+		chatDone = true;
+		if(Entity * goblin = entities.getById("goblin_base_0006")) {
+			LogInfo << "[coop] test: client chats with " << goblin->idString();
+			SendIOScriptEvent(entities.player(), goblin, SM_CHAT);
+		}
+	} else if(step >= 3 && elapsed > std::chrono::seconds(57) && !doorFound) {
+		doorFound = true;
+		// Everyone stands in front of the same door (the first scripted door of the level)
+		for(const Entity & io : entities(IO_FIX)) {
+			if(io.idString().find("door") == std::string::npos) {
+				continue;
+			}
+			LogInfo << "[coop] test: level door " << io.idString() << (io.script.valid ? " script" : "")
+			        << " anims " << (io.anims[ANIM_ACTION] != nullptr) << (io.anims[ANIM_ACTION2] != nullptr)
+			        << " dist " << int(glm::distance(io.pos, entities.player()->pos));
+			if(io.script.valid && io.anims[ANIM_ACTION2] && (testDoor.empty() || io.idString() < testDoor)) {
+				testDoor = io.idString();
+			}
+		}
+		Logger::flush();
+		if(Entity * door = entities.getById(testDoor)) {
+			Vec3f spot = door->pos + angleToVectorXZ(door->angle.getYaw()) * 150.f;
+			if(g_coop.isClient()) {
+				spot += Vec3f(60.f, 0.f, 0.f);
+			}
+			ARX_INTERACTIVE_Teleport(entities.player(), spot);
+			LogInfo << "[coop] test: standing at door " << testDoor << " pos " << int(door->pos.x) << "," << int(door->pos.y) << "," << int(door->pos.z)
+			        << " open=" << GETVarValueLong(door->m_variables, "\xA7open") << " unlock=" << GETVarValueLong(door->m_variables, "\xA7unlock");
+		}
+	} else if(step >= 3 && elapsed > std::chrono::seconds(62) && g_coop.isClient() && !doorActed) {
+		doorActed = true;
+		if(Entity * door = entities.getById(testDoor)) {
+			LogInfo << "[coop] test: client uses " << testDoor;
+			SendIOScriptEvent(entities.player(), door, SM_ACTION);
+		}
+	} else if(step >= 3 && elapsed > std::chrono::seconds(66) && !doorChecked) {
+		doorChecked = true;
+		if(Entity * door = entities.getById(testDoor)) {
+			LogInfo << "[coop] test: door " << testDoor << " anim0="
+			        << (door->animlayer[0].cur_anim ? door->animlayer[0].cur_anim->path.string() : "none")
+			        << " open=" << GETVarValueLong(door->m_variables, "\xA7open")
+			        << " collision=" << !(door->ioflags & IO_NO_COLLISIONS);
+		}
+		Logger::flush();
+	} else if(step >= 3 && elapsed > std::chrono::seconds(78) && g_coop.isClient() && !throwTaken) {
+		throwTaken = true;
+		if(Entity * item = entities.getById("food_mushroom_0010")) {
+			LogInfo << "[coop] test: client takes " << item->idString() << " to throw it";
+			giveToPlayer(item);
+		}
+	} else if(step >= 3 && elapsed > std::chrono::seconds(80) && g_coop.isClient() && !throwDone) {
+		throwDone = true;
+		if(Entity * item = entities.getById("food_mushroom_0010")) {
+			removeFromInventories(item);
+			item->pos = entities.player()->pos + Vec3f(0.f, -100.f, 0.f);
+			item->show = SHOW_FLAG_IN_SCENE;
+			Vec3f direction = glm::normalize(angleToVectorXZ(player.angle.getYaw()) + Vec3f(0.f, -0.3f, 0.f));
+			EERIE_PHYSICS_BOX_Launch(item->obj, item->pos, item->angle, direction);
+			coop::itemDropped(*item, true, direction);
+			LogInfo << "[coop] test: client throws " << item->idString();
+		}
+	} else if(step >= 3 && elapsed > std::chrono::seconds(86) && !throwChecked) {
+		throwChecked = true;
+		if(Entity * item = entities.getById("food_mushroom_0010")) {
+			LogInfo << "[coop] test: thrown " << item->idString() << " pos " << int(item->pos.x) << "," << int(item->pos.y) << "," << int(item->pos.z)
+			        << " show " << int(item->show) << " pbox " << (item->obj && item->obj->pbox ? int(item->obj->pbox->active) : -1);
+		}
+		Logger::flush();
+	} else if(step >= 4 && elapsed > std::chrono::seconds(118) && g_coop.isHost() && !tpDone) {
+		tpDone = true;
+		LogInfo << "[coop] test: host types 'tp p2'";
+		Logger::flush();
+		coop::consoleCommand("tp p2");
+		Logger::flush();
+	} else if(step >= 4 && elapsed > std::chrono::seconds(120) && !tpChecked) {
+		tpChecked = true;
+		LogInfo << "[coop] test: after tp my pos " << int(entities.player()->pos.x) << "," << int(entities.player()->pos.y) << "," << int(entities.player()->pos.z);
+		for(const auto & entry : g_remote) {
+			LogInfo << "[coop] test: after tp remote " << int(entry.first) << " pos " << int(entry.second.pos.x) << "," << int(entry.second.pos.y) << "," << int(entry.second.pos.z);
+		}
+		Logger::flush();
 	} else if(step >= 3 && elapsed > std::chrono::seconds(60) && g_coop.isClient() && player.lifePool.current > 0.f
 	          && !creationSkippedDeathDone) {
 		creationSkippedDeathDone = true;
@@ -1176,7 +1298,8 @@ void puppetsTestUpdate() {
 		for(const auto & entry : g_remote) {
 			if(const Entity * io = findPuppet(entry.first)) {
 				// Stand in front of the downed teammate, facing it, and hold the button
-				Vec3f dir = glm::normalize(Vec3f(io->pos.x - entities.player()->pos.x, 0.f, io->pos.z - entities.player()->pos.z));
+				Vec3f delta(io->pos.x - entities.player()->pos.x, 0.f, io->pos.z - entities.player()->pos.z);
+				Vec3f dir = glm::length(delta) > 1.f ? glm::normalize(delta) : Vec3f(0.f, 0.f, 1.f);
 				ARX_INTERACTIVE_Teleport(entities.player(), io->pos - dir * 120.f);
 				player.angle.setYaw(MAKEANGLE(glm::degrees(std::atan2(-dir.x, dir.z))));
 				player.desiredangle = player.angle;

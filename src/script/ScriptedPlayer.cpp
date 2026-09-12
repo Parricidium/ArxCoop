@@ -83,6 +83,7 @@ public:
 		DebugScript("");
 		
 		ARX_PLAYER_AddBag();
+		coop::sharedBag(); // the whole party carries more
 		
 		return Success;
 	}
