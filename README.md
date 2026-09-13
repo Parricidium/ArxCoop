@@ -1,33 +1,251 @@
-# ArxCoop — Arx Fatalis en coopération (2 à 4 joueurs)
+<p align="center">
+  <img src="docs/img/logo.png" width="320" alt="Arx Fatalis COOP">
+</p>
 
-[![Dernière version](https://img.shields.io/github/v/release/Parricidium/ArxCoop?label=T%C3%A9l%C3%A9charger&style=for-the-badge)](https://github.com/Parricidium/ArxCoop/releases/latest)
-[![Licence GPLv3](https://img.shields.io/badge/licence-GPLv3-blue?style=for-the-badge)](COPYING)
+<p align="center">
+  <a href="https://github.com/Parricidium/ArxCoop/releases/latest"><img src="https://img.shields.io/github/v/release/Parricidium/ArxCoop?label=Download&style=for-the-badge" alt="Download the latest release"></a>
+  <a href="COPYING"><img src="https://img.shields.io/badge/license-GPLv3-blue?style=for-the-badge" alt="GPLv3"></a>
+</p>
+
+# ArxCoop — Arx Fatalis co-op for 2 to 4 players
+
+A co-op mod for **Arx Fatalis**, built on the open-source [Arx Libertatis](https://arx-libertatis.org/) engine.
+One player hosts, the others join: everybody plays the adventure together in the same world, each with
+their own character. English and French.
+
+Tested on Arx Fatalis 1.21 (GOG) with Arx Libertatis 1.2 installed. The mod ships its own engine build
+(based on Arx Libertatis 1.3-dev) and does not touch the original game.
+
+*[Version française plus bas.](#version-française)*
+
+> You need your own copy of Arx Fatalis (GOG or Steam). No game data is provided here.
+
+---
+
+## Contents
+
+- [Download and install](#download-and-install)
+- [Playing](#playing)
+- [Features](#features)
+- [Synchronisation status](#synchronisation-status)
+- [Custom face (tutorial)](#custom-face-tutorial)
+- [Custom menu skin](#custom-menu-skin)
+- [Admin menu (F8)](#admin-menu-f8)
+- [Keys](#keys)
+- [Known limits](#known-limits)
+- [Building](#building)
+- [Credits and license](#credits-and-license)
+- [Version française](#version-française)
+
+---
+
+## Download and install
+
+1. Download the zip of the [latest release](https://github.com/Parricidium/ArxCoop/releases/latest).
+2. Unzip it **into your Arx Fatalis folder** (the one that contains `data.pak`).
+   Nothing is overwritten: `arx.exe` is an extra executable, the original game stays intact.
+3. On first launch Windows may ask for network permission: allow it (private network).
+
+The mod keeps **everything** (saves, settings, faces) in `userdata\` next to `arx.exe`, never in
+"Saved Games". Your original saves are safe.
+
+**Updating**: unzip the new version over the old one. Everybody must run the same version (the network
+protocol number is checked when joining).
+
+**Language**: the mod follows the game language (*Options > Language*): English or French.
+
+## Playing
+
+| Role | How |
+|---|---|
+| **Host** | `heberger.cmd`, or *Co-op > Host a game* in the menu (nickname, port), or `arx.exe --coop-host 27015 --nickname MyName` |
+| **Join** | `rejoindre.cmd`, or *Co-op > Join a game* (nickname, address, port, favourites), or `arx.exe --coop-join 192.168.1.10:27015 --nickname MyName` |
+
+- Same LAN or a VPN (Radmin VPN, Hamachi, ZeroTier). Over the internet the host opens **TCP port 27015**.
+  The *Host* page shows your local and public IP to give to your friends.
+- Everybody meets in the **lobby**. The host has two buttons there:
+  **"Continue: \<last save\>"** (each player automatically reloads their "coop: …" character, or creates
+  one if new) and **"Start from the beginning"** (everybody creates a character).
+- **Joining a game in progress** works: the newcomer creates (or reloads) their character and receives
+  the level, quests, keys, runes, backpacks and the party's XP.
+- **Saving**: only the host saves (F5 or menu). Every other player then saves their character as
+  "coop: \<name\>". When the host loads a save, everybody reloads theirs.
+- **Disconnection**: whoever crashed just joins again: they come back with their character (auto-saved
+  every 3 minutes) and the host puts them back where they were.
+
+## Features
+
+**Shared world**
+- The world belongs to the host and is seen by everybody: NPCs (position, animations, life,
+  dismemberment, blood), doors, levers, traps, chests, merchants, ground items, quests, keys, runes,
+  script variables.
+- Whatever one player triggers (dialogue, pass granted by an NPC, path cleared, lever…) counts for all.
+- NPCs target the nearest player; the damage you take is really yours.
+- Items: what a player picks up disappears for the others; what they drop or throw reappears for them.
+  Chests and merchants are shared (storing, selling, buying, stacks, gold coins).
+- Each player keeps **their own** character: stats, skill points, inventory, equipment, purse. Quest gold
+  and XP go to everybody; combat XP is shared.
+- A backpack used by anyone enlarges everybody's inventory.
+- The host's world sounds (hits, impacts, NPCs) are heard by all.
+
+**The other players**
+- Seen with their head (or **custom face**), armour, weapon, torch and animations (running, jumping,
+  crouching, fighting, casting, leaning, talking head).
+- Teammates' spells are visible (damage computed by the caster).
+- **Hand over an item**: right-click it in your inventory, then click the teammate.
+- Teammates' name, life and hunger on the left of the screen; ping next to the names; play time at the top.
+- Off-screen teammates: arrow at the edge of the screen with the distance, shown on the minimap and
+  the book map.
+- **Middle click**: "over here" marker (red double circle with the distance, 12 s, seen by all).
+
+**Death and revival**
+- At 0 HP you stay **down** ("X is down!" + sound) with a 2-minute countdown.
+- A teammate holds **left click** while looking at you up close (~2 m) for 4 s to get you up (gauge
+  shown), or uses a **life potion** (H key) while looking at you: instant revival.
+- Everybody down = game over.
+
+**Cutscenes and dialogues**
+- The camera of a dialogue is given only to whoever triggered it; the others hear the line.
+  Anyone's Escape skips the line for all.
+- Option "freeze me while a teammate is in a dialogue".
+- At the end of a scene that moved the host (intro, Polsius…) or after a level change, teammates left
+  behind are teleported next to them.
+- The host's menu does not pause the world.
+
+**Third-person view**
+- **V**: first person / over-the-shoulder camera. **N**: switch shoulder. **O**: free camera (the mouse
+  orbits around the character). **Wheel**: closer / further. The camera moves in by itself near walls.
+
+**Comfort**
+- The game starts straight on the menu (intro skipped; `skip_intro=false` in `userdata\cfg.ini` to get
+  it back).
+- Menu skin included ("Arx Fatalis COOP" background, frame, panel), replaceable with yours.
+- Full English translation of the mod.
+
+## Synchronisation status
+
+| Item | Status | Note |
+|---|:---:|---|
+| Player position, angle, animations (4 layers) | ✅ | 20 Hz, smoothed |
+| Visible equipment (armour, weapon, shield, torch), head, face | ✅ | |
+| NPCs: position, animations, life, death, visibility, dismemberment | ✅ | AI and physics on the host, 10 Hz |
+| Damage NPC → players, players → NPCs, player ↔ player | ✅ | through the host |
+| Blood, world sounds | ✅ | |
+| World scripts (doors, levers, traps, passages, `objecthide/destroy/…`) | ✅ | replayed on the clients |
+| Script variables (quest flags) | ✅ | both directions |
+| Quest log, keys, runes | ✅ | + sent to late joiners |
+| XP, quest gold, backpacks | ✅ | XP shared; catch-up on joining |
+| Picked-up gold / selling | ✅ | stays with whoever does it (own purse) |
+| Ground items (pick up, drop, throw, carry) | ✅ | |
+| Chests, merchants, corpses (store, sell, buy, stacks, coins) | ✅ | |
+| Items created by scripts inside containers | ✅ | same id everywhere |
+| Handing items between players | ✅ | durability and poison kept |
+| Spells | ✅ | visuals everywhere, damage at the caster |
+| Persistent magic fields ("blue walls") | ✅ | recreated on arrival |
+| Level change | ✅ | grouped, led by the host |
+| Save / load | ✅ | host + everybody's character |
+| Joining in progress, reconnecting | ✅ | |
+| Scripted cutscenes | ✅ | camera for the initiator only |
+| Markers, chat, ping | ✅ | |
+| Real internet latency | ⚠️ | designed for LAN / VPN, little tested beyond |
+| Cutscene camera for everybody | ❌ | design choice |
+
+## Custom face (tutorial)
+
+Your face replaces the hero's: the other players see it on your character, and you see it in the book.
+
+1. Launch the mod, go to **Options > Co-op**.
+2. Click **"Open the faces folder"**: the folder `userdata\coop\faces\` is created and opened.
+3. Drop your photo there (`jpg` or `png`). **Tight crop on the face, front view**: from the top of the
+   forehead to the chin, no hair, no shoulders (see `visages\cadrage_photo.png`: everything inside the
+   green oval is pasted on the face, the rest blends into the game head). The game crops to 5:7 and
+   scales the photo by itself; a photo that is too wide gives a tiny face.
+4. Go back to the *Co-op* page and pick your file under **"Face"**: the character's head is shown in 3D
+   below, with your face.
+5. Done. The photo is sent once to the other players (20–40 KB), and nowhere else.
+
+For tinkerers: a **full head**. Edit `visages\tete_hero_N_skin.png` (N = 1 to 4; `*_zones.png` shows
+where the face lands) and save it in the faces folder with `_skin` in the name (e.g. `bob_skin.png`):
+it is then used as is (bare head; with chainmail or hood the game head comes back).
+
+## Custom menu skin
+
+Three images in `userdata\coop\` (png, jpg or bmp; delete the file to get the original game look back):
+
+| File | Role | Format |
+|---|---|---|
+| `menu_background.*` | main menu background (replaces the original picture, logo included) | 16:9 advised, stretched to the screen |
+| `menu_panel.*` | menu frame background — it **darkens** what is behind (white = nothing, black = opaque) | 321×419 |
+| `menu_border.*` | frame border | 322×424, PNG with transparency (or black = transparent) |
+
+"Open the faces folder" also exports the original pictures to `userdata\coop\menu_modeles\`.
+The mod ships with its own skin; updates put it back.
+
+## Admin menu (F8)
+
+Opened in game (the world keeps running), key configurable in *Options > Controls*.
+
+- **Host**: pick a player then *teleport them to me*, *teleport me to them*, *revive and heal*, give
+  *gold*, *XP*, *an item* (class name: `potion_life`, `short_sword`, `gold_coin`, `ring_regeneration`…
+  an approximate name lists the possible ones), *kick*.
+  For everybody: *everyone to me*, *heal everyone*, *invulnerability*, *kill hostile NPCs* around me
+  (20 m, to get out of a jam), *save now*.
+- **Client**: *teleport me to this player* (if you are stuck in the level).
+
+Console (`²` key on French keyboards, the key left of `1`): `tp p2` teleports player 2 next to you,
+`tp Name`, `tp all`.
+
+## Keys
+
+All configurable in *Options > Controls*.
+
+| Key | Action |
+|---|---|
+| **V** | first / third person view |
+| **N** | switch shoulder |
+| **O** | free camera (third person) |
+| **Wheel** | camera closer / further |
+| **Middle click** | "over here" marker |
+| **Hold left click** on a downed teammate | revive them |
+| **H** while looking at a downed teammate | life potion on them |
+| **F8** | admin menu |
+| **²** | console |
+
+## Known limits
+
+- Designed for LAN or VPN; never tested with real internet latency.
+- Spell damage is computed by whoever casts the spell.
+- The camera of story cutscenes is given only to whoever triggers them.
+- Windows only for the provided binaries (the code builds elsewhere like Arx Libertatis, untested).
+
+## Building
+
+This is a fork of Arx Libertatis: same dependencies and procedure (see
+[README.ArxLibertatis.md](README.ArxLibertatis.md)). The mod code lives in `src/coop/` (network,
+session, replication, puppets, faces, admin, third person) plus hooks in the engine. On Windows:
+CMake + Visual Studio 2022, `cmake --build build --config Release`. The non-binary package files
+(LISEZMOI, translation, face templates, menu skin) are in `dist/`.
+
+## Credits and license
+
+- [Arx Libertatis](https://arx-libertatis.org/) and its contributors, based on the Arx Fatalis source
+  code released by Arkane Studios.
+- Co-op part: JD, with the assistance of Claude (Anthropic).
+- License **GPLv3+** with the Arx Libertatis additional terms: see [COPYING](COPYING) and [LICENSE](LICENSE).
+  Arx Fatalis, its data and trademarks remain the property of their owners.
+
+---
+
+# Version française
 
 Mod coopératif pour **Arx Fatalis**, construit sur le moteur libre [Arx Libertatis](https://arx-libertatis.org/).
 Un joueur héberge, les autres le rejoignent : tout le monde joue l'aventure ensemble, dans le même monde,
 chacun avec son propre personnage. Français et anglais.
 
-*[English summary below.](#english)*
+Testé sur Arx Fatalis 1.21 (GOG) avec Arx Libertatis 1.2 installé. Le mod apporte son propre moteur
+(basé sur Arx Libertatis 1.3-dev) et ne touche pas au jeu d'origine.
 
 > Vous devez posséder Arx Fatalis (GOG ou Steam). Aucune donnée du jeu n'est fournie ici.
-
----
-
-## Sommaire
-
-- [Téléchargement et installation](#téléchargement-et-installation)
-- [Jouer](#jouer)
-- [Fonctionnalités](#fonctionnalités)
-- [État des synchronisations](#état-des-synchronisations)
-- [Changer son visage (tuto)](#changer-son-visage-tuto)
-- [Personnaliser les menus](#personnaliser-les-menus)
-- [Menu Administration (F8)](#menu-administration-f8)
-- [Touches](#touches)
-- [Limites connues](#limites-connues)
-- [Compiler](#compiler)
-- [Crédits et licence](#crédits-et-licence)
-
----
 
 ## Téléchargement et installation
 
@@ -42,7 +260,7 @@ jamais dans « Parties enregistrées ». Vos sauvegardes du jeu d'origine ne ris
 **Mise à jour** : dézippez la nouvelle version par-dessus. Tout le monde doit avoir la même version
 (le numéro de protocole est vérifié à la connexion).
 
-**Langue** : si le jeu est en anglais (Options > Language), les menus et messages du mod le sont aussi.
+**Langue** : le mod suit la langue du jeu (Options > Language) : français ou anglais.
 
 ## Jouer
 
@@ -222,36 +440,3 @@ Le contenu non binaire du paquet (LISEZMOI, traduction, modèles de visages, hab
 - Partie coopérative : JD, avec l'assistance de Claude (Anthropic).
 - Licence **GPLv3+** avec les termes additionnels d'Arx Libertatis : voir [COPYING](COPYING) et [LICENSE](LICENSE).
   Arx Fatalis, ses données et ses marques restent la propriété de leurs ayants droit.
-
----
-
-## English
-
-**ArxCoop** is a 2–4 player co-op mod for *Arx Fatalis*, built on the open-source
-[Arx Libertatis](https://arx-libertatis.org/) engine. One player hosts, the others join; everybody plays
-the adventure together in the host's world, each with their own character. The mod is fully translated:
-set the game language to English (*Options > Language*).
-
-**Install**: download the [latest release](https://github.com/Parricidium/ArxCoop/releases/latest) and unzip
-it **into your Arx Fatalis folder** (the one with `data.pak`, GOG or Steam). Nothing is overwritten;
-the mod keeps its saves and settings in `userdata\` next to `arx.exe`.
-
-**Play**: host with `heberger.cmd` (or *Co-op > Host a game*), join with `rejoindre.cmd` (or
-*Co-op > Join a game*, enter the host's address). LAN or VPN; over the internet the host opens TCP port
-27015. Everybody meets in the lobby; the host picks *Continue: \<last save\>* or *Start from the beginning*.
-Joining a game in progress and reconnecting after a crash both work.
-
-**What is shared**: the whole world (NPCs, doors, levers, traps, chests, merchants, ground items,
-quests, keys, runes, script flags), NPC dismemberment and blood, world sounds, quest XP and gold,
-backpacks. Each player keeps their own character (stats, inventory, equipment, purse). Teammates are
-seen with their head or **custom face**, armour, weapon, torch and animations; you can hand items to
-them, ping a spot with the middle mouse button, revive a downed teammate (hold left click for 4 s, or
-use a life potion while looking at them). Third-person camera (V / N / O / wheel), admin menu (F8:
-teleport, heal, gold, XP, items, kick, invulnerability, kill nearby hostiles, save), English
-translation, custom menu skin. Only the host saves; the others save their character automatically.
-
-**Custom face**: *Options > Co-op > Open the faces folder*, drop a tightly cropped front photo of your
-face (forehead to chin, no hair) into `userdata\coop\faces\`, then pick it under *Face*. A 3D preview
-shows the result. The picture is sent once to the other players (20–40 KB) and nowhere else.
-
-Licence: GPLv3+ (Arx Libertatis terms). You need your own copy of Arx Fatalis.
