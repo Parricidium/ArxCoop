@@ -77,7 +77,8 @@ void EERIE_LINKEDOBJ_ReleaseData(EERIE_3DOBJ * obj) {
 }
 
 static void linkObjects(EERIE_3DOBJ & master, std::string_view masterVertex,
-                        EERIE_3DOBJ & slave, std::string_view slaveVertex, Entity * slaveEntity) {
+                        EERIE_3DOBJ & slave, std::string_view slaveVertex, Entity * slaveEntity,
+                        const glm::quat & rotation = glm::quat(1.f, 0.f, 0.f, 0.f)) {
 	
 	VertexId masterVertexIndex = getNamedVertex(&master, masterVertex);
 	if(!masterVertexIndex) {
@@ -100,7 +101,8 @@ static void linkObjects(EERIE_3DOBJ & master, std::string_view masterVertex,
 	link.lidx2 = slaveVertexIndex;
 	link.obj = &slave;
 	link.io = slaveEntity;
-	
+	link.rotation = rotation;
+
 	master.linked.push_back(link);
 	
 }
@@ -147,13 +149,13 @@ void EERIE_LINKEDOBJ_LinkObjectToObject(EERIE_3DOBJ * obj, EERIE_3DOBJ * tolink,
 }
 
 void linkEntities(Entity & master, std::string_view masterVertex,
-                  Entity & slave, std::string_view slaveVertex) {
-	
+                  Entity & slave, std::string_view slaveVertex, const glm::quat & rotation) {
+
 	arx_assert(master.obj && slave.obj);
-	
+
 	unlinkEntity(slave);
-	
-	linkObjects(*master.obj, masterVertex, *slave.obj, slaveVertex, &slave);
+
+	linkObjects(*master.obj, masterVertex, *slave.obj, slaveVertex, &slave, rotation);
 	
 	slave.setOwner(&master);
 	

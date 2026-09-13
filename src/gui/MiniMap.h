@@ -175,6 +175,7 @@ private:
 	void drawBackground(MapLevel level, Rect boundaries, Vec2f start, float zoom,
 	                    float fadeBorder = 0.f, bool invColor = false, float alpha = 1.f);
 	void drawPlayer(float playerSize, Vec2f playerPos, bool alphaBlending);
+	void drawTeammates(Vec2f start, float zoom, float size, bool alphaBlending);
 	void drawDetectedEntities(Vec2f start, float zoom);
 	
 	std::vector<TexturedVertex> m_mapVertices;

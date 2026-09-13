@@ -123,6 +123,12 @@ float getEquipmentBaseModifier(EquipmentModifierType modifier, bool relative = f
 float getEquipmentModifier(EquipmentModifierType modifier, float baseval);
 
 bool ARX_EQUIPMENT_Strike_Check(Entity * io_source, Entity * io_weapon, float ratioaim, long flags, EntityHandle targ = EntityHandle());
+
+/*!
+ * The blood of a melee hit: splat particles and a decal on the ground / wall behind (\a splat),
+ * then the bleeding of the victim. Also replayed for hits that landed on another machine (co-op).
+ */
+void ARX_EQUIPMENT_StrikeBlood(Entity & target, const Vec3f & pos, const Vec3f & sourcePos, float dmgs, Color color, bool splat);
 void ARX_EQUIPMENT_RecreatePlayerMesh();
 
 //! Co-op: applies an armor piece's mesh/skin tweak to any human_base entity (puppets).

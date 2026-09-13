@@ -67,8 +67,8 @@ void ARX_CHANGELEVEL_Change(AreaId area, std::string_view target, float angle);
 bool ARX_CHANGELEVEL_ExportLevel(std::vector<std::pair<std::string, std::string>> & files);
 
 /*!
- * Co-op: stores level data received from the host in the current game and (re)loads  area
- * from it, keeping our own player. The player is then moved to  playerPos.
+ * Co-op: stores level data received from the host in the current game and (re)loads that area
+ * from it, keeping our own player. The player is then moved to playerPos.
  */
 bool ARX_CHANGELEVEL_ImportLevel(AreaId area, const std::vector<std::pair<std::string, std::string>> & files,
                                  const Vec3f & playerPos);

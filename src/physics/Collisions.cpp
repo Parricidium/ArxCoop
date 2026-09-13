@@ -52,6 +52,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include <boost/range/adaptor/strided.hpp>
 
 #include "ai/Anchors.h"
+#include "coop/Puppets.h"
 #include "core/GameTime.h"
 #include "core/Core.h"
 #include "game/Damage.h"
@@ -345,7 +346,7 @@ void PushIO_ON_Top(const Entity & platform, float ydec) {
 bool isAnyNPCOnPlatform(const Entity & platform) {
 	
 	for(const Entity & entity : entities.inScene(IO_NPC)) {
-		if(entity != platform && !(entity.ioflags & IO_NO_COLLISIONS)) {
+		if(entity != platform && !(entity.ioflags & IO_NO_COLLISIONS) && !entity.coopPuppet) {
 			if(isCylinderCollidingWithPlatform(getEntityCylinder(entity), platform)) {
 				return true;
 			}
@@ -536,8 +537,9 @@ static void CheckAnythingInCylinder_Inner(const Cylinder & cylinder, Entity * so
 	   && !(flags & CFLAG_NO_NPC_COLLIDE) // MUST be checked here only (not before...)
 	   && !(source && (source->ioflags & IO_NO_COLLISIONS))
 	   && target->_npcdata->lifePool.current > 0.f) {
-		// Co-op: players spawn on the same spot, so never let an overlapping puppet trap the player
-		if(target->coopPuppet && source == entities.player()
+		// Co-op: players spawn on the same spot, so never let an overlapping puppet trap the player.
+		// On clients NPCs are moved by the host's states, nothing pushes them apart: same rule.
+		if((target->coopPuppet || coop::npcsAreMirrored()) && source == entities.player()
 		   && CylinderInCylinder(getEntityCylinder(*source), target->physics.cyl)) {
 			return;
 		}

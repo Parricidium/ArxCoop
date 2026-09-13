@@ -152,13 +152,14 @@ struct EERIE_ACTIONLIST {
 };
 
 struct EERIE_LINKED {
-	
+
 	VertexGroupId lgroup;
 	VertexId lidx;
 	VertexId lidx2;
 	EERIE_3DOBJ * obj = nullptr;
 	Entity * io = nullptr;
-	
+	glm::quat rotation = glm::quat(1.f, 0.f, 0.f, 0.f); //!< co-op mod: extra rotation of the slave, in the bone's frame
+
 };
 
 struct EERIE_SELECTIONS {

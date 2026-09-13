@@ -28,7 +28,13 @@ class MenuPage;
 std::unique_ptr<MenuPage> createCoopMenuPage();
 
 //! Lobby page: connection status, player list, start / leave buttons.
+std::unique_ptr<MenuPage> createCoopHostMenuPage();
+std::unique_ptr<MenuPage> createCoopJoinMenuPage();
 std::unique_ptr<MenuPage> createCoopLobbyMenuPage();
+std::unique_ptr<MenuPage> createCoopAdminMenuPage();
+
+//! "Options coop" page: face, camera, dialogue and intro settings.
+std::unique_ptr<MenuPage> createCoopOptionsMenuPage();
 
 //! Performs a pending --coop-host / --coop-join request; call from the main menu update.
 void coopMenuHandleStartup();

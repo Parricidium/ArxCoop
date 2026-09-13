@@ -22,6 +22,7 @@
 #include <memory>
 #include <string_view>
 
+#include "coop/Puppets.h"
 #include "core/Core.h"
 #include "core/GameTime.h"
 
@@ -417,8 +418,10 @@ static void ARX_THROWN_OBJECT_ManageProjectile(Projectile & projectile, ShortGam
 							
 							target._npcdata->SPLAT_TOT_NB = 0;
 							ARX_PARTICLES_Spawn_Blood2(original_pos, damages, color, &target);
-							
+							coop::bloodSpawned(target, original_pos, original_pos, damages, color, 2);
+
 							ARX_PARTICLES_Spawn_Blood2(pos, damages, color, &target);
+							coop::bloodSpawned(target, pos, pos, damages, color, 2);
 							damageNpc(target, damages, entities.get(projectile.source), nullptr, DAMAGE_TYPE_METAL, &pos);
 							
 							if(Random::getf(0.f, 100.f) > target._npcdata->resist_poison) {

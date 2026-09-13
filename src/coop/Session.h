@@ -21,6 +21,7 @@
 #define ARX_COOP_SESSION_H
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -75,6 +76,8 @@ public:
 
 	//! Ends the session (tells the peers first when possible).
 	void leave();
+	//! Host: disconnects a client.
+	void kick(PlayerId id);
 
 	//! Pumps the network and dispatches messages. Call once per frame.
 	void update();
@@ -105,7 +108,8 @@ public:
 	const std::string & error() const { return m_error; }
 	
 	/*!
-	 * Action requested on the command line, performed on the first ef update().
+	 * Action requested on the command line, performed on the first 
+ef update().
 	 */
 	struct StartupRequest {
 		bool host = false;
@@ -125,6 +129,12 @@ public:
 
 	//! Where we are listening or connected, for display.
 	const std::string & endpointDescription() const { return m_endpoint; }
+
+	//! IPv4 addresses of this machine (LAN), for the menu.
+	std::vector<std::string> localAddresses() const;
+	//! Starts fetching our public address (api.ipify.org); \ref publicAddress() fills in later.
+	void fetchPublicAddress();
+	const std::string & publicAddress() const { return m_publicAddress; }
 
 	//! Client: sends a message to the host. Host: no-op.
 	void sendToHost(MessageType type, const Writer & payload);
@@ -148,7 +158,27 @@ public:
 	//! Same routing as PlayerState, for spells cast by players.
 	std::function<void(PlayerId id, Reader & payload)> onSpellCast;
 
-	//! Called for game messages (type >= 40): on the host  from is the client, on clients it is 0.
+	//! Same routing as PlayerState, for custom faces.
+	std::function<void(PlayerId id, Reader & payload)> onPlayerFace;
+
+	//! Same routing as PlayerState, for "look here" markers.
+	std::function<void(PlayerId id, Reader & payload)> onPlayerMarker;
+
+	//! Same routing as PlayerState, for blood effects of hits landed elsewhere.
+	std::function<void(PlayerId id, Reader & payload)> onBlood;
+
+	//! Client: round trip time to the host in ms (0 until measured).
+	u16 ownLatency() const { return m_ownLatency; }
+	//! Host: round trip time to a client in ms (0 until measured).
+	u16 measuredLatency(PlayerId id) const;
+
+	//! Called whenever a player (ourselves included) is added to the roster; on the host  sendTo(id) already works.
+	std::function<void(PlayerId id)> onPlayerJoined;
+
+	//! Called whenever a player is removed from the roster (everyone when the session ends).
+	std::function<void(PlayerId id)> onPlayerLeft;
+
+	//! Called for game messages (type >= 40): on the host the sender is the client, on clients it is 0.
 	std::function<void(PlayerId from, MessageType type, Reader & payload)> onGameMessage;
 
 	//! Client: called with the host's NPC states.
@@ -181,6 +211,12 @@ private:
 	bool m_startRequested;
 	bool m_lobbyRequested = false;
 	bool m_joinedRunningGame = false;
+	u16 m_ownLatency = 0;
+	std::string m_publicAddress;
+	std::map<PlayerId, u16> m_latencies; //!< Host: per client
+	u64 m_lastPingTime = 0;
+
+	void pingPeers();
 
 };
 

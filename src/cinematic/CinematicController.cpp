@@ -21,6 +21,7 @@
 
 #include <string>
 
+#include "core/Config.h"
 #include "core/Application.h"
 #include "core/GameTime.h"
 
@@ -95,6 +96,12 @@ void cinematicLaunchWaiting() {
 	}
 
 	LogDebug("LaunchWaitingCine " << CINE_PRELOAD);
+	
+	if(config.misc.skipIntro && WILL_LAUNCH_CINE == "introduction.cin") {
+		// Co-op mod: straight to the main menu, see HandleGameFlowTransitions()
+		WILL_LAUNCH_CINE.clear();
+		return;
+	}
 	
 	if(g_camera) {
 		g_originalCameraPosition = g_camera->m_pos;

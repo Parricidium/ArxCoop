@@ -24,6 +24,7 @@
 #include <string_view>
 #include <vector>
 
+#include "coop/Protocol.h"
 #include "game/EntityId.h"
 #include "script/Script.h"
 
@@ -142,6 +143,24 @@ void gameLoaded(std::string_view name);
 //! Client: true while a save/load requested by the host is being performed.
 bool hostDrivenSaveLoad();
 
+//! Client: saves our own character as "coop: <hostName>" (what a SaveRequest does).
+void saveMyCharacter(std::string_view hostName);
+
+/*!
+ * Host: a positional sound effect was played by the engine (not by a replicated script
+ * command, clients replay those themselves): let the clients hear it too.
+ */
+void soundPlayed(std::string_view sample, const Vec3f & pos, float pitch);
+
+//! Host: sends a teammate next to us (slot spreads several players sideways).
+bool teleportPlayerToMe(PlayerId id, size_t slot);
+void collisionSoundPlayed(int mat1, int mat2, float volume, const Vec3f & pos);
+//! While a replicated script command executes on the host (its sounds are not broadcast).
+void replicatedCommandBegin();
+void replicatedCommandEnd();
+//! Client: plays a sound the host's world made.
+void applySound(Reader & reader);
+
 //! Client joining a running game: loads the newest "coop: ..." character save, if any.
 bool loadSavedCoopCharacter();
 
@@ -165,6 +184,21 @@ void itemDragged(const Entity & item);
 
 //! The local player put an item on the floor (or threw it): it (re)enters the shared world everywhere.
 void itemDropped(const Entity & item, bool thrown = false, const Vec3f & direction = Vec3f(0.f));
+
+/*!
+ * The local player drops the item it carries into a world container (chest, merchant, corpse):
+ * whatever changed in there when the scope ends (item stored, stack grown) reaches the others.
+ */
+class ContainerDropScope {
+public:
+	ContainerDropScope(const Entity & container, const Entity * item);
+	~ContainerDropScope();
+	ContainerDropScope(const ContainerDropScope &) = delete;
+	ContainerDropScope & operator=(const ContainerDropScope &) = delete;
+};
+
+//! The local player changed the size of a stack in a world container (bought one, took one).
+void itemCountChanged(const Entity & item);
 
 } // namespace coop
 

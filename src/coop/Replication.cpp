@@ -28,7 +28,10 @@
 #include <zlib.h>
 
 #include "coop/Protocol.h"
+#include "coop/Admin.h"
+#include "coop/Qol.h"
 #include "coop/Session.h"
+#include "coop/Text.h"
 #include "game/Entity.h"
 #include "game/EntityManager.h"
 #include "game/Damage.h"
@@ -38,6 +41,8 @@
 #include "scene/GameSound.h"
 #include "game/Item.h"
 #include "game/Player.h"
+#include "game/magic/Spell.h"
+#include "game/Spells.h"
 #include "coop/Puppets.h"
 #include "gui/Dragging.h"
 #include "gui/Menu.h"
@@ -56,9 +61,11 @@
 #include "io/resource/ResourcePath.h"
 #include "script/Script.h"
 #include "scene/Interactive.h"
+#include "audio/AudioTypes.h"
 #include "script/ScriptEvent.h"
 #include "script/ScriptUtils.h"
 #include "gui/Speech.h"
+#include "gui/CinematicBorder.h"
 #include "util/Number.h"
 #include "util/String.h"
 
@@ -69,9 +76,25 @@ extern bool REQUEST_SPEECH_SKIP;
 
 namespace coop {
 
+// Container transfers (defined with the other item transfers below)
+void applyStoreItem(PlayerId from, Reader & reader);
+void applySetCount(PlayerId from, Reader & reader);
+void applyInventoryAdd(Reader & reader);
+void sendInventoryAdd(const Entity & container, const Entity & item);
+
 namespace {
 
 PlayerId g_actingPlayer = InvalidPlayerId; //!< Host: the player whose action is being processed, if any
+
+/*!
+ * Host: a script moved us around without a player behind it (intro, cutscene staging): once the
+ * scene is over the teammates left behind are brought to us. Also used after a level change, once
+ * we have landed, for the clients placed from a position we had not settled at yet.
+ */
+bool g_gatherPending = false;
+std::map<PlayerId, PlatformInstant> g_settleTeleports;
+constexpr PlatformDuration SettleDelay = std::chrono::milliseconds(3000);
+constexpr float GatherDistance = 300.f;
 bool g_playthroughStarted = false;         //!< Client: our own character is ready for the shared world
 int g_levelLoading = 0;                    //!< > 0 while a level is being loaded
 int g_applyingRemote = 0;      //!< > 0 while applying something received from the network
@@ -92,6 +115,7 @@ const std::map<std::string, Category> & commandTable() {
 		// World
 		{ "setevent", Category::World }, { "objecthide", Category::World }, { "destroy", Category::World },
 		{ "teleport", Category::World }, { "playanim", Category::World }, { "forceanim", Category::World },
+		{ "loadanim", Category::World },
 		{ "rotate", Category::World }, { "move", Category::World }, { "setinteractivity", Category::World },
 		{ "collision", Category::World }, { "setlight", Category::World }, { "ambiance", Category::World },
 		{ "play", Category::World }, { "playspeech", Category::World }, { "setspeakpitch", Category::World },
@@ -173,7 +197,8 @@ std::string buildLine(std::string_view command, const std::vector<std::string> &
 
 //! Whether the command line uses a sub-command that is player-directed (checked before executing).
 bool peekPlayerDirected(std::string_view command, const script::Context & context) {
-	if(command != "inventory" && command != "teleport" && command != "speak" && command != "dodamage") {
+	if(command != "inventory" && command != "teleport" && command != "speak" && command != "dodamage"
+	   && command != "playanim" && command != "forceanim" && command != "loadanim") {
 		return false;
 	}
 	// Read the first word the way the command will, without consuming it (a copy of the
@@ -188,6 +213,22 @@ bool peekPlayerDirected(std::string_view command, const script::Context & contex
 		return first == "player";
 	}
 	return first.size() > 1 && first[0] == '-' && first.find('p') != std::string_view::npos;
+}
+
+//! The flag word of a command line ("-pe"), or empty, without consuming it.
+std::string peekFlags(const script::Context & context) {
+	script::Context probe(context);
+	probe.setTranscript(nullptr);
+	std::string first = probe.getWord();
+	return (first.size() > 1 && first[0] == '-') ? first : std::string();
+}
+
+//! Whether a teleport command line changes level (-l flag), as opposed to a same-level placement.
+bool peekTeleportChangesLevel(const script::Context & context) {
+	script::Context probe(context);
+	probe.setTranscript(nullptr);
+	std::string first = probe.getWord();
+	return first.size() > 1 && first[0] == '-' && first.find('l') != std::string_view::npos;
 }
 
 /*!
@@ -268,6 +309,12 @@ void applyScriptCommand(Reader & reader) {
 	}
 
 	LogDebug("[coop] apply " << entity->idString() << ": " << line);
+	if(line.rfind("spellcast", 0) == 0) {
+		LogInfo << "[coop] spell replayed on " << entity->idString() << ": " << line;
+	} else if(line.rfind("playanim", 0) != 0 && line.rfind("forceanim", 0) != 0 && line.rfind("settarget", 0) != 0
+	          && line.rfind("behavior", 0) != 0 && line.rfind("setmovemode", 0) != 0 && line.rfind("set ", 0) != 0) {
+		LogInfo << "[coop] replayed on " << entity->idString() << ": " << line; // diagnostic trail
+	}
 
 	EERIE_SCRIPT es;
 	es.valid = true;
@@ -529,6 +576,8 @@ void sendWorldSync(PlayerId to) {
 		writer.string(key);
 	}
 	writer.u32_(u32(player.rune_flags));
+	writer.s32_(s32(player.xp));
+	writer.u8_(u8(entities.player() ? entities.player()->inventory->bags() : 1));
 	g_coop.sendTo(to, MessageType::WorldSync, writer);
 }
 
@@ -546,8 +595,21 @@ void applyWorldSync(Reader & reader) {
 		g_playerKeyring.push_back(reader.string());
 	}
 	player.rune_flags = RuneFlags::load(reader.u32_());
+	// Progress is shared as it happens; someone who joins later starts from the party's level
+	s32 xp = reader.s32_();
+	u8 bags = reader.u8_();
+	if(player.xp < long(xp)) {
+		LogInfo << "[coop] world sync: catching up " << (long(xp) - player.xp) << " xp";
+		ARX_PLAYER_Modify_XP(long(xp) - player.xp);
+	}
+	if(entities.player()) {
+		while(entities.player()->inventory->bags() < size_t(bags) && entities.player()->inventory->bags() < 3) {
+			ARX_PLAYER_AddBag();
+			LogInfo << "[coop] world sync: extra inventory bag";
+		}
+	}
 	g_applyingRemote--;
-	LogInfo << "[coop] world sync: " << quests << " quests, " << keys << " keys";
+	LogInfo << "[coop] world sync: " << quests << " quests, " << keys << " keys, " << xp << " xp, " << int(bags) << " bags";
 }
 
 // Saved entities are mostly zero-filled fixed-size structs: they compress extremely well.
@@ -580,6 +642,20 @@ void sendLevelState(PlayerId to) {
 	writer.bytes(compressed.data(), compressedSize);
 	g_coop.sendTo(to, MessageType::LevelState, writer);
 	sendWorldSync(to);
+	// Persistent magic fields (the "blue walls") are spells cast by markers on game_ready, an
+	// event clients never run, and spells are not part of the level state: recast them there.
+	for(const Spell & spell : spells.ofType(SPELL_CREATE_FIELD)) {
+		const Entity * caster = entities.get(spell.m_caster);
+		if(!caster || caster == entities.player() || caster->coopPuppet) {
+			continue;
+		}
+		sendScriptCommand(to, caster->idString(), "spellcast",
+		                  { "-msfdz", "-1", std::to_string(std::max(1, int(spell.m_level))), "create_field", "self" });
+		LogInfo << "[coop] recast the field of " << caster->idString() << " for player " << int(to);
+	}
+	if(!restoreRejoiningPlayer(to)) { // back where it left, if it left from this level
+		g_settleTeleports[to] = platform::getTime() + SettleDelay; // else next to us once we have landed
+	}
 	LogInfo << "[coop] sent level " << g_currentArea << " state to player " << int(to) << ": "
 	        << files.size() << " entries, " << raw.size() / 1024 << " KiB -> " << compressedSize / 1024 << " KiB";
 }
@@ -615,6 +691,12 @@ void applyLevelState(Reader & reader) {
 	g_applyingRemote++;
 	bool ok = ARX_CHANGELEVEL_ImportLevel(area, files, pos);
 	g_applyingRemote--;
+	// Safety net: the transition protection (invulnerability -p on) may have been saved with our
+	// character before its lift reached us; a level arrival always ends it
+	if(player.playerflags & PLAYERFLAGS_INVULNERABILITY) {
+		player.playerflags &= ~PLAYERFLAGS_INVULNERABILITY;
+		LogInfo << "[coop] invulnerability left over from a transition: cleared";
+	}
 	g_levelSynced = ok;
 	if(!ok) {
 		LogError << "[coop] failed to load the host's level state";
@@ -636,9 +718,9 @@ void applyDamagePlayer(Reader & reader) {
 		return;
 	}
 	g_applyingRemote++;
-	damagePlayer(damage, DamageType::load(type), nullptr);
+	float done = damagePlayer(damage, DamageType::load(type), nullptr);
 	g_applyingRemote--;
-	LogInfo << "[coop] took " << damage << " damage from the host's world";
+	LogInfo << "[coop] took " << damage << " damage from the host's world" << (done > 0.f ? "" : " (ignored: invulnerable or dead)");
 }
 
 void applyDamageNpc(PlayerId from, Reader & reader) {
@@ -674,15 +756,7 @@ SavegameHandle findSaveByName(const std::string & name) {
 }
 
 void applySaveRequest(Reader & reader) {
-	std::string name = coopSaveName(reader.string());
-	if(!inLevel()) {
-		return;
-	}
-	g_hostDrivenSaveLoad = true;
-	GRenderer->getSnapshot(savegame_thumbnail, config.interface.thumbnailSize.x, config.interface.thumbnailSize.y);
-	bool ok = savegames.save(name, findSaveByName(name), savegame_thumbnail);
-	g_hostDrivenSaveLoad = false;
-	LogInfo << "[coop] saved my character as \"" << name << "\"" << (ok ? "" : " (failed)");
+	saveMyCharacter(reader.string());
 }
 
 void applyLoadRequest(Reader & reader) {
@@ -879,7 +953,7 @@ void applyTeleportPlayer(PlayerId from, Reader & reader) {
 	const Player * who = g_coop.player(from);
 	std::string name = who ? who->name : std::string("?");
 	if(!inLevel() || area != g_currentArea.handleData()) {
-		ARX_LOG(Logger::Console) << "[coop] " << name << " veut me t\xC3\xA9l\xC3\xA9porter mais n'est pas dans le m\xC3\xAAme niveau";
+		ARX_LOG(Logger::Console) << "[coop] " << name << tr("coop_teleport_other_level", " veut me t\xC3\xA9l\xC3\xA9porter mais n'est pas dans le m\xC3\xAAme niveau");
 		return;
 	}
 	LogInfo << "[coop] teleport request from player " << int(from);
@@ -887,7 +961,7 @@ void applyTeleportPlayer(PlayerId from, Reader & reader) {
 	ARX_INTERACTIVE_Teleport(entities.player(), pos);
 	player.desiredangle.setYaw(yaw);
 	player.angle.setYaw(yaw);
-	ARX_LOG(Logger::Console) << "[coop] t\xC3\xA9l\xC3\xA9port\xC3\xA9 vers " << name;
+	ARX_LOG(Logger::Console) << "[coop] " << tr("coop_teleported_to", "t\xC3\xA9l\xC3\xA9port\xC3\xA9 vers ") << name;
 	LogInfo << "[coop] teleported to player " << int(from);
 }
 
@@ -956,12 +1030,48 @@ void handleGameMessage(PlayerId from, MessageType type, Reader & reader) {
 			applyDropItem(from, reader);
 			break;
 		}
+		case MessageType::StoreItem: {
+			applyStoreItem(from, reader);
+			break;
+		}
+		case MessageType::SetCount: {
+			applySetCount(from, reader);
+			break;
+		}
+		case MessageType::InventoryAdd: {
+			if(g_coop.isClient() && g_levelSynced) {
+				applyInventoryAdd(reader);
+			}
+			break;
+		}
 		case MessageType::DragItem: {
 			applyDragItem(from, reader);
 			break;
 		}
 		case MessageType::TeleportPlayer: {
 			applyTeleportPlayer(from, reader);
+			break;
+		}
+		case MessageType::GiveItem: {
+			handleGiveItem(from, reader);
+			break;
+		}
+		case MessageType::Latency: {
+			if(g_coop.isClient()) {
+				handleLatencies(reader);
+			}
+			break;
+		}
+		case MessageType::Sound: {
+			if(g_coop.isClient()) {
+				applySound(reader);
+			}
+			break;
+		}
+		case MessageType::AdminGrant: {
+			if(g_coop.isClient()) {
+				applyAdminGrant(reader);
+			}
 			break;
 		}
 		case MessageType::SpeechSkip: {
@@ -1078,6 +1188,54 @@ void levelLoadEnd() {
 	}
 }
 
+//! Host: sends a teammate to our side (a little behind us so nobody stands inside anybody).
+void gatherTeammate(PlayerId id, size_t slot, const char * why) {
+	Vec3f side = angleToVectorXZ(player.angle.getYaw() + 90.f);
+	Vec3f back = -angleToVectorXZ(player.angle.getYaw());
+	Vec3f pos = entities.player()->pos + back * 60.f + side * (float(slot) - 0.5f) * 70.f;
+	Writer writer;
+	writer.u8_(id);
+	writer.u32_(g_currentArea.handleData());
+	writer.f32_(pos.x);
+	writer.f32_(pos.y);
+	writer.f32_(pos.z);
+	writer.f32_(player.angle.getYaw());
+	g_coop.sendTo(id, MessageType::TeleportPlayer, writer);
+	LogInfo << "[coop] gathering player " << int(id) << " to us (" << why << ")";
+}
+
+void gatherUpdate() {
+	if(!inLevel() || !entities.player()) {
+		return;
+	}
+	bool sceneOver = !BLOCK_PLAYER_CONTROLS && !cinematicBorder.isActive() && !getCinematicSpeech();
+	if(!sceneOver) {
+		return; // wait until the scripted scene is over (and we have been put at our final spot)
+	}
+	PlatformInstant now = platform::getTime();
+	size_t slot = 0;
+	if(g_gatherPending) {
+		g_gatherPending = false;
+		for(const TeammateInfo & mate : teammates()) {
+			if(mate.here && glm::distance(mate.pos, entities.player()->pos) > GatherDistance) {
+				gatherTeammate(mate.id, slot++, "scripted scene");
+			}
+		}
+	}
+	for(auto it = g_settleTeleports.begin(); it != g_settleTeleports.end(); ) {
+		if(now < it->second) {
+			++it;
+			continue;
+		}
+		for(const TeammateInfo & mate : teammates()) {
+			if(mate.id == it->first && mate.here && glm::distance(mate.pos, entities.player()->pos) > GatherDistance) {
+				gatherTeammate(mate.id, slot++, "level change");
+			}
+		}
+		it = g_settleTeleports.erase(it);
+	}
+}
+
 void replicationUpdate() {
 
 	if(!g_coop.isActive() || g_coop.state() != State::InGame) {
@@ -1103,6 +1261,7 @@ void replicationUpdate() {
 			}
 			g_pendingLevelRequests.clear();
 		}
+		gatherUpdate();
 		return;
 	}
 
@@ -1190,6 +1349,107 @@ void gameLoaded(std::string_view name) {
 	}
 }
 
+// Sounds ------------------------------------------------------------------------------------
+
+int g_replicatingCommand = 0;
+
+void replicatedCommandBegin() {
+	g_replicatingCommand++;
+}
+
+void replicatedCommandEnd() {
+	g_replicatingCommand--;
+}
+
+bool teleportPlayerToMe(PlayerId id, size_t slot) {
+	// Not inLevel(): the host uses this from its menu, where its world keeps running
+	if(!g_coop.isHost() || !g_currentArea || !entities.player() || !g_coop.player(id)) {
+		return false;
+	}
+	gatherTeammate(id, slot, "admin");
+	return true;
+}
+
+bool broadcastSounds() {
+	return g_coop.isHost() && g_coop.state() == State::InGame && g_playthroughStarted && g_replicatingCommand == 0
+	       && g_applyingRemote == 0 && g_levelLoading == 0 && !g_coop.players().empty() && g_coop.players().size() > 1;
+}
+
+void soundPlayed(std::string_view sample, const Vec3f & pos, float pitch) {
+	if(!broadcastSounds() || sample.empty()) {
+		return;
+	}
+	Writer writer;
+	writer.u8_(0);
+	writer.string(sample);
+	writer.f32_(pos.x);
+	writer.f32_(pos.y);
+	writer.f32_(pos.z);
+	writer.f32_(pitch);
+	writer.f32_(1.f);
+	g_coop.broadcast(MessageType::Sound, writer);
+}
+
+void collisionSoundPlayed(int mat1, int mat2, float volume, const Vec3f & pos) {
+	if(!broadcastSounds()) {
+		return;
+	}
+	Writer writer;
+	writer.u8_(1);
+	writer.u8_(u8(mat1));
+	writer.u8_(u8(mat2));
+	writer.f32_(pos.x);
+	writer.f32_(pos.y);
+	writer.f32_(pos.z);
+	writer.f32_(1.f);
+	writer.f32_(volume);
+	g_coop.broadcast(MessageType::Sound, writer);
+}
+
+std::map<std::string, audio::SampleHandle> g_sampleCache;
+
+void applySound(Reader & reader) {
+	u8 kind = reader.u8_();
+	if(kind == 0) {
+		std::string name = reader.string();
+		Vec3f pos = reader.vec3<Vec3f>();
+		float pitch = reader.f32_();
+		reader.f32_();
+		auto it = g_sampleCache.find(name);
+		if(it == g_sampleCache.end()) {
+			it = g_sampleCache.emplace(name, ARX_SOUND_Load(res::path::load(name))).first;
+		}
+		if(it->second != audio::SampleHandle()) {
+			g_applyingRemote++;
+			ARX_SOUND_PlaySFX(it->second, &pos, pitch);
+			g_applyingRemote--;
+		}
+	} else {
+		int mat1 = reader.u8_();
+		int mat2 = reader.u8_();
+		Vec3f pos = reader.vec3<Vec3f>();
+		reader.f32_();
+		float volume = reader.f32_();
+		if(mat1 < MAX_MATERIALS && mat2 < MAX_MATERIALS) {
+			g_applyingRemote++;
+			ARX_SOUND_PlayCollision(Material(mat1), Material(mat2), volume, 1.f, pos, nullptr);
+			g_applyingRemote--;
+		}
+	}
+}
+
+void saveMyCharacter(std::string_view hostName) {
+	std::string name = coopSaveName(hostName);
+	if(!inLevel()) {
+		return;
+	}
+	g_hostDrivenSaveLoad = true;
+	GRenderer->getSnapshot(savegame_thumbnail, config.interface.thumbnailSize.x, config.interface.thumbnailSize.y);
+	bool ok = savegames.save(name, findSaveByName(name), savegame_thumbnail);
+	g_hostDrivenSaveLoad = false;
+	LogInfo << "[coop] saved my character as \"" << name << "\"" << (ok ? "" : " (failed)");
+}
+
 bool hostDrivenSaveLoad() {
 	return g_hostDrivenSaveLoad;
 }
@@ -1243,6 +1503,202 @@ void itemDropped(const Entity & item, bool thrown, const Vec3f & direction) {
 		g_inFlight.erase(item.idString());
 	}
 	g_lastDragSend = PlatformInstant();
+}
+
+// Containers (chests, merchants, corpses) -----------------------------------------------
+
+struct ContainerDrop {
+	std::string container;
+	std::string item;
+	std::map<std::string, s16> counts; //!< stacks in the container before the drop
+	bool active = false;
+};
+ContainerDrop g_containerDrop;
+
+std::map<std::string, s16> containerCounts(const Entity & container) {
+	std::map<std::string, s16> counts;
+	if(!container.inventory) {
+		return counts;
+	}
+	for(auto slot : container.inventory->slotsInOrder()) {
+		if(slot.show && slot.entity && (slot.entity->ioflags & IO_ITEM)) {
+			counts[slot.entity->idString()] = slot.entity->_itemdata->count;
+		}
+	}
+	return counts;
+}
+
+void sendItemCount(const Entity & item) {
+	Writer writer;
+	writer.string(item.idString());
+	writer.raw<s16>(item._itemdata->count);
+	g_coop.sendToOthers(MessageType::SetCount, writer);
+	LogInfo << "[coop] " << item.idString() << " now x" << item._itemdata->count << " for everyone";
+}
+
+ContainerDropScope::ContainerDropScope(const Entity & container, const Entity * item) {
+	g_containerDrop.active = false;
+	if(!g_coop.isActive() || g_coop.state() != State::InGame || g_applyingRemote > 0 || !item
+	   || !(item->ioflags & IO_ITEM) || !container.inventory || isPlayerSide(&container) || container.coopPuppet) {
+		return;
+	}
+	g_containerDrop.container = container.idString();
+	g_containerDrop.item = item->idString();
+	g_containerDrop.counts = containerCounts(container);
+	g_containerDrop.active = true;
+}
+
+ContainerDropScope::~ContainerDropScope() {
+	if(!g_containerDrop.active) {
+		return;
+	}
+	g_containerDrop.active = false;
+	Entity * container = entities.getById(g_containerDrop.container);
+	if(!container || !container->inventory) {
+		return;
+	}
+	Entity * item = entities.getById(g_containerDrop.item);
+	if(item && (item->ioflags & IO_ITEM) && item->owner() == container) {
+		InventoryPos pos = locateInInventories(item);
+		Writer writer;
+		writeItemPlacement(writer, *item);
+		writer.raw<s16>(item->_itemdata->count);
+		writer.string(container->idString());
+		writer.raw<s16>(pos.bag);
+		writer.raw<s16>(pos.x);
+		writer.raw<s16>(pos.y);
+		g_coop.sendToOthers(MessageType::StoreItem, writer);
+		LogInfo << "[coop] stored " << item->idString() << " x" << item->_itemdata->count << " in " << container->idString()
+		        << " at " << pos.bag << "/" << pos.x << "," << pos.y;
+	}
+	// Merged into a stack that was already there (sold potions on top of the merchant's...)
+	for(const auto & entry : containerCounts(*container)) {
+		auto before = g_containerDrop.counts.find(entry.first);
+		if(before != g_containerDrop.counts.end() && before->second != entry.second && entry.first != g_containerDrop.item) {
+			if(const Entity * stack = entities.getById(entry.first)) {
+				sendItemCount(*stack);
+			}
+		}
+	}
+}
+
+void itemCountChanged(const Entity & item) {
+	if(!sharedWorldItem(item) || !item.owner() || isPlayerSide(item.owner()) || item.owner()->coopPuppet) {
+		return;
+	}
+	sendItemCount(item);
+}
+
+void applyStoreItem(PlayerId from, Reader & reader) {
+	ItemPlacement placement = readItemPlacement(reader);
+	s16 count = reader.raw<s16>();
+	std::string containerId = reader.string();
+	s16 bag = reader.raw<s16>();
+	s16 x = reader.raw<s16>();
+	s16 y = reader.raw<s16>();
+	Entity * container = entities.getById(containerId);
+	if(container && container->inventory && !isPlayerSide(container)) {
+		g_applyingRemote++;
+		if(Entity * item = placedItem(placement, true)) {
+			if((item->ioflags & IO_ITEM) && count > 0) {
+				item->_itemdata->count = count;
+			}
+			if(item->obj && item->obj->pbox) {
+				item->obj->pbox->active = 0;
+			}
+			bool ok = bag >= 0 && size_t(bag) < container->inventory->bags() && x >= 0 && y >= 0
+			          && container->inventory->insertAtNoEvent(item, InventoryPos(container, Vec3s(x, y, bag)));
+			if(!ok) {
+				ok = container->inventory->insert(item);
+			}
+			// The insertion may have merged it into a stack (and deleted it): look it up again
+			if(Entity * stored = entities.getById(placement.id)) {
+				if(ok) {
+					stored->show = SHOW_FLAG_IN_INVENTORY;
+				} else {
+					hideTakenItem(*stored); // no room: stays out of our copy of the world
+				}
+			}
+			LogInfo << "[coop] " << placement.id << " x" << count << " was put in " << containerId << " by player " << int(from)
+			        << (ok ? "" : " (no room here!)");
+		}
+		g_applyingRemote--;
+	}
+	if(g_coop.isHost()) {
+		Writer writer;
+		writeItemPlacement(writer, placement);
+		writer.raw<s16>(count);
+		writer.string(containerId);
+		writer.raw<s16>(bag);
+		writer.raw<s16>(x);
+		writer.raw<s16>(y);
+		g_coop.broadcast(MessageType::StoreItem, writer, from);
+	}
+}
+
+void applySetCount(PlayerId from, Reader & reader) {
+	std::string id = reader.string();
+	s16 count = reader.raw<s16>();
+	Entity * item = entities.getById(id);
+	if(item && (item->ioflags & IO_ITEM) && !isPlayerSide(item)) {
+		g_applyingRemote++;
+		if(count <= 0) {
+			hideTakenItem(*item);
+		} else {
+			item->_itemdata->count = count;
+			LogInfo << "[coop] " << id << " now x" << count << " (player " << int(from) << ")";
+		}
+		g_applyingRemote--;
+	}
+	if(g_coop.isHost()) {
+		Writer writer;
+		writer.string(id);
+		writer.raw<s16>(count);
+		g_coop.broadcast(MessageType::SetCount, writer, from);
+	}
+}
+
+//! Host: a script created an item straight into a container; the clients get the same id.
+void sendInventoryAdd(const Entity & container, const Entity & item) {
+	Writer writer;
+	writer.string(container.idString());
+	writer.string(item.classPath().string());
+	writer.s32_(item.instance());
+	writer.raw<s16>(item._itemdata->count);
+	writer.s32_(s32(item._itemdata->price));
+	g_coop.broadcast(MessageType::InventoryAdd, writer);
+}
+
+void applyInventoryAdd(Reader & reader) {
+	std::string containerId = reader.string();
+	res::path classPath = res::path::load(reader.string());
+	EntityInstance instance = reader.s32_();
+	s16 count = reader.raw<s16>();
+	s32 price = reader.s32_();
+	if(entities.getById(EntityId(classPath.filename(), instance).string())) {
+		return;
+	}
+	Entity * container = entities.getById(containerId);
+	if(!container || !container->inventory) {
+		return;
+	}
+	g_applyingRemote++;
+	if(Entity * item = AddItem(classPath, instance, IO_IMMEDIATELOAD)) {
+		item->scriptload = 1;
+		SendInitScriptEvent(item);
+		if(item->ioflags & IO_GOLD) {
+			item->_itemdata->price = price;
+		} else if(count > 1) {
+			item->_itemdata->maxcount = 9999;
+			item->_itemdata->count = count;
+		}
+		if(!container->inventory->insert(item)) {
+			item->destroy();
+		} else {
+			LogInfo << "[coop] script put " << EntityId(classPath.filename(), instance).string() << " x" << count << " in " << containerId;
+		}
+	}
+	g_applyingRemote--;
 }
 
 bool keptOverLevelState(const Entity & io) {
@@ -1436,8 +1892,27 @@ CommandSync commandSync(std::string_view command, const script::Context & contex
 	if(category == Category::Player) {
 		if(g_actingPlayer == InvalidPlayerId) {
 			// Scripted for "the player" with nobody in particular behind it (zone the host walked
-			// into, timer...): that is the host. Only teleports move everyone.
-			return command == "teleport" ? CommandSync::Replicate : CommandSync::Local;
+			// into, timer...): that is the host. Only level changes move everyone: a same-level
+			// "teleport -p marker" is cutscene staging (Polsius, Atok...) and must not pile the
+			// clients onto the host.
+			if(command == "teleport") {
+				if(peekTeleportChangesLevel(context)) {
+					return CommandSync::Replicate;
+				}
+				g_gatherPending = true; // the others join us once the scene is over
+			}
+			if(command == "invulnerability") {
+				// Level transitions protect "the player" (zone entered by anyone, so possibly a client)
+				// and lift it from a timer with nobody behind it: the lift must reach everyone
+				return CommandSync::Replicate;
+			}
+			return CommandSync::Local;
+		}
+		if((command == "playanim" || command == "forceanim") && g_actingPlayer != g_coop.localId()
+		   && peekFlags(context).find('e') != std::string::npos) {
+			// "-e <command when done>": the host must run the animation too so that the script goes
+			// on when it ends; the acting client gets the animation alone (see commandReplicated)
+			return CommandSync::Replicate;
 		}
 		return g_actingPlayer != g_coop.localId() ? CommandSync::Redirect : CommandSync::Local;
 	}
@@ -1457,6 +1932,15 @@ void commandReplicated(std::string_view command, const std::vector<std::string> 
 		return;
 	}
 
+	if(command == "inventory" && !words.empty() && (words[0] == "add" || words[0] == "addmulti")
+	   && LASTSPAWNED && ValidIOAddress(LASTSPAWNED) && (LASTSPAWNED->ioflags & IO_ITEM)
+	   && LASTSPAWNED->owner() == entity) {
+		// Replayed as-is, the clients would number the new item themselves (their own id range)
+		// and it could never be matched with ours again: send the item with its id instead
+		sendInventoryAdd(*entity, *LASTSPAWNED);
+		return;
+	}
+
 	if((command == "set" || command == "inc" || command == "dec" || command == "mul" || command == "div")
 	   && (words.empty() || !isLocalVariable(words[0]))) {
 		return; // globals go through SetGlobal; local variables of world entities are replayed so
@@ -1465,10 +1949,18 @@ void commandReplicated(std::string_view command, const std::vector<std::string> 
 
 	std::vector<std::string> sent = words;
 	if((command == "playanim" || command == "forceanim") && !sent.empty() && sent[0].size() > 1 && sent[0][0] == '-') {
+		bool playerDirected = sent[0].find('p') != std::string::npos;
 		// The -e "execute when done" part of the line stays on the host
 		sent[0].erase(std::remove(sent[0].begin(), sent[0].end(), 'e'), sent[0].end());
 		if(sent[0] == "-") {
 			sent.erase(sent.begin());
+		}
+		if(playerDirected) {
+			// The player's own animation in a client's cutscene: that client only
+			if(g_actingPlayer != InvalidPlayerId && g_actingPlayer != g_coop.localId()) {
+				sendScriptCommand(g_actingPlayer, entity->idString(), command, sent);
+			}
+			return;
 		}
 	}
 

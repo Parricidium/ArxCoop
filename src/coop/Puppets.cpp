@@ -20,15 +20,27 @@
 #include "coop/Puppets.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <limits>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
 
+#include <glm/gtc/quaternion.hpp>
+
 #include "animation/Animation.h"
+#include "animation/Skeleton.h"
+#include "coop/Admin.h"
+#include "coop/Faces.h"
 #include "coop/Protocol.h"
+#include "coop/Qol.h"
 #include "coop/Replication.h"
 #include "coop/Session.h"
+#include "coop/Text.h"
+#include "coop/ThirdPerson.h"
 #include "core/Application.h"
 #include "core/Core.h"
 #include "core/GameTime.h"
@@ -37,6 +49,7 @@
 #include "game/EntityManager.h"
 #include "game/NPC.h"
 #include "game/Damage.h"
+#include "game/npc/Dismemberment.h"
 #include "game/Spells.h"
 #include "game/magic/Spell.h"
 #include "util/Number.h"
@@ -57,6 +70,7 @@
 #include "graphics/font/Font.h"
 #include "core/Core.h"
 #include "core/GameTime.h"
+#include "gui/Speech.h"
 #include "gui/Text.h"
 #include "input/Input.h"
 #include "gui/menu/MenuFader.h"
@@ -75,6 +89,9 @@
 #include "gui/MenuWidgets.h"
 #include "physics/Physics.h"
 #include "script/Script.h"
+#include "script/ScriptEvent.h"
+
+extern Entity * LASTSPAWNED;
 
 namespace coop {
 
@@ -82,10 +99,12 @@ static bool puppetsAllowed();
 
 namespace {
 
-constexpr size_t SyncedAnimLayers = 2;
+constexpr size_t SyncedAnimLayers = 4; //!< all of them: 2 = talking head, 3 = leaning
 constexpr PlatformDuration SendInterval = std::chrono::milliseconds(50); // 20 Hz
 constexpr AnimationDuration MaxAnimDrift = std::chrono::milliseconds(150);
 constexpr float PositionSmoothing = 15.f; // higher = snappier
+constexpr float TorchPitch = -90.0f; //!< hip torch orientation, see hipTorchRotation()
+constexpr float TorchYaw = 25.0f;
 constexpr float SnapDistance = 300.f;      // teleport instead of sliding beyond this
 
 struct AnimState {
@@ -107,9 +126,10 @@ struct EquipmentState {
 	bool combat = false;
 	TweakInfo helmet, armor, leggings;
 	std::string weapon, shield;
+	std::string torch; //!< class of the lit torch / lamp, empty when none
 	bool operator==(const EquipmentState & o) const {
 		return skin == o.skin && combat == o.combat && helmet == o.helmet && armor == o.armor && leggings == o.leggings
-		       && weapon == o.weapon && shield == o.shield;
+		       && weapon == o.weapon && shield == o.shield && torch == o.torch;
 	}
 	bool operator!=(const EquipmentState & o) const { return !(*this == o); }
 };
@@ -125,6 +145,7 @@ struct PlayerSnapshot {
 	bool downed = false;
 	float life = 1.f;   // ratio
 	float hunger = 1.f; // ratio (1 = full)
+	bool inDialogue = false; //!< locked in a cinematic dialogue with an NPC
 	PlatformInstant received;
 };
 
@@ -137,6 +158,41 @@ std::string puppetIdString(PlayerId id) {
 
 Entity * findPuppet(PlayerId id) {
 	return entities.getById(puppetIdString(id));
+}
+
+//! Same spine bending as the player's own mesh (see ARX_PLAYER_Manage_Visual), from the look pitch.
+void applyLookPitch(Entity & io, float pitch, bool combat) {
+	if(!io._npcdata) {
+		return;
+	}
+	if(!io._npcdata->ex_rotate) {
+		static const char * const groups[] = { "head", "neck", "chest", "belt", "left_shoulder", "right_shoulder" };
+		auto * rotate = new EERIE_EXTRA_ROTATE();
+		for(size_t i = 0; i < std::size(groups) && i < rotate->group_number.size(); i++) {
+			rotate->group_number[i] = EERIE_OBJECT_GetGroup(io.obj, groups[i]);
+		}
+		for(Anglef & rotation : rotate->group_rotate) {
+			rotation = Anglef();
+		}
+		io._npcdata->ex_rotate = rotate;
+	}
+	float v = pitch;
+	if(v > 160.f) {
+		v = -(360.f - v);
+	}
+	EERIE_EXTRA_ROTATE & rotate = *io._npcdata->ex_rotate;
+	if(combat) {
+		rotate.group_rotate[0] = Anglef(v * 0.1f, 0.f, 0.f); // Head
+		rotate.group_rotate[1] = Anglef(v * 0.1f, 0.f, 0.f); // Neck
+		rotate.group_rotate[2] = Anglef(v * 0.4f, 0.f, 0.f); // Chest
+		rotate.group_rotate[3] = Anglef(v * 0.4f, 0.f, 0.f); // Belt
+	} else {
+		for(size_t i = 0; i < 4; i++) {
+			rotate.group_rotate[i] = Anglef(v * 0.25f, 0.f, 0.f);
+		}
+	}
+	rotate.group_rotate[4] = Anglef();
+	rotate.group_rotate[5] = Anglef();
 }
 
 Entity * createPuppet(PlayerId id, const PlayerSnapshot & state) {
@@ -255,8 +311,10 @@ void applySnapshot(Entity & io, const PlayerSnapshot & state, bool justCreated) 
 		float t = std::min(1.f, dt * PositionSmoothing);
 		io.pos += (state.pos - io.pos) * t;
 	}
-	// NPCs are rendered with a yaw of (180 - angle) while the player entity uses its angle directly
-	io.angle = Anglef(state.angle.getPitch(), MAKEANGLE(180.f - state.angle.getYaw()), state.angle.getRoll());
+	// NPCs are rendered with a yaw of (180 - angle) while the player entity uses its angle directly.
+	// The look pitch is not a body tilt: it bends the spine like ARX_PLAYER_Manage_Visual() does.
+	io.angle = Anglef(0.f, MAKEANGLE(180.f - state.angle.getYaw()), state.angle.getRoll());
+	applyLookPitch(io, state.angle.getPitch(), state.equipment.combat);
 	io.requestRoomUpdate = true;
 	io.show = state.visible ? SHOW_FLAG_IN_SCENE : SHOW_FLAG_HIDDEN;
 
@@ -320,6 +378,9 @@ EquipmentState localEquipment() {
 	if(Entity * item = entities.get(player.equiped[EQUIP_SLOT_SHIELD])) {
 		state.shield = item->classPath().string();
 	}
+	if(player.torch) {
+		state.torch = player.torch->classPath().string();
+	}
 	return state;
 }
 
@@ -355,6 +416,7 @@ void sendEquipmentIfNeeded(bool force) {
 	writeTweak(writer, state.leggings);
 	writer.string(state.weapon);
 	writer.string(state.shield);
+	writer.string(state.torch);
 	g_coop.sendToOthers(MessageType::PlayerEquipment, writer);
 }
 
@@ -368,6 +430,7 @@ void handlePlayerEquipment(PlayerId id, Reader & reader) {
 	readTweak(reader, state.leggings);
 	state.weapon = reader.string();
 	state.shield = reader.string();
+	state.torch = reader.string();
 	if(state != snap.equipment) {
 		snap.equipment = state;
 		snap.equipmentApplied = false;
@@ -391,7 +454,7 @@ void applyTweakTo(Entity * io, const TweakInfo & info, TweakType type, std::stri
  * data, so every human mesh using those textures (our puppets included) would show the local
  * player's face. Point the puppet's mesh at the texture files of its own player's skin instead.
  */
-void applySkin(EERIE_3DOBJ & obj, u8 skin) {
+void applySkin(EERIE_3DOBJ & obj, u8 skin, PlayerId owner) {
 	res::path replacements[4];
 	ARX_PLAYER_SkinTextures(skin, replacements[0], replacements[1], replacements[2], replacements[3]);
 	const char * const shared[4] = {
@@ -407,6 +470,11 @@ void applySkin(EERIE_3DOBJ & obj, u8 skin) {
 		for(size_t i = 0; i < 4; i++) {
 			if(replacements[i].empty() || tc->m_texName != res::path(shared[i])) {
 				continue;
+			}
+			// A custom face composited over that skin, if the player chose one
+			if(TextureContainer * face = playerFaceTexture(owner, i, skin)) {
+				tc = face;
+				break;
 			}
 			// A private copy of the skin's texture file, under a name the engine never overwrites
 			res::path name = replacements[i].string() + "_coopskin";
@@ -428,19 +496,111 @@ void applySkin(EERIE_3DOBJ & obj, u8 skin) {
 }
 
 //! Creates a display-only item linked to the puppet (destroyed with it or when replaced).
-void attachPuppetItem(Entity & puppet, const std::string & classPath, std::string_view puppetVertex,
-                      std::string_view itemVertex) {
+Entity * attachPuppetItem(Entity & puppet, const std::string & classPath, std::string_view puppetVertex,
+                          std::string_view itemVertex, const glm::quat & rotation = quat_identity()) {
 	if(classPath.empty()) {
-		return;
+		return nullptr;
 	}
 	Entity * item = AddItem(res::path::load(classPath), -1, IO_IMMEDIATELOAD | NO_ON_LOAD);
 	if(!item || !item->obj) {
-		return;
+		return nullptr;
 	}
 	item->ioflags |= IO_NOSAVE | IO_NO_COLLISIONS;
 	item->gameFlags &= ~GFLAG_INTERACTIVITY;
 	item->coopPuppet = true; // never part of the shared world
-	linkEntities(puppet, puppetVertex, *item, itemVertex);
+	linkEntities(puppet, puppetVertex, *item, itemVertex, rotation);
+	return item;
+}
+
+/*!
+ * A lit torch (or lamp) hangs at the right hip, Elden Ring style: the human_base mesh has no
+ * attach point there, so one is added on the origin vertex of the "right_hip" bone.
+ */
+constexpr const char * HipAttachName = "coop_hip_attach";
+
+bool ensureHipAttach(EERIE_3DOBJ & obj) {
+	if(getNamedVertex(&obj, HipAttachName)) {
+		return true;
+	}
+	for(const VertexGroup & group : obj.grouplist) {
+		if(group.name != "right_hip") {
+			continue;
+		}
+		// The outer side of the thigh, level with the joint (the mesh's right is -x)
+		const Vec3f & joint = obj.vertexlist[group.origin].v;
+		VertexId best = group.origin;
+		float bestX = joint.x;
+		for(VertexId id : group.indexes) {
+			const Vec3f & v = obj.vertexlist[id].v;
+			if(glm::abs(v.y - joint.y) < 12.f && v.x < bestX) {
+				bestX = v.x;
+				best = id;
+			}
+		}
+		EERIE_ACTIONLIST action;
+		action.name = HipAttachName;
+		action.idx = best;
+		obj.actionlist.push_back(action);
+		return true;
+	}
+	return false;
+}
+
+//! Orientation of the hanging torch in the thigh bone's frame (tuned by eye).
+glm::quat hipTorchRotation() {
+	return glm::angleAxis(glm::radians(TorchPitch), Vec3f(1.f, 0.f, 0.f))
+	       * glm::angleAxis(glm::radians(TorchYaw), Vec3f(0.f, 1.f, 0.f));
+}
+
+/*!
+ * Attach point on the torch itself: a third of the way up the handle, so the handle hangs
+ * along the thigh and the flame ends up at the waist rather than at the shoulder.
+ * Torch-like models extend along -z from their origin (the "fire" point is at the -z end).
+ */
+constexpr const char * TorchGripName = "coop_belt_grip";
+
+void ensureTorchGrip(EERIE_3DOBJ & obj) {
+	if(getNamedVertex(&obj, TorchGripName)) {
+		return;
+	}
+	float minZ = 0.f;
+	for(const EERIE_VERTEX & vertex : obj.vertexlist) {
+		minZ = std::min(minZ, vertex.v.z);
+	}
+	float wantedZ = minZ * 0.85f;
+	VertexId best;
+	float bestDist = std::numeric_limits<float>::max();
+	for(VertexId id : obj.vertexlist.handles()) {
+		const Vec3f & v = obj.vertexlist[id].v;
+		float dist = glm::abs(v.z - wantedZ) + glm::abs(v.x) * 0.25f + glm::abs(v.y) * 0.25f;
+		if(dist < bestDist) {
+			bestDist = dist;
+			best = id;
+		}
+	}
+	EERIE_ACTIONLIST action;
+	action.name = TorchGripName;
+	action.idx = best;
+	obj.actionlist.push_back(action);
+}
+
+Entity * attachTorch(Entity & carrier, const std::string & classPath) {
+	if(classPath.empty() || !carrier.obj || !ensureHipAttach(*carrier.obj)) {
+		return nullptr;
+	}
+	Entity * item = AddItem(res::path::load(classPath), -1, IO_IMMEDIATELOAD | NO_ON_LOAD);
+	if(!item || !item->obj) {
+		return nullptr;
+	}
+	item->ioflags |= IO_NOSAVE | IO_NO_COLLISIONS;
+	item->gameFlags &= ~GFLAG_INTERACTIVITY;
+	item->coopPuppet = true;
+	ensureTorchGrip(*item->obj);
+	linkEntities(carrier, HipAttachName, *item, TorchGripName, hipTorchRotation());
+	// Burning: flame particles, light and crackle come from the engine's ignition handling
+	item->ignition = 25.f;
+	item->durability = item->max_durability = 1e6f;
+	return item;
 }
 
 void applyEquipment(Entity & io, const EquipmentState & state) {
@@ -469,7 +629,8 @@ void applyEquipment(Entity & io, const EquipmentState & state) {
 	if(!state.shield.empty()) {
 		attachPuppetItem(io, state.shield, "shield_attach", "shield_attach");
 	}
-	applySkin(*io.obj, state.skin);
+	attachTorch(io, state.torch);
+	applySkin(*io.obj, state.skin, puppetOwner(io));
 	ARX_INTERACTIVE_HideGore(&io, false);
 	EERIE_Object_Precompute_Fast_Access(io.obj);
 	EERIE_COLLISION_Cylinder_Create(&io);
@@ -495,6 +656,7 @@ void handlePlayerState(PlayerId id, Reader & reader) {
 	}
 	state.life = reader.f32_();
 	state.hunger = reader.f32_();
+	state.inDialogue = reader.remaining() ? reader.bool_() : false;
 	state.received = platform::getTime();
 
 }
@@ -630,6 +792,8 @@ struct NpcSnapshot {
 	float life = 0.f;
 	u8 show = 0;
 	bool dead = false;
+	bool weaponInHand = false;
+	u8 cuts = 0;
 	AnimState layers[SyncedAnimLayers];
 	PlatformInstant sent;
 };
@@ -653,6 +817,8 @@ void writeNpc(Writer & writer, const Entity & io, NpcSnapshot & snap) {
 	writer.f32_(io._npcdata->lifePool.current);
 	writer.u8_(u8(io.show));
 	writer.bool_(io.mainevent == SM_DEAD);
+	writer.bool_(io._npcdata->weaponinhand == 1);
+	writer.u8_(u8(DismembermentFlags::Type(io._npcdata->cuts)));
 	for(size_t i = 0; i < SyncedAnimLayers; i++) {
 		writeAnim(writer, io.animlayer[i]);
 	}
@@ -661,6 +827,8 @@ void writeNpc(Writer & writer, const Entity & io, NpcSnapshot & snap) {
 	snap.life = io._npcdata->lifePool.current;
 	snap.show = u8(io.show);
 	snap.dead = io.mainevent == SM_DEAD;
+	snap.weaponInHand = io._npcdata->weaponinhand == 1;
+	snap.cuts = u8(DismembermentFlags::Type(io._npcdata->cuts));
 	for(size_t i = 0; i < SyncedAnimLayers; i++) {
 		const AnimLayer & layer = io.animlayer[i];
 		snap.layers[i].path = layer.cur_anim ? layer.cur_anim->path.string() : std::string();
@@ -674,7 +842,8 @@ bool npcChanged(const Entity & io, const NpcSnapshot & snap) {
 		return true;
 	}
 	if(io._npcdata->lifePool.current != snap.life || u8(io.show) != snap.show
-	   || (io.mainevent == SM_DEAD) != snap.dead) {
+	   || (io.mainevent == SM_DEAD) != snap.dead || (io._npcdata->weaponinhand == 1) != snap.weaponInHand
+	   || u8(DismembermentFlags::Type(io._npcdata->cuts)) != snap.cuts) {
 		return true;
 	}
 	for(size_t i = 0; i < SyncedAnimLayers; i++) {
@@ -712,6 +881,8 @@ struct NpcTarget {
 	float life;
 	u8 show;
 	bool dead;
+	bool weaponInHand;
+	u8 cuts;
 	AnimState layers[SyncedAnimLayers];
 };
 std::map<std::string, NpcTarget> g_npcTargets;
@@ -729,6 +900,8 @@ void applyNpcState(Reader & reader) {
 		target.life = reader.f32_();
 		target.show = reader.u8_();
 		target.dead = reader.bool_();
+		target.weaponInHand = reader.bool_();
+		target.cuts = reader.u8_();
 		for(size_t i = 0; i < SyncedAnimLayers; i++) {
 			readAnim(reader, target.layers[i]);
 		}
@@ -795,18 +968,100 @@ void npcMirrorFrame() {
 			   && (target.show == SHOW_FLAG_IN_SCENE || target.show == SHOW_FLAG_HIDDEN)) {
 				io->show = EntityShowState(target.show);
 			}
+			// The host's AI draws / sheathes the weapon (relinks it to the hand or the back): mirror that
+			if(!target.dead && io->_npcdata->weapon && (io->_npcdata->weaponinhand == 1) != target.weaponInHand) {
+				io->_npcdata->weaponinhand = target.weaponInHand ? 1 : 0;
+				if(target.weaponInHand) {
+					SetWeapon_On(io);
+				} else {
+					SetWeapon_Back(io);
+				}
+			}
 			for(size_t i = 0; i < SyncedAnimLayers; i++) {
 				applyAnim(io->animlayer[i], target.layers[i]);
+			}
+			// Dismemberment happens on the host only (damage is forwarded there): mirror the fallen parts
+			if(target.cuts != u8(DismembermentFlags::Type(io->_npcdata->cuts))) {
+				ARX_NPC_ApplyRemoteCuts(*io, DismembermentFlags::load(DismembermentFlags::Type(target.cuts)));
 			}
 		}
 	}
 }
 
+//! Blood of a hit landed on another machine: same effect, on our copy of the victim.
+void handleBlood(PlayerId /* sender */, Reader & reader) {
+	u32 area = reader.u32_();
+	u8 kind = reader.u8_();
+	Entity * target = nullptr;
+	if(kind == 0) {
+		target = entities.getById(reader.string());
+	} else {
+		PlayerId id = reader.u8_();
+		target = (id == g_coop.localId()) ? entities.player() : findPuppet(id);
+	}
+	Vec3f pos = reader.vec3<Vec3f>();
+	Vec3f sourcePos = reader.vec3<Vec3f>();
+	float dmgs = reader.f32_();
+	u8 r = reader.u8_(), g = reader.u8_(), b = reader.u8_();
+	u8 effects = reader.u8_();
+	if(!target || !target->obj || area != g_currentArea.handleData() || g_coop.state() != State::InGame) {
+		return;
+	}
+	if(effects & 2) {
+		ARX_EQUIPMENT_StrikeBlood(*target, pos, sourcePos, dmgs, Color(r, g, b), (effects & 1) != 0);
+	}
+	if(g_puppetsTestMode) {
+		LogInfo << "[coop] test: blood on " << target->idString() << " effects " << int(effects);
+	}
+}
+
 } // anonymous namespace
 
+void bloodSpawned(const Entity & target, const Vec3f & pos, const Vec3f & sourcePos, float dmgs, Color color, u8 effects) {
+	if(!g_coop.isActive() || g_coop.state() != State::InGame || applyingRemote() || g_coop.players().size() < 2) {
+		return;
+	}
+	Writer writer;
+	writer.u8_(g_coop.localId());
+	writer.u32_(g_currentArea.handleData());
+	if(&target == entities.player()) {
+		writer.u8_(1);
+		writer.u8_(g_coop.localId());
+	} else if(PlayerId owner = puppetOwner(target); owner != InvalidPlayerId) {
+		writer.u8_(1);
+		writer.u8_(owner);
+	} else {
+		writer.u8_(0);
+		writer.string(target.idString());
+	}
+	writer.f32_(pos.x);
+	writer.f32_(pos.y);
+	writer.f32_(pos.z);
+	writer.f32_(sourcePos.x);
+	writer.f32_(sourcePos.y);
+	writer.f32_(sourcePos.z);
+	writer.f32_(dmgs);
+	writer.u8_(color.r);
+	writer.u8_(color.g);
+	writer.u8_(color.b);
+	writer.u8_(effects);
+	g_coop.sendToOthers(MessageType::Blood, writer);
+}
+
+void adminReviveLocal() {
+	reviveLocalPlayer();
+}
+
 void puppetsInit() {
+	g_coop.onBlood = handleBlood;
 	g_coop.onPlayerState = handlePlayerState;
 	g_coop.onPlayerEquipment = handlePlayerEquipment;
+	g_coop.onPlayerFace = [](PlayerId id, Reader & reader) {
+		handlePlayerFace(id, reader);
+		if(auto it = g_remote.find(id); it != g_remote.end()) {
+			it->second.equipmentApplied = false; // dress the puppet again with the new head
+		}
+	};
 	g_coop.onSpellCast = handleSpellCast;
 	g_coop.onNpcState = [](Reader & reader) {
 		if(npcsAreMirrored()) {
@@ -829,7 +1084,63 @@ void puppetsInit() {
 }
 
 bool localPlayerDowned() {
+	return isLocalDowned() && !bledOut();
+}
+
+PlayerId teammateInDialogue() {
+	for(const auto & entry : g_remote) {
+		if(entry.second.inDialogue && entry.second.area == g_currentArea.handleData()) {
+			return entry.first;
+		}
+	}
+	return InvalidPlayerId;
+}
+
+bool dialogueHold() {
+	return config.coop.dialogueHold && g_coop.isActive() && g_coop.state() == State::InGame
+	       && !getCinematicSpeech() && teammateInDialogue() != InvalidPlayerId;
+}
+
+bool localPlayerDownedRaw() {
 	return isLocalDowned();
+}
+
+PlayerId lookedAtDownedTeammate() {
+	return lookedAtDownedPuppet();
+}
+
+void reviveTeammate(PlayerId target) {
+	Writer writer;
+	writer.u8_(target);
+	if(g_coop.isHost()) {
+		g_coop.sendTo(target, MessageType::Revive, Writer());
+	} else {
+		g_coop.sendToHost(MessageType::Revive, writer);
+	}
+}
+
+std::vector<TeammateInfo> teammates() {
+	std::vector<TeammateInfo> result;
+	for(const Player & other : g_coop.players()) {
+		if(other.id == g_coop.localId()) {
+			continue;
+		}
+		auto it = g_remote.find(other.id);
+		if(it == g_remote.end()) {
+			continue;
+		}
+		const PlayerSnapshot & snap = it->second;
+		TeammateInfo info;
+		info.id = other.id;
+		info.name = other.name;
+		info.area = snap.area;
+		info.pos = snap.pos;
+		info.yaw = MAKEANGLE(180.f - snap.angle.getYaw());
+		info.downed = snap.downed;
+		info.here = snap.area == g_currentArea.handleData() && snap.visible;
+		result.push_back(std::move(info));
+	}
+	return result;
 }
 
 void spellCast(unsigned spell, float level, unsigned flags, const Entity * target, long long durationUs) {
@@ -922,7 +1233,8 @@ Vec3f nearestPlayerEyePos(const Vec3f & from) {
 	if(!g_coop.isHost()) {
 		return best;
 	}
-	float bestDist = arx::distance2(from, best);
+	// A downed host is no target (like downed puppets below), unless nobody else stands
+	float bestDist = isLocalDowned() ? std::numeric_limits<float>::max() : arx::distance2(from, best);
 	for(const auto & entry : g_remote) {
 		const Entity * io = findPuppet(entry.first);
 		if(!io || io->show != SHOW_FLAG_IN_SCENE || !entry.second.visible || entry.second.downed) {
@@ -933,6 +1245,26 @@ Vec3f nearestPlayerEyePos(const Vec3f & from) {
 		if(dist < bestDist) {
 			bestDist = dist;
 			best = eye;
+		}
+	}
+	return best;
+}
+
+EntityHandle attackTarget(const Entity & npc, EntityHandle target) {
+	if(!g_coop.isHost() || !entities.player() || target != entities.player()->index()) {
+		return target;
+	}
+	EntityHandle best = target;
+	float bestDist = isLocalDowned() ? std::numeric_limits<float>::max() : arx::distance2(npc.pos, entities.player()->pos);
+	for(const auto & entry : g_remote) {
+		const Entity * io = findPuppet(entry.first);
+		if(!io || io->show != SHOW_FLAG_IN_SCENE || !entry.second.visible || entry.second.downed) {
+			continue;
+		}
+		float dist = arx::distance2(npc.pos, io->pos);
+		if(dist < bestDist) {
+			bestDist = dist;
+			best = io->index();
 		}
 	}
 	return best;
@@ -960,7 +1292,9 @@ void puppetsReset() {
 
 //! Puppets only make sense while actually playing (not in the menu's background level or the intro).
 static bool puppetsAllowed() {
-	return g_coop.isActive() && g_coop.state() == State::InGame && ARXmenu.mode() == Mode_InGame
+	// The host's world keeps running while it browses the menu: its puppets must too
+	bool inGame = ARXmenu.mode() == Mode_InGame || (ARXmenu.mode() == Mode_MainMenu && g_coop.worldMustKeepRunning());
+	return g_coop.isActive() && g_coop.state() == State::InGame && inGame
 	       && entities.player() && entities.player()->obj;
 }
 
@@ -984,7 +1318,7 @@ void puppetsSendLocalState() {
 	writer.f32_(io.pos.x);
 	writer.f32_(io.pos.y);
 	writer.f32_(io.pos.z);
-	writer.f32_(io.angle.getPitch());
+	writer.f32_(player.angle.getPitch()); // where the player looks; the entity angle itself has no pitch
 	writer.f32_(io.angle.getYaw());
 	writer.f32_(io.angle.getRoll());
 	writer.bool_(io.show == SHOW_FLAG_IN_SCENE);
@@ -994,16 +1328,72 @@ void puppetsSendLocalState() {
 	}
 	writer.f32_(player.lifePool.max > 0.f ? player.lifePool.current / player.lifePool.max : 0.f);
 	writer.f32_(player.hunger * 0.01f);
+	writer.bool_(getCinematicSpeech() != nullptr);
 
 	g_coop.sendToOthers(MessageType::PlayerState, writer);
 	sendEquipmentIfNeeded(false);
 
 }
 
+//! Diagnostic trail: logs the rare state changes that explain what a player sees during cutscenes.
+void diagnosticsUpdate() {
+	static bool blocked = false, cinema = false, dead = false;
+	static std::string anim0, anim1;
+	static Vec3f lastPos = Vec3f(0.f);
+	static std::map<PlayerId, std::string> puppetAnim;
+	static std::map<PlayerId, bool> puppetDowned;
+	if(!entities.player()) {
+		return;
+	}
+	const Entity & me = *entities.player();
+	if(BLOCK_PLAYER_CONTROLS != blocked) {
+		blocked = BLOCK_PLAYER_CONTROLS;
+		LogInfo << "[coop] diag: player controls " << (blocked ? "BLOCKED" : "free");
+	}
+	if(cinematicBorder.isActive() != cinema) {
+		cinema = cinematicBorder.isActive();
+		LogInfo << "[coop] diag: cinemascope " << (cinema ? "on" : "off");
+	}
+	if((player.lifePool.current <= 0.f) != dead) {
+		dead = player.lifePool.current <= 0.f;
+		LogInfo << "[coop] diag: player life " << player.lifePool.current << (dead ? " (down)" : " (up)");
+	}
+	std::string a0 = me.animlayer[0].cur_anim ? std::string(me.animlayer[0].cur_anim->path.filename()) : "none";
+	std::string a1 = me.animlayer[1].cur_anim ? std::string(me.animlayer[1].cur_anim->path.filename()) : "none";
+	if(a0 != anim0 || a1 != anim1) {
+		anim0 = a0;
+		anim1 = a1;
+		LogInfo << "[coop] diag: player anim0 " << a0 << " anim1 " << a1;
+	}
+	if(arx::distance2(me.pos, lastPos) > square(150.f)) {
+		LogInfo << "[coop] diag: player jumped to " << int(me.pos.x) << "," << int(me.pos.y) << "," << int(me.pos.z);
+	}
+	lastPos = me.pos;
+	for(const auto & entry : g_remote) {
+		const Entity * puppet = findPuppet(entry.first);
+		if(!puppet) {
+			continue;
+		}
+		std::string pa = (puppet->animlayer[0].cur_anim ? std::string(puppet->animlayer[0].cur_anim->path.filename()) : "none")
+		                 + " / " + (puppet->animlayer[1].cur_anim ? std::string(puppet->animlayer[1].cur_anim->path.filename()) : "none");
+		if(puppetAnim[entry.first] != pa) {
+			puppetAnim[entry.first] = pa;
+			LogInfo << "[coop] diag: puppet " << int(entry.first) << " anim " << pa << " at "
+			        << int(puppet->pos.x) << "," << int(puppet->pos.y) << "," << int(puppet->pos.z);
+		}
+		if(puppetDowned[entry.first] != entry.second.downed) {
+			puppetDowned[entry.first] = entry.second.downed;
+			LogInfo << "[coop] diag: puppet " << int(entry.first) << (entry.second.downed ? " DOWN" : " up");
+		}
+	}
+	Logger::flush();
+}
+
 void puppetsUpdate() {
 
 	if(puppetsAllowed()) {
 		reviveUpdate();
+		diagnosticsUpdate();
 	}
 
 	if(!puppetsAllowed()) {
@@ -1057,6 +1447,62 @@ void puppetsUpdate() {
 }
 
 bool g_puppetsTestMode = false;
+bool g_puppetsTestLean = false;
+
+//! Developer aid: runs one script line in an entity's context (the script stays alive for deferred parts).
+//! The same container on every machine: the first (by id) non-NPC entity with an inventory.
+Entity * testContainer() {
+	Entity * best = nullptr;
+	for(Entity & io : entities) {
+		if(!io.inventory || (io.ioflags & IO_NPC) || &io == entities.player() || io.coopPuppet) {
+			continue;
+		}
+		if(!best || io.idString() < best->idString()) {
+			best = &io;
+		}
+	}
+	return best;
+}
+
+void logContainer(const char * when, const Entity & container) {
+	std::string contents;
+	for(auto slot : container.inventory->slotsInOrder()) {
+		if(slot.show && slot.entity) {
+			contents += " " + slot.entity->idString() + " x" + std::to_string(slot.entity->_itemdata->count)
+			            + (slot.entity->ioflags & IO_GOLD ? " (" + std::to_string(slot.entity->_itemdata->price) + " gold)" : "");
+		}
+	}
+	LogInfo << "[coop] test: " << when << " " << container.idString() << " holds:" << (contents.empty() ? " nothing" : contents);
+}
+
+void runScriptLine(Entity & io, const std::string & line) {
+	static std::vector<std::unique_ptr<EERIE_SCRIPT>> scripts;
+	scripts.push_back(std::make_unique<EERIE_SCRIPT>());
+	EERIE_SCRIPT & script = *scripts.back();
+	script.valid = true;
+	script.data = line + "\n";
+	ScriptEvent::send(&script, nullptr, &io, SM_EXECUTELINE, ScriptParameters(), 0); // no sender: like a timer
+}
+
+void logCutsceneState(const char * when) {
+	LogInfo << "[coop] test: cutscene " << when << " me at " << int(player.pos.x) << "," << int(player.pos.y) << "," << int(player.pos.z)
+	        << " controls blocked " << BLOCK_PLAYER_CONTROLS << " cinemascope " << cinematicBorder.isActive()
+	        << " anim0 " << (entities.player()->animlayer[0].cur_anim ? entities.player()->animlayer[0].cur_anim->path.filename() : "none")
+	        << " anim1 " << (entities.player()->animlayer[1].cur_anim ? entities.player()->animlayer[1].cur_anim->path.filename() : "none")
+	        << " anim2 " << (entities.player()->animlayer[2].cur_anim ? entities.player()->animlayer[2].cur_anim->path.filename() : "none")
+	        << " anim3 " << (entities.player()->animlayer[3].cur_anim ? entities.player()->animlayer[3].cur_anim->path.filename() : "none");
+	for(const auto & entry : g_remote) {
+		if(const Entity * puppet = findPuppet(entry.first)) {
+			LogInfo << "[coop] test: cutscene " << when << " puppet " << int(entry.first) << " at " << int(puppet->pos.x) << "," << int(puppet->pos.y) << "," << int(puppet->pos.z)
+			        << " anim0 " << (puppet->animlayer[0].cur_anim ? puppet->animlayer[0].cur_anim->path.filename() : "none")
+			        << " anim1 " << (puppet->animlayer[1].cur_anim ? puppet->animlayer[1].cur_anim->path.filename() : "none")
+			        << " anim2 " << (puppet->animlayer[2].cur_anim ? puppet->animlayer[2].cur_anim->path.filename() : "none")
+			        << " anim3 " << (puppet->animlayer[3].cur_anim ? puppet->animlayer[3].cur_anim->path.filename() : "none")
+			        << " show " << int(puppet->show);
+		}
+	}
+	Logger::flush();
+}
 
 void puppetsTestUpdate() {
 
@@ -1085,6 +1531,22 @@ void puppetsTestUpdate() {
 	static bool killDone = false;
 	static bool killChecked = false;
 	static bool tpChecked = false;
+	static bool tpViewDone = false;
+	static bool cineStarted = false;
+	static bool cineShot = false;
+	static bool cineShot2 = false;
+	static bool cineEnded = false;
+	static bool cineClientStarted = false;
+	static bool cineClientShot = false;
+	static bool cineClientEnded = false;
+	static bool adminDone = false;
+	static bool adminShot = false;
+	static bool adminClientDone = false;
+	static bool pingDone = false;
+	static bool giveDone = false;
+	static bool chestHostDone = false;
+	static bool chestClientDone = false;
+	static bool chestChecked = false;
 	static std::string testDoor;
 	static std::string testThrown;
 	static bool playing = false;
@@ -1107,6 +1569,25 @@ void puppetsTestUpdate() {
 			ARX_PLAYER_MakeAverageHero();
 			MenuFader_start(Fade_In, Mode_InGame);
 			creationSkipped = true;
+		}
+		return;
+	}
+
+	// Admin page opened by the scenario: capture it, then back to the game
+	if(adminDone && !adminShot && ARXmenu.mode() == Mode_MainMenu && g_coop.state() == State::InGame) {
+		static PlatformInstant opened;
+		if(opened == PlatformInstant()) {
+			opened = now;
+		}
+		if(now - opened > std::chrono::seconds(3)) {
+			adminShot = true;
+			if(!g_remote.empty()) {
+				adminTeleportToMe(g_remote.begin()->first); // from the menu, like a real host would
+				LogInfo << "[coop] test: admin from the menu: " << adminStatus();
+			}
+			GetSnapShot();
+			LogInfo << "[coop] test: admin page snapshot taken";
+			ARX_MENU_Clicked_QUIT();
 		}
 		return;
 	}
@@ -1144,14 +1625,53 @@ void puppetsTestUpdate() {
 	}
 
 	if(step == 0 && elapsed > std::chrono::seconds(30)) {
-		// Clients step aside from the shared spawn point and face the host's puppet
+		if(g_coop.isHost()) {
+			// A persistent magic field like the level markers cast on game_ready (sync check)
+			Entity * marker = nullptr;
+			float best = 0.f;
+			for(Entity & entity : entities) {
+				float dist = arx::distance2(entity.pos, player.pos);
+				if(entity.classPath().string().find("system/marker") != std::string::npos && dist > best && dist < square(1500.f)) {
+					marker = &entity;
+					best = dist;
+				}
+			}
+			if(!marker) {
+				size_t markers = 0;
+				std::string sample;
+				for(const Entity & entity : entities) {
+					if(entity.idString().find("marker") != std::string::npos) {
+						markers++;
+						if(sample.empty()) {
+							sample = entity.idString() + " class " + entity.classPath().string() + " dist "
+							         + std::to_string(int(fdist(entity.pos, player.pos)));
+						}
+					}
+				}
+				LogInfo << "[coop] test: no marker in range, " << markers << " markers, e.g. " << sample;
+				Logger::flush();
+			}
+			if(marker) {
+				TryToCastSpell(marker, SPELL_CREATE_FIELD, 6, marker->index(),
+				               SPELLCAST_FLAG_NOMANA | SPELLCAST_FLAG_NOCHECKCANCAST, std::chrono::milliseconds(99999999));
+				LogInfo << "[coop] test: field cast on " << marker->idString() << " at " << int(std::sqrt(best)) << " units";
+				Logger::flush();
+			}
+		}
+		// Clients step aside from the shared spawn point and face the host's puppet, torch lit
 		if(g_coop.isClient()) {
+			if(Entity * torch = AddItem("graph/obj3d/interactive/items/provisions/torch/torch", -1, IO_IMMEDIATELOAD)) {
+				ARX_PLAYER_ClickedOnTorch(torch);
+				torch->show = SHOW_FLAG_ON_PLAYER; // as if taken from the inventory
+				LogInfo << "[coop] test: client lit a torch";
+			}
 			Vec3f spawn = entities.player()->pos; // feet position, unlike player.pos (eyes)
 			Vec3f side = angleToVectorXZ(player.angle.getYaw()) * 60.f;
 			ARX_INTERACTIVE_Teleport(entities.player(), spawn + side);
 			Vec3f dir = spawn - entities.player()->pos;
 			float yaw = glm::degrees(std::atan2(-dir.x, dir.z)); // inverse of angleToVectorXZ()
 			player.angle.setYaw(MAKEANGLE(yaw));
+			player.angle.setPitch(45.f); // looks down for the host's snapshot (spine bending sync)
 			player.desiredangle = player.angle;
 			LogInfo << "[coop] test: stepped aside, facing " << yaw;
 		}
@@ -1160,6 +1680,15 @@ void puppetsTestUpdate() {
 		GetSnapShot();
 		LogInfo << "[coop] test: snapshot taken, player at " << player.pos.x << "," << player.pos.y << "," << player.pos.z
 		        << " yaw " << player.angle.getYaw();
+		{
+			size_t fields = 0;
+			for(const Entity & entity : entities) {
+				if(entity.ioflags & IO_FIELD) {
+					fields++;
+				}
+			}
+			LogInfo << "[coop] test: magic fields here: " << fields;
+		}
 		for(const auto & entry : g_remote) {
 			const PlayerSnapshot & s = entry.second;
 			LogInfo << "[coop] test: remote " << int(entry.first) << " area " << s.area << " pos " << s.pos.x << "," << s.pos.y << "," << s.pos.z
@@ -1184,6 +1713,44 @@ void puppetsTestUpdate() {
 		}
 		Logger::flush();
 		step = 2;
+	} else if(step == 2 && elapsed > std::chrono::seconds(34) && g_coop.isClient() && !pingDone) {
+		pingDone = true;
+		qolTestPing();
+		LogInfo << "[coop] test: client pinged";
+	} else if(step >= 3 && elapsed > std::chrono::seconds(80) && g_coop.isClient() && !giveDone) {
+		giveDone = true;
+		if(Entity * item = AddItem("graph/obj3d/interactive/items/provisions/mushroom/food_mushroom", -1, IO_IMMEDIATELOAD)) {
+			giveToPlayer(item);
+			for(const auto & entry : g_remote) {
+				if(Entity * puppet = findPuppet(entry.first)) {
+					LogInfo << "[coop] test: client gives a mushroom to player " << int(entry.first);
+					giveItemToPuppet(*item, *puppet);
+					break;
+				}
+			}
+		}
+	} else if(step == 2 && elapsed > std::chrono::seconds(35) && !tpViewDone) {
+		// Third person views: over the right shoulder, orbit turned 70 degrees, left shoulder
+		static int view = 0;
+		if(view == 0 && elapsed > std::chrono::seconds(35)) {
+			player.angle.setPitch(0.f);
+			player.desiredangle = player.angle;
+			thirdPersonTestSet(true, false, true, 0.f);
+			view = 1;
+		} else if(view == 1 && elapsed > std::chrono::seconds(36)) {
+			GetSnapShot();
+			thirdPersonTestSet(true, true, true, 70.f);
+			view = 2;
+		} else if(view == 2 && elapsed > std::chrono::seconds(37)) {
+			GetSnapShot();
+			thirdPersonTestSet(true, false, false, 0.f);
+			view = 3;
+		} else if(view == 3 && elapsed > std::chrono::seconds(38)) {
+			GetSnapShot();
+			thirdPersonTestSet(false, false, true, 0.f);
+			LogInfo << "[coop] test: third person snapshots taken";
+			tpViewDone = true;
+		}
 	} else if(step == 2 && elapsed > std::chrono::seconds(40)) {
 		// World sync check: the client pulls the lever next to the cell...
 		if(g_coop.isClient()) {
@@ -1193,6 +1760,76 @@ void puppetsTestUpdate() {
 			}
 		}
 		step = 3;
+	} else if(step >= 3 && elapsed > std::chrono::seconds(43) && g_coop.isHost() && !cineStarted) {
+		cineStarted = true;
+		// Scripted cutscene staging like Atok's (goblin_base_0017): what do the clients see?
+		if(Entity * goblin = entities.getById("goblin_base_0006")) {
+			std::string marker;
+			float best = 1500.f;
+			for(Entity & io : entities) {
+				if(io.idString().compare(0, 7, "marker_") == 0) {
+					float d = glm::distance(io.pos, entities.player()->pos);
+					if(d > 200.f && d < best) {
+						best = d;
+						marker = io.idString();
+					}
+				}
+			}
+			LogInfo << "[coop] test: host stages a cutscene on " << goblin->idString() << " at " << marker;
+			runScriptLine(*goblin, "set_player_controls off");
+			if(!marker.empty()) {
+				runScriptLine(*goblin, "teleport -p " + marker);
+			}
+			runScriptLine(*goblin, "cinemascope -s on");
+			runScriptLine(*goblin, "playerinterface hide");
+			runScriptLine(*goblin, "loadanim -p action1 \"human_normal_sit_cycle\"");
+			runScriptLine(*goblin, "playanim -pl action1"); // Polsius' tavern scene: the host sits
+			runScriptLine(*goblin, "speak -o [atok_greetings] nop");
+			runScriptLine(*goblin, "speak -cp zoom 0 90 0 90 100 100 [player_atok_introduce] nop");
+		}
+	}
+	g_puppetsTestLean = step >= 3 && g_coop.isClient() && elapsed > std::chrono::seconds(44) && elapsed < std::chrono::seconds(48);
+	if(false) {
+	} else if(step >= 3 && elapsed > std::chrono::seconds(46) && !cineShot) {
+		cineShot = true;
+		GetSnapShot();
+		logCutsceneState("46s");
+	} else if(step >= 3 && elapsed > std::chrono::seconds(49) && !cineShot2) {
+		cineShot2 = true;
+		GetSnapShot();
+		logCutsceneState("49s");
+	} else if(step >= 3 && elapsed > std::chrono::seconds(51) && g_coop.isHost() && !cineEnded) {
+		cineEnded = true;
+		if(Entity * goblin = entities.getById("goblin_base_0006")) {
+			runScriptLine(*goblin, "speak killall");
+			runScriptLine(*goblin, "playanim -p wait");
+			runScriptLine(*goblin, "set_player_controls on");
+			runScriptLine(*goblin, "cinemascope -s off");
+			runScriptLine(*goblin, "playerinterface show");
+			LogInfo << "[coop] test: host ends the cutscene";
+		}
+	} else if(step >= 3 && elapsed > std::chrono::seconds(53) && g_coop.isHost() && !cineClientStarted) {
+		cineClientStarted = true;
+		// The same scene triggered by the client: only the client must sit
+		Entity * goblin = entities.getById("goblin_base_0006");
+		Entity * puppet = g_remote.empty() ? nullptr : findPuppet(g_remote.begin()->first);
+		if(goblin && puppet) {
+			PuppetActorScope actor(puppet);
+			LogInfo << "[coop] test: cutscene for the client (player " << int(g_remote.begin()->first) << ")";
+			runScriptLine(*goblin, "loadanim -p action1 \"human_normal_sit_cycle\"");
+			runScriptLine(*goblin, "playanim -pl action1");
+		}
+	} else if(step >= 3 && elapsed > std::chrono::seconds(56) && !cineClientShot) {
+		cineClientShot = true;
+		logCutsceneState("56s");
+	} else if(step >= 3 && elapsed > std::chrono::seconds(58) && g_coop.isHost() && !cineClientEnded) {
+		cineClientEnded = true;
+		Entity * goblin = entities.getById("goblin_base_0006");
+		Entity * puppet = g_remote.empty() ? nullptr : findPuppet(g_remote.begin()->first);
+		if(goblin && puppet) {
+			PuppetActorScope actor(puppet);
+			runScriptLine(*goblin, "playanim -p wait");
+		}
 	} else if(step >= 3 && elapsed > std::chrono::seconds(52) && g_coop.isClient() && !lootTaken) {
 		lootTaken = true;
 		if(Entity * item = entities.getById("food_mushroom_0009")) {
@@ -1283,12 +1920,24 @@ void puppetsTestUpdate() {
 		if(Entity * goblin = entities.getById("goblin_base_0006")) {
 			LogInfo << "[coop] test: host kills " << goblin->idString();
 			ARX_DAMAGES_ForceDeath(*goblin, entities.player());
+			// ... and cuts its head off, aiming at the head selection itself (dismemberment sync check)
+			for(VertexSelectionId selection : goblin->obj->selections.handles()) {
+				const EERIE_SELECTIONS & sel = goblin->obj->selections[selection];
+				if(sel.name == "cut_head" && !sel.selected.empty()) {
+					Vec3f pos = goblin->obj->vertexWorldPositions[sel.selected[0]].v;
+					ARX_NPC_TryToCutSomething(goblin, &pos);
+				}
+			}
+			// ... which bleeds for everyone (blood sync check)
+			ARX_EQUIPMENT_StrikeBlood(*goblin, goblin->pos, entities.player()->pos, 20.f, Color::red, true);
+			bloodSpawned(*goblin, goblin->pos, entities.player()->pos, 20.f, Color::red, 3);
 		}
 	} else if(step >= 3 && elapsed > std::chrono::seconds(74) && !killChecked) {
 		killChecked = true;
 		if(Entity * goblin = entities.getById("goblin_base_0006")) {
 			LogInfo << "[coop] test: goblin dead=" << (goblin->mainevent == SM_DEAD) << " life " << goblin->_npcdata->lifePool.current
-			        << " enemy=" << isEnemy(goblin) << " behavior " << goblin->_npcdata->behavior;
+			        << " enemy=" << isEnemy(goblin) << " behavior " << goblin->_npcdata->behavior
+			        << " cuts " << int(DismembermentFlags::Type(goblin->_npcdata->cuts));
 		}
 		Logger::flush();
 	} else if(step >= 3 && elapsed > std::chrono::seconds(78) && g_coop.isClient() && !throwTaken) {
@@ -1404,6 +2053,79 @@ void puppetsTestUpdate() {
 		// Level change: validated once (clients load the host's new level); without a real
 		// arrival marker it puts everyone outside the map, so it is not part of the routine test.
 		step = 6;
+	} else if(step == 6 && elapsed > std::chrono::seconds(132) && g_coop.isHost() && !adminDone) {
+		adminDone = true;
+		// Admin tools: grants to the client, then the page itself
+		if(!g_remote.empty()) {
+			PlayerId client = g_remote.begin()->first;
+			adminGiveGold(client, 50);
+			adminGiveXp(client, 200);
+			adminGiveItem(client, "potion_life", 2);
+			adminHeal(client);
+			LogInfo << "[coop] test: admin grants sent to player " << int(client) << " (" << adminStatus() << ")";
+		}
+		adminGiveItem(g_coop.localId(), "short_sword", 1);
+		adminGiveItem(g_coop.localId(), "sword", 1);
+		LogInfo << "[coop] test: admin self item: " << adminStatus();
+		adminOpenPage();
+	} else if(step >= 4 && elapsed > std::chrono::seconds(140) && g_coop.isClient() && !adminClientDone) {
+		adminClientDone = true;
+		if(!g_remote.empty()) {
+			adminTeleportMeTo(g_remote.begin()->first);
+			LogInfo << "[coop] test: client " << adminStatus();
+		}
+	} else if(step >= 4 && elapsed > std::chrono::seconds(152) && g_coop.isHost() && !chestHostDone) {
+		chestHostDone = true;
+		// A script stocks a container (same ids everywhere?), then the client shops in it
+		if(Entity * chest = testContainer()) {
+			runScriptLine(*chest, "inventory addmulti provisions/mushroom/food_mushroom 3");
+			LogInfo << "[coop] test: host stocked " << chest->idString() << " with " << (LASTSPAWNED ? LASTSPAWNED->idString() : "nothing");
+			runScriptLine(*chest, "inventory addmulti jewelry/gold_coin/gold_coin 25");
+			LogInfo << "[coop] test: host stocked " << chest->idString() << " with " << (LASTSPAWNED ? LASTSPAWNED->idString() : "nothing");
+			logContainer("host before", *chest);
+		} else {
+			LogInfo << "[coop] test: no container in this level";
+		}
+	} else if(step >= 4 && elapsed > std::chrono::seconds(156) && g_coop.isClient() && !chestClientDone) {
+		chestClientDone = true;
+		if(Entity * chest = testContainer()) {
+			logContainer("client before", *chest);
+			// Takes one mushroom of the stack (like buying one), pockets the gold, leaves a potion
+			for(auto slot : chest->inventory->slotsInOrder()) {
+				if(!slot.show || !slot.entity) {
+					continue;
+				}
+				if(slot.entity->className() == "food_mushroom" && slot.entity->_itemdata->count > 1) {
+					slot.entity->_itemdata->count--;
+					coop::itemCountChanged(*slot.entity);
+					LogInfo << "[coop] test: client took one of " << slot.entity->idString();
+				} else if(slot.entity->ioflags & IO_GOLD) {
+					Entity * gold = slot.entity;
+					LogInfo << "[coop] test: client pockets " << gold->idString();
+					removeFromInventories(gold);
+					entities.player()->inventory->insert(gold);
+					break; // the slot view is stale now
+				}
+			}
+			if(Entity * potion = AddItem("graph/obj3d/interactive/items/magic/potion_life/potion_life", -1, IO_IMMEDIATELOAD)) {
+				SendInitScriptEvent(potion);
+				giveToPlayer(potion);
+				{
+					coop::ContainerDropScope scope(*chest, potion);
+					removeFromInventories(potion);
+					chest->inventory->insert(potion);
+				}
+				LogInfo << "[coop] test: client stored " << potion->idString();
+			}
+			logContainer("client after", *chest);
+		}
+	} else if(step >= 4 && elapsed > std::chrono::seconds(160) && !chestChecked) {
+		chestChecked = true;
+		if(Entity * chest = testContainer()) {
+			logContainer("after", *chest);
+		}
+		LogInfo << "[coop] test: my gold " << player.gold << " xp " << player.xp << " bags " << entities.player()->inventory->bags();
+		Logger::flush();
 	} else if(step == 6 && elapsed > std::chrono::seconds(150) && g_coop.isHost()) {
 		for(const auto & entry : g_remote) {
 			LogInfo << "[coop] test: remote " << int(entry.first) << " area " << entry.second.area
@@ -1467,9 +2189,12 @@ void partyHudDraw() {
 		if(!snap) {
 			label += " (?)";
 		} else if(downed) {
-			label += " - \xC3\xA0 terre";
+			label += " - " + trs("coop_hud_downed", "\xC3\xA0 terre");
 		} else if(!here) {
-			label += " - ailleurs";
+			label += " - " + trs("coop_hud_elsewhere", "ailleurs");
+		}
+		if(u16 ms = latencyOf(other.id)) {
+			label += " " + std::to_string(ms) + " ms";
 		}
 		Font::TextSize size = hFontInGame->draw(Vec2i(int(x), int(y)), label, downed ? Color(255, 90, 90) : Color(232, 204, 142));
 		y += float(size.height()) + 3.f * s;
@@ -1487,6 +2212,103 @@ void partyHudDraw() {
 			fillRect(Vec2f(x, y), barWidth * hunger, hungerHeight, Color(215, 140, 40));
 		}
 		y += hungerHeight + 12.f * s;
+	}
+
+}
+
+// Local player's torch at the hip (third person only) ---------------------------------------
+
+Entity * g_localTorchDisplay = nullptr;
+std::string g_localTorchClass;
+
+void localTorchDisplayUpdate() {
+
+	// The copy may have been destroyed with the level
+	if(g_localTorchDisplay && !entities.get(g_localTorchDisplay->index())) {
+		g_localTorchDisplay = nullptr;
+	}
+
+	bool wanted = thirdPersonActive() && player.torch && entities.player() && entities.player()->obj
+	              && ARXmenu.mode() == Mode_InGame;
+	std::string classPath = wanted ? player.torch->classPath().string() : std::string();
+
+	if(g_localTorchDisplay && (!wanted || classPath != g_localTorchClass)) {
+		g_localTorchDisplay->destroy();
+		g_localTorchDisplay = nullptr;
+	}
+	if(wanted && !g_localTorchDisplay) {
+		g_localTorchDisplay = attachTorch(*entities.player(), classPath);
+		g_localTorchClass = classPath;
+	}
+
+}
+
+bool localHudActive() {
+	return g_coop.isActive() && g_coop.state() == State::InGame;
+}
+
+void localHudDraw(const Rectf & rect, float scale, Color lifeColor, float life) {
+
+	UseRenderState state(render2D());
+
+	float x = rect.left;
+	float width = rect.width();
+	float y = rect.bottom;
+
+	// Bottom up, so the bars stay anchored where the orb was
+	float hungerHeight = 5.f * scale;
+	y -= hungerHeight;
+	float hunger = glm::clamp(player.hunger * 0.01f, 0.f, 1.f);
+	fillRect(Vec2f(x, y), width, hungerHeight, Color(25, 25, 25, 170));
+	if(hunger > 0.f) {
+		fillRect(Vec2f(x, y), width * hunger, hungerHeight, Color(215, 140, 40));
+	}
+
+	float lifeHeight = 10.f * scale;
+	y -= lifeHeight + 2.f * scale;
+	life = glm::clamp(life, 0.f, 1.f);
+	fillRect(Vec2f(x, y), width, lifeHeight, Color(25, 25, 25, 170));
+	if(life > 0.f) {
+		fillRect(Vec2f(x, y), width * life, lifeHeight, lifeColor);
+	}
+
+	// Name line: "<name> <ms>" on the left like the teammates' bars, "<life> / <max>" on the right;
+	// when both do not fit the ping moves to its own line above, and a long name is shortened
+	const Player * me = g_coop.player(g_coop.localId());
+	std::string name = me ? me->name : config.coop.nickname;
+	std::string ping;
+	if(u16 ms = latencyOf(g_coop.localId())) {
+		ping = std::to_string(ms) + " ms";
+	}
+	char value[32];
+	std::snprintf(value, sizeof(value), "%d / %d", int(std::ceil(player.lifePool.current)), int(player.lifePool.max));
+	Font::TextSize valueSize = hFontInGame->getTextSize(value);
+	float gap = 10.f * scale;
+	float nameRoom = width - float(valueSize.width()) - gap;
+	std::string label = ping.empty() ? name : name + " " + ping;
+	bool pingAbove = false;
+	if(!ping.empty() && float(hFontInGame->getTextSize(label).width()) > nameRoom) {
+		label = name;
+		pingAbove = true;
+	}
+	while(label.size() > 2 && float(hFontInGame->getTextSize(label + "\xE2\x80\xA6").width()) > nameRoom) {
+		label.pop_back();
+		while(!label.empty() && (u8(label.back()) & 0xC0) == 0x80) {
+			label.pop_back(); // do not cut a UTF-8 sequence in half
+		}
+		if(float(hFontInGame->getTextSize(label + "\xE2\x80\xA6").width()) <= nameRoom) {
+			label += "\xE2\x80\xA6";
+			break;
+		}
+	}
+	Font::TextSize nameSize = hFontInGame->getTextSize(label);
+	y -= float(nameSize.height()) + 3.f * scale;
+	hFontInGame->draw(Vec2i(int(x), int(y)), label, Color(232, 204, 142));
+	hFontInGame->draw(Vec2i(int(x + width) - valueSize.width(), int(y)), value, Color(232, 204, 142));
+	if(pingAbove) {
+		Font::TextSize pingSize = hFontInGame->getTextSize(ping);
+		y -= float(pingSize.height()) + 1.f * scale;
+		hFontInGame->draw(Vec2i(int(x + width) - pingSize.width(), int(y)), ping, Color(200, 180, 130));
 	}
 
 }
@@ -1511,9 +2333,9 @@ void puppetsDrawNames() {
 		if(entry.second.downed) {
 			pos = io->pos + Vec3f(0.f, -60.f, 0.f);
 			if(g_reviveTarget == entry.first && g_reviveProgress > 0.f) {
-				label += " - r\xC3\xA9" "animation " + std::to_string(int(g_reviveProgress * 100.f)) + " %";
+				label += " - " + trs("coop_hud_reviving", "r\xC3\xA9" "animation") + " " + std::to_string(int(g_reviveProgress * 100.f)) + " %";
 			} else {
-				label += " - \xC3\xA0 terre (maintenir clic gauche)";
+				label += " - " + trs("coop_hud_downed_hold", "\xC3\xA0 terre (maintenir clic gauche)");
 			}
 		}
 		drawTextAt(hFontInGame, pos, label, entry.second.downed ? Color(255, 90, 90) : Color(232, 204, 142));

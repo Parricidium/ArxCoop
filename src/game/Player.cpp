@@ -46,6 +46,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "game/Player.h"
 
+#include "coop/Faces.h"
 #include "coop/Puppets.h"
 #include "coop/Replication.h"
 
@@ -1087,6 +1088,9 @@ void ARX_PLAYER_Restore_Skin() {
 	tmpTC = TextureContainer::Find("graph/obj3d/textures/npc_human_leather_hero_head");
 	if(tmpTC && !tx4.empty())
 		tmpTC->LoadFile(tx4);
+	
+	// Co-op: our custom face goes over the skin we just restored
+	coop::applyLocalFaceToHero();
 }
 
 /*!
@@ -2363,11 +2367,13 @@ void ARX_PLAYER_AddGold(Entity * gold) {
 	arx_assert(gold->ioflags & IO_GOLD);
 	
 	ARX_PLAYER_AddGold(gold->_itemdata->price * std::max(short(1), gold->_itemdata->count));
-	
+
 	ARX_SOUND_PlayInterface(g_snd.GOLD);
-	
+
 	gold->gameFlags &= ~GFLAG_ISINTREATZONE;
-	
+
+	coop::itemTaken(*gold); // the purse never owns the coins: say they are gone before destroying them
+
 	gold->destroy();
 }
 

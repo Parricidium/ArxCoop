@@ -21,6 +21,7 @@
 #define ARX_GAME_NPC_DISMEMBERMENT_H
 
 #include "math/Types.h"
+#include "game/NPC.h"
 #include "graphics/BaseGraphicsTypes.h"
 
 class Entity;
@@ -34,5 +35,8 @@ void ARX_NPC_RestoreCuts();
  * \brief Attempt to cut something on NPC
  */
 void ARX_NPC_TryToCutSomething(Entity * target, const Vec3f * pos);
+
+//! Co-op client: mirrors the host's cut flags, spawning the members that fell off there.
+void ARX_NPC_ApplyRemoteCuts(Entity & npc, DismembermentFlags cuts);
 
 #endif // ARX_GAME_NPC_DISMEMBERMENT_H

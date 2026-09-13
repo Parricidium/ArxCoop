@@ -43,6 +43,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "gui/MenuWidgets.h"
 
+#include "coop/Faces.h"
 #include "coop/Replication.h"
 #include "coop/Session.h"
 #include "io/log/Logger.h"
@@ -238,9 +239,16 @@ MenuWindow::MenuWindow()
 	, m_fadeDistance(m_size.x + m_pos.x)
 	, fAngle(0.f)
 	, m_currentPage(nullptr)
-	, m_background(TextureContainer::LoadUI("graph/interface/menus/menu_console_background"))
-	, m_border(TextureContainer::LoadUI("graph/interface/menus/menu_console_background_border"))
-{ }
+	, m_background(coop::customMenuPanel())
+	, m_border(coop::customMenuBorder())
+{
+	if(!m_background) {
+		m_background = TextureContainer::LoadUI("graph/interface/menus/menu_console_background");
+	}
+	if(!m_border) {
+		m_border = TextureContainer::LoadUI("graph/interface/menus/menu_console_background_border");
+	}
+}
 
 void MenuWindow::add(std::unique_ptr<MenuPage> page) {
 	page->setSize(RATIO_2(Vec2f(292, 395)));

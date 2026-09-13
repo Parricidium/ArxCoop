@@ -51,6 +51,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include <sstream>
 #include <utility>
 
+#include "coop/Qol.h"
 #include "core/Core.h"
 #include "core/Localisation.h"
 
@@ -239,6 +240,7 @@ void MiniMap::showPlayerMiniMap(MapLevel level) {
 	// Draw the player (red arrow)
 	if(level == getMapLevelForArea(m_currentArea)) {
 		drawPlayer(playerSize, playerPos, true);
+		drawTeammates(start, miniMapZoom, playerSize, true);
 		drawDetectedEntities(start, miniMapZoom);
 	}
 	
@@ -259,6 +261,7 @@ void MiniMap::showBookMiniMap(MapLevel level, Rect rect, float scale) {
 	
 	if(level == getMapLevelForArea(m_currentArea)) {
 		drawPlayer(6.f * scale, playerPos, false);
+		drawTeammates(start, zoom, 6.f * scale, false);
 		drawDetectedEntities(start, zoom);
 	}
 	
@@ -281,6 +284,7 @@ void MiniMap::showBookEntireMap(MapLevel level, Rect rect, float scale) {
 	
 	if(level == getMapLevelForArea(m_currentArea)) {
 		drawPlayer(3.f * scale, playerPos, false);
+		drawTeammates(start, zoom, 3.f * scale, false);
 		drawDetectedEntities(start, zoom);
 	}
 	
@@ -594,6 +598,46 @@ void MiniMap::drawPlayer(float playerSize, Vec2f playerPos, bool alphaBlending) 
 	
 	GRenderer->SetAntialiasing(false);
 	
+}
+
+//! Co-op: the teammates in this level, as arrows of their own colour (same shape as the player's).
+void MiniMap::drawTeammates(Vec2f start, float zoom, float size, bool alphaBlending) {
+
+	static const Color colors[4] = { Color(255, 210, 90), Color(90, 200, 255), Color(120, 255, 120), Color(255, 120, 220) };
+
+	for(const coop::TeammateInfo & mate : coop::teammates()) {
+		if(!mate.here) {
+			continue;
+		}
+
+		Vec2f pos = start + worldToMapPos(mate.pos, zoom);
+		Color color = mate.downed ? Color::gray(0.6f) : colors[mate.id % 4];
+
+		GRenderer->SetAntialiasing(true);
+		std::array<TexturedVertex, 4> verts;
+		for(TexturedVertex & vertex : verts) {
+			vertex.color = color.toRGB();
+			vertex.w = 1;
+			vertex.p.z = 0.00001f;
+		}
+		Vec2f r1(0.f, -size * 1.8f);
+		Vec2f r2(-size * 0.5f, size);
+		Vec2f r3(size * 0.5f, size);
+		float angle = glm::radians(180.f - mate.yaw); // entity yaw back to the player's convention
+		float ca = std::cos(angle);
+		float sa = std::sin(angle);
+		verts[0].p.x = pos.x + r2.x * ca + r2.y * sa;
+		verts[0].p.y = pos.y + r2.y * ca - r2.x * sa;
+		verts[1].p.x = pos.x + r1.x * ca + r1.y * sa;
+		verts[1].p.y = pos.y + r1.y * ca - r1.x * sa;
+		verts[2].p.x = pos.x + r3.x * ca + r3.y * sa;
+		verts[2].p.y = pos.y + r3.y * ca - r3.x * sa;
+		GRenderer->ResetTexture(0);
+		UseRenderState state(alphaBlending ? render2D().blend(BlendOne, BlendInvSrcColor) : render2D());
+		EERIEDRAWPRIM(Renderer::TriangleFan, verts.data());
+		GRenderer->SetAntialiasing(false);
+	}
+
 }
 
 void MiniMap::drawDetectedEntities(Vec2f start, float zoom) {

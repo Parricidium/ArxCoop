@@ -1026,6 +1026,7 @@ set(GRAPHICS_SOURCES
 	src/graphics/image/ImageColorKey.cpp
 	src/graphics/image/ImageSave.cpp
 	src/graphics/image/stb_image.cpp
+	src/graphics/image/stb_image_write.cpp
 	src/graphics/particle/Particle.cpp
 	src/graphics/particle/ParticleEffects.cpp
 	src/graphics/particle/ParticleManager.cpp
@@ -1040,10 +1041,14 @@ set(GRAPHICS_SOURCES
 )
 
 set(COOP_SOURCES
+	src/coop/Admin.cpp
 	src/coop/Connection.cpp
+	src/coop/Faces.cpp
 	src/coop/Puppets.cpp
+	src/coop/Qol.cpp
 	src/coop/Replication.cpp
 	src/coop/Session.cpp
+	src/coop/ThirdPerson.cpp
 )
 
 set(GRAPHICS_OPENGL_SOURCES
@@ -1264,6 +1269,7 @@ endif()
 file(GLOB_RECURSE ALL_INCLUDES RELATIVE ${PROJECT_SOURCE_DIR} src/*.h)
 
 set_property(SOURCE src/graphics/image/stb_image.cpp APPEND PROPERTY COMPILE_FLAGS ${conservative_warnings})
+set_property(SOURCE src/graphics/image/stb_image_write.cpp APPEND PROPERTY COMPILE_FLAGS ${conservative_warnings})
 
 include_directories(src ${CMAKE_CURRENT_BINARY_DIR} ${PROJECT_SOURCE_DIR}/tools)
 
@@ -1897,6 +1903,8 @@ list(APPEND STYLE_CHECKED_SOURCES
 list(REMOVE_ITEM STYLE_CHECKED_SOURCES
 	src/graphics/image/stb_image.h
 	src/graphics/image/stb_image.cpp
+	src/graphics/image/stb_image_write.h
+	src/graphics/image/stb_image_write.cpp
 )
 
 add_style_check_target(style "${STYLE_CHECKED_SOURCES}" ARX)

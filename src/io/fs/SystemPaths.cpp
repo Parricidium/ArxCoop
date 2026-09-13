@@ -345,7 +345,17 @@ SystemPaths::InitParams cmdLineInitParams;
 
 ExitStatus SystemPaths::init(const InitParams & initParams) {
 	
-	m_userDir = findUserPath("user", initParams.forceUser, "UserDir", platform::UserDirPrefixes,
+	// Co-op mod: portable by default. Saves, config and custom faces live in <exe dir>/userdata
+	// so players find them next to the game instead of in "Saved Games"; --user-dir still wins.
+	path forceUser = initParams.forceUser;
+	if(forceUser.empty() && !initParams.displaySearchDirs) {
+		path exepath = platform::getExecutablePath();
+		if(!exepath.empty()) {
+			forceUser = exepath.parent() / "userdata";
+		}
+	}
+	
+	m_userDir = findUserPath("user", forceUser, "UserDir", platform::UserDirPrefixes,
 	                         user_dir_prefixes, user_dir, current_path(), !initParams.displaySearchDirs);
 	
 	m_configDir = findUserPath("config", initParams.forceConfig, "ConfigDir", platform::NoPath,

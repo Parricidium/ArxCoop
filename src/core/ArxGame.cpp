@@ -52,9 +52,13 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "ai/PathFinderManager.h"
 
+#include "coop/Faces.h"
 #include "coop/Puppets.h"
+#include "coop/Admin.h"
+#include "coop/Qol.h"
 #include "coop/Replication.h"
 #include "coop/Session.h"
+#include "coop/ThirdPerson.h"
 #include "ai/Paths.h"
 
 #include "animation/Animation.h"
@@ -167,6 +171,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "scene/Scene.h"
 #include "scene/Tiles.h"
 
+#include "script/Script.h"
 #include "script/ScriptEvent.h"
 
 #include "util/Number.h"
@@ -558,6 +563,7 @@ private:
 GameFlow::Transition GameFlow::s_currentTransition = GameFlow::FirstLogo;
 
 static AreaId g_areaToLoad = AreaId(10);
+static bool g_skipIntroMenuPending = false; //!< open the main menu right after the boot level is ready
 static bool g_initialPlayerCollision = true;
 
 static void skipLogo() {
@@ -699,6 +705,15 @@ static bool HandleGameFlowTransitions() {
 		LoadLevelScreen(g_areaToLoad);
 		
 		DanaeLoadLevel(g_areaToLoad);
+		
+		if(config.misc.skipIntro && g_areaToLoad == AreaId(10)) {
+			// The intro scripts (camera_0035 & co) bail out when the intro was already played,
+			// and the 2D introduction.cin is dropped in cinematicLaunchWaiting(); we then open
+			// the main menu ourselves in place of the scripts' ENDINTRO.
+			SETVarValueLong(svar, "#intro_played", 1);
+			SETVarValueLong(svar, "#skip_cinematic", 1);
+			g_skipIntroMenuPending = true;
+		}
 		
 		USE_PLAYERCOLLISIONS = g_initialPlayerCollision;
 		g_initialPlayerCollision = true;
@@ -883,6 +898,8 @@ bool ArxGame::initGame()
 	}
 	
 	ARX_PLAYER_LoadHeroAnimsAndMesh();
+	coop::facesInit(); // needs the hero head textures and the renderer
+	coop::qolInit();
 	
 	GLOBAL_EERIETEXTUREFLAG_LOADSCENE_RELEASE = old;
 	
@@ -1250,6 +1267,11 @@ void ArxGame::doFrame() {
 	if(g_requestLevelInit) {
 		g_requestLevelInit = false;
 		levelInit();
+		if(g_skipIntroMenuPending) {
+			g_skipIntroMenuPending = false;
+			ARX_SOUND_MixerStop(ARX_SOUND_MixerGame); // what the scripts' ENDINTRO does
+			ARX_MENU_Launch(false);
+		}
 	} else {
 		cinematicLaunchWaiting();
 		render();
@@ -1299,6 +1321,12 @@ void ArxGame::updateFirstPersonCamera() {
 		
 		targetAngle = player.angle;
 		targetAngle.setPitch(targetAngle.getPitch() + 30.f);
+		
+	} else if(coop::thirdPersonActive() && player.lifePool.current > 0.f) {
+		
+		coop::thirdPersonUpdateCamera();
+		EXTERNALVIEW = true; // shows the whole body, like the engine's own outside views
+		return;
 		
 	} else {
 		
@@ -1575,6 +1603,9 @@ void ArxGame::updateInput() {
 			EERIEMouseButton &= ~2;
 		}
 		
+		coop::thirdPersonHandleInput();
+		coop::adminHandleInput();
+		
 	} else {
 		
 		EERIEMouseButton = 0;
@@ -1649,7 +1680,7 @@ void ArxGame::updateLevel() {
 	if(!player.m_paralysed) {
 		manageEditorControls();
 
-		if(!BLOCK_PLAYER_CONTROLS) {
+		if(!BLOCK_PLAYER_CONTROLS && !coop::dialogueHold()) {
 			managePlayerControls();
 		}
 	}
@@ -1697,6 +1728,8 @@ void ArxGame::updateLevel() {
 
 	coop::puppetsSendLocalState();
 	coop::puppetsUpdate();
+	coop::localTorchDisplayUpdate();
+	coop::qolUpdate();
 	coop::npcSyncUpdate();
 	coop::replicationUpdate();
 
@@ -1842,6 +1875,7 @@ void ArxGame::renderLevel() {
 	
 	drawDebugRender();
 	coop::puppetsDrawNames();
+	coop::qolDraw3D();
 
 	// Begin Particles
 	g_particleManager.Render();
@@ -1899,6 +1933,7 @@ void ArxGame::renderLevel() {
 		ARX_INTERFACE_NoteManage();
 		g_hudRoot.draw();
 		coop::partyHudDraw();
+		coop::qolDraw2D();
 		
 		if((player.Interface & INTER_PLAYERBOOK) && !(player.Interface & INTER_COMBATMODE)) {
 			ARX_MAGICAL_FLARES_Update();

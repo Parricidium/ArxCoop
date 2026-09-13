@@ -24,6 +24,7 @@
 #include <iomanip>
 #include <sstream>
 
+#include "coop/Puppets.h"
 #include "core/Application.h"
 #include "core/ArxGame.h"
 #include "core/Config.h"
@@ -710,6 +711,14 @@ void HealthGauge::init() {
 }
 
 void HealthGauge::updateRect(const Rectf & parent) {
+	
+	if(coop::localHudActive()) {
+		// Co-op: bars instead of the orb (the icons above and to the right follow this rect)
+		m_rect = createChild(parent, Anchor_BottomLeft, coop::LocalHudSize * m_scale, Anchor_BottomLeft);
+		m_rect.move(12.f * m_scale, -8.f * m_scale); // same left margin as the teammates' bars
+		return;
+	}
+	
 	m_rect = createChild(parent, Anchor_BottomLeft, m_size * m_scale, Anchor_BottomLeft);
 	
 	// Red gauge texures have a 2 pixel gap at the bottom,
@@ -742,6 +751,11 @@ void HealthGauge::updateInput(const Vec2f & mousePos) {
 }
 
 void HealthGauge::draw() {
+	
+	if(coop::localHudActive()) {
+		coop::localHudDraw(m_rect, m_scale, m_color, m_amount);
+		return;
+	}
 	
 	EERIEDrawBitmap2DecalY(m_rect, 0.f, m_filledTex, m_color, (1.f - m_amount));
 	EERIEDrawBitmap(m_rect, 0.001f, m_emptyTex, Color::white);

@@ -24,6 +24,13 @@
 #include <map>
 #include <utility>
 
+#include <boost/asio/connect.hpp>
+#include <boost/asio/read.hpp>
+#include <boost/asio/streambuf.hpp>
+#include <boost/asio/write.hpp>
+#include <boost/asio/ip/host_name.hpp>
+#include <iterator>
+
 #include "coop/Connection.h"
 #include "coop/Puppets.h"
 #include "coop/Replication.h"
@@ -33,6 +40,7 @@
 #include "gui/MenuPublic.h"
 #include "gui/MenuWidgets.h"
 #include "io/log/Logger.h"
+#include "platform/Time.h"
 #include "util/String.h"
 
 coop::Session g_coop;
@@ -50,6 +58,18 @@ void flushLog() {
 struct PendingPeer {
 	std::shared_ptr<Connection> connection;
 };
+
+//! The callback for the "about one player" messages that share the PlayerState routing.
+std::function<void(PlayerId, Reader &)> & playerMessageHandler(Session & session, MessageType type) {
+	switch(type) {
+		case MessageType::PlayerEquipment: return session.onPlayerEquipment;
+		case MessageType::SpellCast:       return session.onSpellCast;
+		case MessageType::PlayerFace:      return session.onPlayerFace;
+		case MessageType::PlayerMarker:    return session.onPlayerMarker;
+		case MessageType::Blood:           return session.onBlood;
+		default:                           return session.onPlayerState;
+	}
+}
 
 } // anonymous namespace
 
@@ -116,6 +136,9 @@ void Session::addPlayer(PlayerId id, std::string_view name) {
 	});
 	LogInfo << "[coop] player " << int(id) << " joined: " << name;
 	flushLog();
+	if(onPlayerJoined) {
+		onPlayerJoined(id);
+	}
 }
 
 void Session::removePlayer(PlayerId id) {
@@ -124,8 +147,12 @@ void Session::removePlayer(PlayerId id) {
 	});
 	if(it != m_players.end()) {
 		LogInfo << "[coop] player " << int(id) << " left";
+		m_latencies.erase(id);
 		m_players.erase(it, m_players.end());
 		flushLog();
+		if(onPlayerLeft) {
+			onPlayerLeft(id);
+		}
 	}
 }
 
@@ -166,6 +193,11 @@ void Session::reset() {
 	m_role = Role::None;
 	m_state = State::Idle;
 	m_localId = InvalidPlayerId;
+	if(onPlayerLeft) {
+		for(const Player & player : m_players) {
+			onPlayerLeft(player.id);
+		}
+	}
 	m_players.clear();
 	m_endpoint.clear();
 	m_startRequested = false;
@@ -371,17 +403,26 @@ void Session::Impl::handleClientMessage(Session & session, PlayerId id, MessageT
 			break;
 		}
 
+		case MessageType::Pong: {
+			u32 nonce = payload.u32_();
+			u32 now = u32(toMsi(platform::getTime() - PlatformInstant()) & 0xFFFFFFFFu);
+			session.m_latencies[id] = u16(std::min<u32>(now - nonce, 9999));
+			break;
+		}
+
 		case MessageType::PlayerState:
 		case MessageType::PlayerEquipment:
-		case MessageType::SpellCast: {
+		case MessageType::SpellCast:
+		case MessageType::PlayerFace:
+		case MessageType::PlayerMarker:
+		case MessageType::Blood: {
 			payload.u8_(); // sender id is authoritative from the host side
 			// Relay to the other clients with the real id, then handle locally
 			Writer writer;
 			writer.u8_(id);
 			writer.bytes(payload.rest());
 			session.broadcast(type, writer, id);
-			auto & handler = (type == MessageType::PlayerState) ? session.onPlayerState
-			                 : (type == MessageType::PlayerEquipment) ? session.onPlayerEquipment : session.onSpellCast;
+			auto & handler = playerMessageHandler(session, type);
 			if(handler) {
 				handler(id, payload);
 			}
@@ -543,7 +584,13 @@ void Session::Impl::handleServerMessage(Session & session, MessageType type, Rea
 			break;
 		}
 
-		case MessageType::Pong:
+		case MessageType::Pong: {
+			u32 nonce = payload.u32_();
+			u32 now = u32(toMsi(platform::getTime() - PlatformInstant()) & 0xFFFFFFFFu);
+			session.m_ownLatency = u16(std::min<u32>(now - nonce, 9999));
+			break;
+		}
+
 		case MessageType::Chat: {
 			// Nothing to do with these yet
 			break;
@@ -551,10 +598,12 @@ void Session::Impl::handleServerMessage(Session & session, MessageType type, Rea
 
 		case MessageType::PlayerState:
 		case MessageType::PlayerEquipment:
-		case MessageType::SpellCast: {
+		case MessageType::SpellCast:
+		case MessageType::PlayerFace:
+		case MessageType::PlayerMarker:
+		case MessageType::Blood: {
 			PlayerId id = payload.u8_();
-			auto & handler = (type == MessageType::PlayerState) ? session.onPlayerState
-			                 : (type == MessageType::PlayerEquipment) ? session.onPlayerEquipment : session.onSpellCast;
+			auto & handler = playerMessageHandler(session, type);
 			if(id != session.m_localId && handler) {
 				handler(id, payload);
 			}
@@ -589,6 +638,14 @@ void Session::Impl::handleServerMessage(Session & session, MessageType type, Rea
 }
 
 // Common ------------------------------------------------------------------------------------
+
+void Session::kick(PlayerId id) {
+	auto it = m_impl->clients.find(id);
+	if(it != m_impl->clients.end()) {
+		LogInfo << "[coop] kicking player " << int(id);
+		it->second->close(); // onClose removes the player and tells the others
+	}
+}
 
 void Session::leave() {
 	if(m_role != Role::None) {
@@ -625,6 +682,8 @@ void Session::update() {
 	m_impl->io.poll();
 	m_impl->io.restart();
 
+	pingPeers();
+
 	if(m_startRequested) {
 		if(m_state != State::Lobby && m_state != State::InGame) {
 			m_startRequested = false;
@@ -647,6 +706,93 @@ void Session::update() {
 		}
 	}
 
+}
+
+std::vector<std::string> Session::localAddresses() const {
+	std::vector<std::string> result;
+	try {
+		boost::asio::io_context io;
+		boost::asio::ip::tcp::resolver resolver(io);
+		auto results = resolver.resolve(boost::asio::ip::host_name(), "");
+		for(const auto & entry : results) {
+			auto address = entry.endpoint().address();
+			if(address.is_v4() && !address.is_loopback()) {
+				result.push_back(address.to_string());
+			}
+		}
+	} catch(const std::exception & e) {
+		LogWarning << "[coop] cannot list local addresses: " << e.what();
+	}
+	return result;
+}
+
+void Session::fetchPublicAddress() {
+	if(!m_publicAddress.empty() && m_publicAddress != "?") {
+		return;
+	}
+	m_publicAddress = "...";
+	auto resolver = std::make_shared<boost::asio::ip::tcp::resolver>(m_impl->io);
+	auto socket = std::make_shared<boost::asio::ip::tcp::socket>(m_impl->io);
+	auto buffer = std::make_shared<boost::asio::streambuf>();
+	resolver->async_resolve("api.ipify.org", "80",
+		[this, resolver, socket, buffer](const boost::system::error_code & ec, boost::asio::ip::tcp::resolver::results_type results) {
+		if(ec) {
+			m_publicAddress = "?";
+			return;
+		}
+		boost::asio::async_connect(*socket, results, [this, socket, buffer](const boost::system::error_code & ec2, const boost::asio::ip::tcp::endpoint &) {
+			if(ec2) {
+				m_publicAddress = "?";
+				return;
+			}
+			auto request = std::make_shared<std::string>("GET / HTTP/1.0\r\nHost: api.ipify.org\r\n\r\n");
+			boost::asio::async_write(*socket, boost::asio::buffer(*request), [this, socket, buffer, request](const boost::system::error_code & ec3, size_t) {
+				if(ec3) {
+					m_publicAddress = "?";
+					return;
+				}
+				boost::asio::async_read(*socket, *buffer, [this, socket, buffer](const boost::system::error_code &, size_t) {
+					std::string response((std::istreambuf_iterator<char>(buffer.get())), std::istreambuf_iterator<char>());
+					size_t body = response.find("\r\n\r\n");
+					std::string ip = body == std::string::npos ? std::string() : response.substr(body + 4);
+					while(!ip.empty() && (ip.back() == '\n' || ip.back() == '\r' || ip.back() == ' ')) {
+						ip.pop_back();
+					}
+					m_publicAddress = (ip.empty() || ip.size() > 45) ? "?" : ip;
+				});
+			});
+		});
+	});
+}
+
+u16 Session::measuredLatency(PlayerId id) const {
+	auto it = m_latencies.find(id);
+	return it != m_latencies.end() ? it->second : 0;
+}
+
+//! Every two seconds: the host pings each client and tells everyone the latencies, clients ping the host.
+void Session::pingPeers() {
+	u64 nowMs = u64(toMsi(platform::getTime() - PlatformInstant()));
+	if(nowMs - m_lastPingTime < 2000) {
+		return;
+	}
+	m_lastPingTime = nowMs;
+	Writer ping;
+	ping.u32_(u32(nowMs & 0xFFFFFFFFu));
+	if(m_role == Role::Client) {
+		sendToHost(MessageType::Ping, ping);
+	} else if(m_role == Role::Host) {
+		for(auto & entry : m_impl->clients) {
+			entry.second->send(MessageType::Ping, ping);
+		}
+		Writer latencies;
+		latencies.u8_(u8(m_latencies.size()));
+		for(const auto & entry : m_latencies) {
+			latencies.u8_(entry.first);
+			latencies.u16_(entry.second);
+		}
+		broadcast(MessageType::Latency, latencies);
+	}
 }
 
 void Session::resumeFromSave() {

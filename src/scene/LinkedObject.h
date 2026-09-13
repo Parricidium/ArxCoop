@@ -49,6 +49,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include <string_view>
 
+#include <glm/gtc/quaternion.hpp>
+
 #include "game/GameTypes.h"
 
 struct EERIE_3DOBJ;
@@ -60,7 +62,8 @@ void EERIE_LINKEDOBJ_LinkObjectToObject(EERIE_3DOBJ * obj, EERIE_3DOBJ * tolink,
                                         std::string_view actiontext, std::string_view actiontext2);
 
 void linkEntities(Entity & master, std::string_view masterVertex,
-                  Entity & slave, std::string_view slaveVertex);
+                  Entity & slave, std::string_view slaveVertex,
+                  const glm::quat & rotation = glm::quat(1.f, 0.f, 0.f, 0.f));
 
 void unlinkEntity(Entity & slave);
 

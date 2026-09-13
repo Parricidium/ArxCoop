@@ -59,6 +59,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "game/EntityManager.h"
 #include "game/Equipment.h"
 
+#include "coop/Puppets.h"
 #include "coop/Replication.h"
 #include "game/Inventory.h"
 #include "game/Item.h"
@@ -594,6 +595,29 @@ static float ARX_EQUIPMENT_GetSpecialValue(Entity * io, long val) {
 }
 
 // flags & 1 = blood spawn only
+void ARX_EQUIPMENT_StrikeBlood(Entity & target, const Vec3f & pos, const Vec3f & sourcePos, float dmgs, Color color, bool splat) {
+
+	if(splat) {
+		ARX_PARTICLES_Spawn_Splat(pos, dmgs, color);
+
+		float power = (dmgs * 0.025f) + 0.7f;
+
+		Sphere sp;
+		sp.origin = pos + glm::normalize(toXZ(pos - sourcePos)) * 30.f;
+		sp.radius = 3.5f * power * 20;
+
+		if(CheckAnythingInSphere(sp, entities.player(), CAS_NO_NPC_COL)) {
+			Sphere splatSphere;
+			splatSphere.origin = sp.origin;
+			splatSphere.radius = 30.f;
+			PolyBoomAddSplat(splatSphere, Color3f(color), 1);
+		}
+	}
+
+	ARX_PARTICLES_Spawn_Blood2(pos, dmgs, color, &target);
+
+}
+
 bool ARX_EQUIPMENT_Strike_Check(Entity * io_source, Entity * io_weapon, float ratioaim, long flags, EntityHandle targ) {
 	
 	ARX_PROFILE_FUNC();
@@ -698,25 +722,8 @@ bool ARX_EQUIPMENT_Strike_Check(Entity * io_source, Entity * io_weapon, float ra
 					
 					if((target->ioflags & IO_NPC) && (dmgs > 0.f || target->spark_n_blood == SP_BLOODY)) {
 						target->spark_n_blood = SP_BLOODY;
-						
-						if(!(flags & 1)) {
-							ARX_PARTICLES_Spawn_Splat(pos, dmgs, color);
-							
-							float power = (dmgs * 0.025f) + 0.7f;
-							
-							Sphere sp;
-							sp.origin = pos + glm::normalize(toXZ(pos - io_source->pos)) * 30.f;
-							sp.radius = 3.5f * power * 20;
-							
-							if(CheckAnythingInSphere(sp, entities.player(), CAS_NO_NPC_COL)) {
-								Sphere splatSphere;
-								splatSphere.origin = sp.origin;
-								splatSphere.radius = 30.f;
-								PolyBoomAddSplat(splatSphere, Color3f(color), 1);
-							}
-						}
-						
-						ARX_PARTICLES_Spawn_Blood2(pos, dmgs, color, target);
+						ARX_EQUIPMENT_StrikeBlood(*target, pos, io_source->pos, dmgs, color, !(flags & 1));
+						coop::bloodSpawned(*target, pos, io_source->pos, dmgs, color, (flags & 1) ? 2 : 3);
 					} else if(!(target->ioflags & IO_NPC) && dmgs > 0.f) {
 						if(target->ioflags & IO_ITEM)
 							ParticleSparkSpawnContinous(pos, Random::getu(0, 3));

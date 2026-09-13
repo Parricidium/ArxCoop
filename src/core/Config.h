@@ -79,6 +79,13 @@ enum ControlAction {
 	CONTROLS_CUST_TOGGLE_FULLSCREEN,
 	CONTROLS_CUST_CONSOLE,
 	CONTROLS_CUST_DEBUG,
+	CONTROLS_CUST_THIRDPERSON,   //!< co-op mod: first / third person view
+	CONTROLS_CUST_CAMERA_ORBIT,  //!< co-op mod: third person, orbit the camera without turning
+	CONTROLS_CUST_SWAP_SHOULDER, //!< co-op mod: third person, camera on the other shoulder
+	CONTROLS_CUST_CAMERA_ZOOM_IN,  //!< co-op mod: third person, camera closer
+	CONTROLS_CUST_CAMERA_ZOOM_OUT, //!< co-op mod: third person, camera further
+	CONTROLS_CUST_PING,            //!< co-op mod: "look here" marker for the teammates
+	CONTROLS_CUST_ADMIN,           //!< co-op mod: in-game administration / tools page
 	NUM_ACTION_KEY
 };
 
@@ -241,6 +248,8 @@ public:
 		
 		std::string realtimeOverride;
 		
+		bool skipIntro; //!< co-op mod: go straight to the main menu at startup
+		
 	} misc;
 	
 	// section 'coop'
@@ -252,6 +261,16 @@ public:
 		
 		int port;
 		
+		std::string face; //!< Custom face image (file name in <user dir>/coop/faces/), empty = the character's skin
+
+		std::string favorites; //!< "name|address:port;name|address:port"
+
+		bool dialogueHold; //!< freeze me while a teammate is in a cinematic dialogue
+
+		bool thirdPerson;  //!< last camera mode
+
+		bool rightShoulder;
+
 	} coop;
 	
 	bool setActionKey(ControlAction actionId, size_t index, InputKeyId key);

@@ -46,7 +46,11 @@ enum MENUSTATE {
 	Page_QuitConfirm,
 	Page_Localization,
 	Page_Coop,
+	Page_CoopHost,
+	Page_CoopJoin,
 	Page_CoopLobby,
+	Page_CoopAdmin,
+	Page_CoopOptions,
 };
 
 enum WidgetType {

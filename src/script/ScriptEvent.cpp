@@ -341,7 +341,9 @@ ScriptResult ScriptEvent::send(const EERIE_SCRIPT * es, Entity * sender, Entity 
 				} else if(sync == coop::CommandSync::Replicate) {
 					std::vector<std::string> transcript;
 					context.setTranscript(&transcript);
+					coop::replicatedCommandBegin(); // the clients replay it: no need to also send its sounds
 					res = command.execute(context);
+					coop::replicatedCommandEnd();
 					context.setTranscript(nullptr);
 					coop::commandReplicated(word, transcript, context);
 				} else {

@@ -55,6 +55,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "audio/Audio.h"
 
+#include "coop/Replication.h"
 #include "core/Config.h"
 
 #include "game/EntityManager.h"
@@ -330,6 +331,12 @@ static audio::SourcedSample ARX_SOUND_PlaySFX_int(audio::SampleHandle sample_id,
 }
 
 void ARX_SOUND_PlaySFX(audio::SampleHandle sample_id, const Vec3f * position, float pitch) {
+	if(position && g_soundInitialized && sample_id != audio::SampleHandle()) {
+		// Co-op: positional effects of the host's world reach the clients
+		res::path name;
+		audio::getSampleName(sample_id, name);
+		coop::soundPlayed(name.string(), *position, pitch);
+	}
 	ARX_SOUND_PlaySFX_int(sample_id, position, pitch, ARX_SOUND_PLAY_ONCE);
 }
 
@@ -444,6 +451,12 @@ void ARX_SOUND_PlayCollision(Material mat1, Material mat2, float volume, float p
 
 	if(sample_id == audio::SampleHandle())
 		return;
+
+	// Co-op: impacts computed on the host (weapons, NPC hits) are heard by the clients;
+	// items simulate their own physics everywhere, so theirs are left out
+	if(!source || !(source->ioflags & IO_ITEM)) {
+		coop::collisionSoundPlayed(int(mat1), int(mat2), volume, position);
+	}
 
 	audio::Channel channel(ARX_SOUND_MixerGameSample);
 	channel.flags = FLAG_VOLUME | FLAG_PITCH | FLAG_POSITION | FLAG_REVERBERATION | FLAG_FALLOFF;

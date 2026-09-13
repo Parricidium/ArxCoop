@@ -33,6 +33,7 @@
 
 #include "core/Application.h"
 #include "core/Benchmark.h"
+#include "coop/Faces.h"
 #include "core/Config.h"
 #include "core/ArxGame.h"
 #include "core/Core.h"
@@ -495,6 +496,12 @@ public:
 		{
 			auto txt = std::make_unique<TextWidget>(hFontMenu, getLocalised("system_menus_options_input"));
 			txt->setTargetPage(Page_OptionsInput);
+			addCenter(std::move(txt));
+		}
+
+		{
+			auto txt = std::make_unique<TextWidget>(hFontMenu, getLocalised("system_menus_options_coop", "Coopération"));
+			txt->setTargetPage(Page_CoopOptions);
 			addCenter(std::move(txt));
 		}
 		
@@ -1561,12 +1568,12 @@ public:
 	
 protected:
 	
-	void addControlRow(ControlAction controlAction, std::string_view text) {
+	void addControlRow(ControlAction controlAction, std::string_view text, std::string_view fallback = std::string_view()) {
 		
 		auto panel = std::make_unique<PanelWidget>();
 		
 		{
-			auto txt = std::make_unique<TextWidget>(hFontControls, getLocalised(text));
+			auto txt = std::make_unique<TextWidget>(hFontControls, fallback.empty() ? getLocalised(text) : getLocalised(text, fallback));
 			txt->setEnabled(false);
 			panel->add(std::move(txt));
 		}
@@ -1658,6 +1665,13 @@ public:
 		addControlRow(CONTROLS_CUST_LOOKDOWN,     "system_menus_options_input_customize_controls_look_down");
 		
 		addControlRow(CONTROLS_CUST_MINIMAP,      "system_menus_options_input_customize_controls_minimap");
+		addControlRow(CONTROLS_CUST_THIRDPERSON,  "system_menus_options_input_customize_controls_third_person", "Vue 1re / 3e personne");
+		addControlRow(CONTROLS_CUST_CAMERA_ORBIT, "system_menus_options_input_customize_controls_camera_orbit", "Caméra libre (3e pers.)");
+		addControlRow(CONTROLS_CUST_SWAP_SHOULDER, "system_menus_options_input_customize_controls_swap_shoulder", "Changer d'épaule");
+		addControlRow(CONTROLS_CUST_CAMERA_ZOOM_IN, "system_menus_options_input_customize_controls_camera_zoom_in", "Caméra plus près (3e pers.)");
+		addControlRow(CONTROLS_CUST_CAMERA_ZOOM_OUT, "system_menus_options_input_customize_controls_camera_zoom_out", "Caméra plus loin (3e pers.)");
+		addControlRow(CONTROLS_CUST_PING, "system_menus_options_input_customize_controls_ping", "Marqueur « par ici » (coop)");
+		addControlRow(CONTROLS_CUST_ADMIN, "system_menus_options_input_customize_controls_admin", "Administration / outils (coop)");
 		
 		if(config.input.allowConsole) {
 			addControlRow(CONTROLS_CUST_CONSOLE, "system_menus_options_input_customize_controls_console");
@@ -1812,7 +1826,11 @@ void MainMenu::initWindowPages() {
 	m_window->add(std::make_unique<QuitConfirmMenuPage>());
 	m_window->add(std::make_unique<LocalizationMenuPage>());
 	m_window->add(createCoopMenuPage());
+	m_window->add(createCoopHostMenuPage());
+	m_window->add(createCoopJoinMenuPage());
 	m_window->add(createCoopLobbyMenuPage());
+	m_window->add(createCoopAdminMenuPage());
+	m_window->add(createCoopOptionsMenuPage());
 	
 }
 
@@ -1833,7 +1851,10 @@ MainMenu::~MainMenu() {
 
 void MainMenu::init() {
 	
-	m_background = TextureContainer::LoadUI("graph/interface/menus/menu_main_background", TextureContainer::NoColorKey);
+	m_background = coop::customMenuBackground(); // the player's own picture, if any
+	if(!m_background) {
+		m_background = TextureContainer::LoadUI("graph/interface/menus/menu_main_background", TextureContainer::NoColorKey);
+	}
 	
 	Vec2f pos = RATIO_2(Vec2f(370, 100));
 	float yOffset = RATIO_Y(50);

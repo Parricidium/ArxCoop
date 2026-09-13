@@ -64,6 +64,9 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "cinematic/CinematicController.h"
 
+#include "coop/Puppets.h"
+#include "coop/Qol.h"
+#include "coop/ThirdPerson.h"
 #include "core/Application.h"
 #include "core/ArxGame.h"
 #include "core/Config.h"
@@ -908,6 +911,10 @@ void ArxGame::managePlayerControls() {
 		// Checks LEAN_RIGHT Key Status.
 		if(GInput->actionPressed(CONTROLS_CUST_LEANRIGHT))
 			player.m_currentMovement |= PLAYER_LEAN_RIGHT;
+
+		if(coop::g_puppetsTestLean) {
+			player.m_currentMovement |= PLAYER_LEAN_LEFT; // --coop-test: a held lean key
+		}
 	}
 	
 	// Checks JUMP Key Status.
@@ -1381,7 +1388,7 @@ void ArxGame::manageKeyMouse() {
 	bool bRestoreCoordMouse = true;
 	
 	static bool LAST_PLAYER_MOUSELOOK_ON = false;
-	bool mouselook = PLAYER_MOUSELOOK_ON && !BLOCK_PLAYER_CONTROLS && !isInCinematic();
+	bool mouselook = PLAYER_MOUSELOOK_ON && !BLOCK_PLAYER_CONTROLS && !isInCinematic() && !coop::dialogueHold();
 	if(mouselook && !LAST_PLAYER_MOUSELOOK_ON) {
 		
 		MemoMouse = DANAEMouse;
@@ -1411,7 +1418,7 @@ void ArxGame::manageKeyMouse() {
 	}
 	
 	// Player/Eyeball Freelook Management
-	if(!BLOCK_PLAYER_CONTROLS) {
+	if(!BLOCK_PLAYER_CONTROLS && !coop::dialogueHold()) {
 		
 		bool bKeySpecialMove = false;
 		
@@ -1569,6 +1576,10 @@ void ArxGame::manageKeyMouse() {
 					eyeball.turn(Anglef(rotation.y, 0.f, 0.f));
 				
 				eyeball.turn(Anglef(0.f, -rotation.x, 0.f));
+			} else if(coop::cameraOrbitActive()) {
+				
+				coop::cameraOrbitTurn(rotation); // the camera turns, the character does not
+				
 			} else if(ARXmenu.mode() != Mode_CharacterCreation) {
 
 				float iangle = player.angle.getPitch();
@@ -1776,6 +1787,9 @@ void ArxGame::manageEditorControls() {
 			if(io) {
 				if(COMBINEGOLD) {
 					SendIOScriptEvent(nullptr, io, SM_COMBINE, "gold_coin");
+				} else if(io->coopPuppet && COMBINE) {
+					coop::giveItemToPuppet(*COMBINE, *io); // co-op: hand the item to a teammate
+					COMBINE = nullptr;
 				} else if(io != COMBINE) {
 					combineEntities(COMBINE, io);
 				}

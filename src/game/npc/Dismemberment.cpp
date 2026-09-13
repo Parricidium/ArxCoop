@@ -437,6 +437,34 @@ void ARX_NPC_TryToCutSomething(Entity * target, const Vec3f * pos) {
 }
 
 
+void ARX_NPC_ApplyRemoteCuts(Entity & npc, DismembermentFlags cuts) {
+
+	arx_assert(npc.ioflags & IO_NPC);
+
+	DismembermentFlags added = cuts & ~npc._npcdata->cuts;
+	if(!added) {
+		return;
+	}
+
+	npc._npcdata->cuts |= added;
+	bool hid = applyCuts(npc);
+
+	for(long jj = 0; jj < 6; jj++) {
+		DismembermentFlag flag = DismembermentFlag(1 << jj);
+		if(!(added & flag)) {
+			continue;
+		}
+		if(VertexSelectionId selection = GetCutSelection(&npc, flag)) {
+			ARX_NPC_SpawnMember(&npc, selection);
+		}
+	}
+
+	if(hid) {
+		ARX_SOUND_PlaySFX(g_snd.DISMEMBER, &npc.pos, 1.0f);
+	}
+
+}
+
 void ARX_NPC_RestoreCuts() {
 	
 	for(Entity & npc : entities(IO_NPC)) {

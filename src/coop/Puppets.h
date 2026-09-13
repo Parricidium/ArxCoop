@@ -29,6 +29,9 @@
  * synchronized world state.
  */
 #include "coop/Protocol.h"
+#include "game/GameTypes.h"
+#include "graphics/Color.h"
+#include "math/Rectangle.h"
 #include "math/Vector.h"
 
 class Entity;
@@ -48,14 +51,38 @@ void puppetsUpdate();
 void puppetsDrawNames();
 void partyHudDraw(); //!< 2D overlay: game clock, teammates' life and hunger
 
+/*!
+ * In a co-op session the local player's life orb is replaced by the same name / life / hunger
+ * bars the teammates get, so everyone reads the same HUD.
+ */
+bool localHudActive();
+constexpr Vec2f LocalHudSize = Vec2f(160.f, 44.f); //!< unscaled, takes the orb's place at the bottom left
+void localHudDraw(const Rectf & rect, float scale, Color lifeColor, float life);
+
 //! Forgets every remote state and puppet (level change, session end).
 void puppetsReset();
 
-//! Host: eye position of the nearest player (ourselves or a puppet) to  from; player.pos otherwise.
+//! Third person: shows the local player's lit torch at the hip (a display copy). Call once per in-game frame.
+void localTorchDisplayUpdate();
+
+//! Host: eye position of the nearest player (ourselves or a puppet) to a position; player.pos otherwise.
 Vec3f nearestPlayerEyePos(const Vec3f & from);
+
+/*!
+ * Host: the entity an NPC attacking "the player" should actually hit: the nearest standing
+ * player (our own entity or a teammate's puppet). Anything else is returned unchanged.
+ * NPC AI and scripts only ever know one player; this is where the blow gets its real victim.
+ */
+EntityHandle attackTarget(const Entity & npc, EntityHandle target);
 
 //! Owner of a puppet entity, or InvalidPlayerId.
 PlayerId puppetOwner(const Entity & io);
+
+/*!
+ * A hit drew blood here: the others replay the same effect on their copy of the victim
+ * (a mirrored NPC, or a player through its puppet). \a effects: 1 splat + decal, 2 bleeding.
+ */
+void bloodSpawned(const Entity & target, const Vec3f & pos, const Vec3f & sourcePos, float dmgs, Color color, u8 effects);
 
 /*!
  * NPC mirroring: the host streams the state of its NPCs (they only live there), clients
@@ -66,7 +93,20 @@ void spellCast(unsigned spell, float level, unsigned flags, const Entity * targe
 
 //! Co-op death: the local player stays down until a teammate revives it, unless everyone is down.
 bool localPlayerDowned();
+bool localPlayerDownedRaw(); //!< same, ignoring the bleed-out
 bool allPlayersDowned();
+
+//! The downed teammate we are looking at from close by, or InvalidPlayerId.
+PlayerId lookedAtDownedTeammate();
+
+//! A teammate in this level is locked in a cinematic dialogue (InvalidPlayerId if none).
+PlayerId teammateInDialogue();
+//! Option "dialogue_hold": our controls stay frozen while a teammate talks to an NPC.
+bool dialogueHold();
+//! Asks the host (or tells the client) to get a teammate back up.
+void reviveTeammate(PlayerId target);
+//! Admin: gets our own character back up (host healing itself).
+void adminReviveLocal();
 
 void npcSyncSend();   //!< Host: streams changed NPC states
 void npcSyncUpdate(); //!< Per in-game frame, both sides
@@ -77,6 +117,7 @@ bool npcsAreMirrored(); //!< True on a client whose world comes from the host
  * takes an in-game screenshot and quits, so puppets can be checked without any input.
  */
 extern bool g_puppetsTestMode;
+extern bool g_puppetsTestLean; //!< --coop-test: acts as a held "lean left" key
 void puppetsTestUpdate();
 
 } // namespace coop

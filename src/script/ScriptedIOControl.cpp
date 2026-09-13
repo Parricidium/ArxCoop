@@ -46,6 +46,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include <string>
 #include <string_view>
 
+#include "coop/Puppets.h"
 #include "core/Core.h"
 #include "game/EntityManager.h"
 #include "game/Equipment.h"
@@ -728,7 +729,14 @@ public:
 			ScriptWarning << "unknown target: " << target;
 			return Failed;
 		}
-		
+
+		// Co-op: a creature striking "player" hurts the teammate it is actually fighting
+		if(context.getEntity() && (context.getEntity()->ioflags & IO_NPC) && entity == entities.player()) {
+			if(Entity * victim = entities.get(coop::attackTarget(*context.getEntity(), entity->index()))) {
+				entity = victim;
+			}
+		}
+
 		if((entity->ioflags & IO_NPC) && context.getEntity()) {
 			damageCharacter(*entity, damage, *context.getEntity(), nullptr, type, &entity->pos);
 		}

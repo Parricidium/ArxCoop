@@ -70,6 +70,8 @@ constexpr const std::string_view
 	realtimeOverride,
 	coopNickname = "Joueur",
 	coopAddress = "127.0.0.1",
+	coopFace = "",
+	coopFavorites = "",
 	bufferUpload,
 	extensionOverride,
 	thumbnailSize = BOOST_PP_STRINGIZE(THUMBNAIL_DEFAULT_WIDTH) "x"
@@ -92,6 +94,9 @@ constexpr const int
 	migration = Config::OriginalAssets,
 	quicksaveSlots = 3,
 	coopPort = 27015,
+	coopDialogueHold = false,
+	coopThirdPerson = false,
+	coopRightShoulder = true,
 	bufferSize = 0,
 	quickLevelTransition = JumpToChangeLevel;
 
@@ -113,6 +118,7 @@ constexpr const bool
 	mouseLookToggle = true,
 	autoDescription = true,
 	forceToggle = false,
+	skipIntro = true,
 	rawMouseInput = true,
 	borderTurning = true,
 	useAltRuneRecognition = true,
@@ -182,6 +188,13 @@ constexpr const ActionKey actions[NUM_ACTION_KEY] = {
 	ActionKey((Keyboard::Key_LeftAlt << 16) | Keyboard::Key_Enter, (Keyboard::Key_RightAlt << 16) | Keyboard::Key_Enter), // TOGGLE_FULLSCREEN
 	ActionKey(Keyboard::Key_Grave), // CONSOLE
 	ActionKey(Keyboard::Key_ScrollLock, Keyboard::Key_Backslash), // DEBUG
+	ActionKey(Keyboard::Key_V), // THIRDPERSON
+	ActionKey(Keyboard::Key_O), // CAMERA_ORBIT
+	ActionKey(Keyboard::Key_N), // SWAP_SHOULDER
+	ActionKey(Mouse::Wheel_Up), // CAMERA_ZOOM_IN
+	ActionKey(Mouse::Wheel_Down), // CAMERA_ZOOM_OUT
+	ActionKey(Mouse::Button_2), // PING
+	ActionKey(Keyboard::Key_F8), // ADMIN
 };
 
 } // namespace Default
@@ -324,6 +337,13 @@ constexpr const std::string_view actions[NUM_ACTION_KEY] = {
 	"toggle_fullscreen",
 	"console",
 	"debug",
+	"third_person",
+	"camera_orbit",
+	"swap_shoulder",
+	"camera_zoom_in",
+	"camera_zoom_out",
+	"ping",
+	"admin",
 };
 
 // Misc options
@@ -331,6 +351,7 @@ constexpr const std::string_view
 	forceToggle = "forcetoggle",
 	migration = "migration",
 	quicksaveSlots = "quicksave_slots",
+	skipIntro = "skip_intro",
 	debugLevels = "debug",
 	realtimeOverride = "realtime_override";
 
@@ -338,7 +359,12 @@ constexpr const std::string_view
 constexpr const std::string_view
 	coopNickname = "nickname",
 	coopAddress = "address",
-	coopPort = "port";
+	coopPort = "port",
+	coopFace = "face",
+	coopFavorites = "favorites",
+	coopDialogueHold = "dialogue_hold",
+	coopThirdPerson = "third_person",
+	coopRightShoulder = "right_shoulder";
 
 } // namespace Key
 
@@ -561,6 +587,7 @@ bool Config::save() {
 	writer.writeKey(Key::forceToggle, misc.forceToggle);
 	writer.writeKey(Key::migration, misc.migration);
 	writer.writeKey(Key::quicksaveSlots, misc.quicksaveSlots);
+	writer.writeKey(Key::skipIntro, misc.skipIntro);
 	writer.writeKey(Key::debugLevels, misc.debug);
 	writer.writeKey(Key::realtimeOverride, misc.realtimeOverride);
 	
@@ -569,6 +596,11 @@ bool Config::save() {
 	writer.writeKey(Key::coopNickname, coop.nickname);
 	writer.writeKey(Key::coopAddress, coop.address);
 	writer.writeKey(Key::coopPort, coop.port);
+	writer.writeKey(Key::coopFace, coop.face);
+	writer.writeKey(Key::coopFavorites, coop.favorites);
+	writer.writeKey(Key::coopDialogueHold, coop.dialogueHold);
+	writer.writeKey(Key::coopThirdPerson, coop.thirdPerson);
+	writer.writeKey(Key::coopRightShoulder, coop.rightShoulder);
 	
 	return writer.flush();
 }
@@ -702,6 +734,7 @@ bool Config::init(const fs::path & file) {
 	misc.forceToggle = reader.getKey(Section::Misc, Key::forceToggle, Default::forceToggle);
 	misc.migration = MigrationStatus(reader.getKey(Section::Misc, Key::migration, Default::migration));
 	misc.quicksaveSlots = std::max(reader.getKey(Section::Misc, Key::quicksaveSlots, Default::quicksaveSlots), 1);
+	misc.skipIntro = reader.getKey(Section::Misc, Key::skipIntro, Default::skipIntro);
 	misc.debug = reader.getKey(Section::Misc, Key::debugLevels, Default::debugLevels);
 	misc.realtimeOverride = reader.getKey(Section::Misc, Key::realtimeOverride, Default::realtimeOverride);
 	
@@ -709,6 +742,11 @@ bool Config::init(const fs::path & file) {
 	coop.nickname = reader.getKey(Section::Coop, Key::coopNickname, Default::coopNickname);
 	coop.address = reader.getKey(Section::Coop, Key::coopAddress, Default::coopAddress);
 	coop.port = reader.getKey(Section::Coop, Key::coopPort, Default::coopPort);
+	coop.face = reader.getKey(Section::Coop, Key::coopFace, Default::coopFace);
+	coop.favorites = reader.getKey(Section::Coop, Key::coopFavorites, Default::coopFavorites);
+	coop.dialogueHold = reader.getKey(Section::Coop, Key::coopDialogueHold, Default::coopDialogueHold);
+	coop.thirdPerson = reader.getKey(Section::Coop, Key::coopThirdPerson, Default::coopThirdPerson);
+	coop.rightShoulder = reader.getKey(Section::Coop, Key::coopRightShoulder, Default::coopRightShoulder);
 	
 	return loaded;
 }

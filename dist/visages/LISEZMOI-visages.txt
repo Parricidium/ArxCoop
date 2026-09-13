@@ -1,0 +1,10 @@
+Modeles pour les visages personnalises (voir LISEZMOI.txt, section VISAGES)
+
+cadrage_photo.png      : comment cadrer une photo. L'ovale vert clair = limite du visage colle,
+                         l'ovale vert fonce = zone entierement opaque ; entre les deux, fondu.
+tete_hero_N_skin.png   : textures completes des 4 tetes du jeu (512x512), a editer puis a
+                         enregistrer dans le dossier des visages avec "_skin" dans le nom.
+tete_hero_N_zones.png  : les memes avec le rectangle (rouge) et les ovales du visage, pour reperage.
+
+Le jeu regenere ces fichiers dans <dossier des visages>\modeles\ avec le bouton
+"Ouvrir le dossier des visages" du menu Cooperation.

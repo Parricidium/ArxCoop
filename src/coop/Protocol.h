@@ -37,10 +37,11 @@
  */
 namespace coop {
 
-constexpr u32 ProtocolVersion = 4;
+constexpr u32 ProtocolVersion = 12;
 constexpr u16 DefaultPort = 27015;
 constexpr size_t MaxPlayers = 4;
 constexpr size_t MaxNicknameLength = 24;
+constexpr u32 MaxFaceBytes = 256 * 1024; //!< encoded custom face image
 constexpr u32 MaxPayloadSize = 64 * 1024 * 1024; // level states are large (but compressed)
 
 //! Player slot index; the host is always slot 0.
@@ -80,7 +81,7 @@ enum class MessageType : u16 {
 	SpawnEntity   = 47, //!< H->C: u8 kind, string classPath, s32 instance, f32 pos[3], f32 angle[3]
 	LevelState    = 48, //!< H->C: u32 area, string levelBlob, string globalsBlob, f32 pos[3]
 	RequestLevel  = 49, //!< C->H: (empty)
-	WorldSync     = 50, //!< H->C: u16 n quests, strings, u16 n keys, strings, u32 rune flags
+	WorldSync     = 50, //!< H->C: u16 n quests, strings, u16 n keys, strings, u32 rune flags, s32 xp, u8 bags
 	NpcState      = 51, //!< H->C: u16 n, then per NPC see coop/Puppets.cpp
 	DamagePlayer  = 52, //!< both: u8 target, f32 damage, u32 type (a client sends it to the host, which applies or relays)
 	DamageNpc     = 53, //!< C->H: string id, f32 damage, u32 type, u8 hasPos, f32 pos[3]
@@ -90,10 +91,20 @@ enum class MessageType : u16 {
 	Revive        = 57, //!< C->H: u8 target id / H->C: (empty) you are revived
 	TakeItem      = 58, //!< both: string id: this world item is now in someone's inventory
 	DropItem      = 59, //!< both: string id, string classPath, s32 instance, f32 pos[3], f32 angle[3], u8 hasInstanceScript, s16 count, u8 thrown, f32 dir[3]
-	PlayerEquipment = 60, //!< like PlayerState: u8 id, u8 skin, u8 combat, 3 x (string tweak, string skinFrom, string skinTo), string weapon, string shield
+	PlayerEquipment = 60, //!< like PlayerState: u8 id, u8 skin, u8 combat, 3 x (string tweak, string skinFrom, string skinTo), string weapon, string shield, string torch
 	DragItem      = 63, //!< both: like DropItem up to hasInstanceScript, then u8 inScene: a world item is being carried around
 	SharedBag     = 64, //!< both: (empty) someone used a backpack: everyone gets the extra inventory
 	TeleportPlayer = 65, //!< both: u8 target, u32 area, f32 pos[3], f32 yaw (a client sends it to the host, which applies or relays)
+	PlayerFace    = 66, //!< like PlayerState: u8 id, u8 mode (see coop/Faces.h), u32 size, JPEG bytes
+	PlayerMarker  = 70, //!< like PlayerState: u8 id, u32 area, f32 pos[3]: "look here" ping
+	GiveItem      = 71, //!< C->H->target: u8 from, u8 to, string classPath, s16 count, f32 durability, f32 maxDurability, s16 poisonous, s16 poisonousCount
+	Latency       = 72, //!< H->C: u8 n, (u8 id, u16 ms) * n
+	Sound         = 73, //!< H->C: u8 kind (0 sample, 1 collision), string sample | u8 mat1 u8 mat2, f32 pos[3], f32 pitch, f32 volume
+	AdminGrant    = 75, //!< H->C: u8 kind (0 heal + revive, 1 gold, 2 xp, 3 invulnerability), s32 amount
+	Blood         = 74, //!< like PlayerState: u8 sender, u32 area, u8 targetKind (0 entity, 1 player), string id | u8 player, f32 pos[3], f32 source[3], f32 damages, u8 rgb[3], u8 effects (1 splat + decal, 2 blood)
+	StoreItem     = 76, //!< both: like DropItem up to hasInstanceScript, s16 count, string container, s16 bag, s16 x, s16 y: someone put an item into a chest / merchant
+	SetCount      = 77, //!< both: string id, s16 count: a stack of a world container changed size (one bought, one taken)
+	InventoryAdd  = 78, //!< H->C: string container, string classPath, s32 instance, s16 count, s32 price: a script put a new item into a container (replaces the "inventory add" replay so that ids match)
 
 };
 

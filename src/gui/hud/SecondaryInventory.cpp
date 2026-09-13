@@ -19,6 +19,7 @@
 
 #include "gui/hud/SecondaryInventory.h"
 
+#include "coop/Replication.h"
 #include "core/Application.h"
 #include "core/Config.h"
 #include "core/Core.h"
@@ -332,9 +333,11 @@ void SecondaryInventoryHud::dropEntity() {
 	if(!isOpen() || !g_secondaryInventoryHud.containsPos(mouse)) {
 		return;
 	}
-	
+
+	coop::ContainerDropScope coopScope(*m_container, g_draggedEntity); // the others see what lands in there
+
 	if(m_container->ioflags & IO_SHOP) {
-		
+
 		if(!m_container->shop_category.empty()
 		   && g_draggedEntity->groups.find(m_container->shop_category) == g_draggedEntity->groups.end()) {
 			// Item not allowed by shop category
@@ -397,6 +400,7 @@ void SecondaryInventoryHud::dragEntity(Entity * io) {
 		unstackedEntity->scriptload = 1;
 		unstackedEntity->_itemdata->count = 1;
 		io->_itemdata->count--;
+		coop::itemCountChanged(*io); // one less in the chest / shop for everyone
 		setDraggedEntity(unstackedEntity);
 		g_draggedItemPreviousPosition = locateInInventories(io);
 		g_draggedIconOffset = offset;

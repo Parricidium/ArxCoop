@@ -1,0 +1,135 @@
+ArxCoop - mod cooperatif (2 a 4 joueurs) pour Arx Fatalis
+==========================================================
+Base : Arx Libertatis (moteur libre, GPLv3). Aucune donnee du jeu n'est fournie :
+il faut posseder Arx Fatalis (GOG ou Steam), version 1.21 (les versions GOG/Steam le sont).
+
+INSTALLATION
+1. Dezipper ce dossier DANS le dossier d'Arx Fatalis (celui qui contient data.pak).
+   Rien n'est ecrase : arx.exe est un executable en plus, le jeu d'origine reste intact.
+   Le mod range TOUT (sauvegardes, config, visages) dans  userdata\  a cote de arx.exe, jamais dans
+   "Parties enregistrees" : pour tout effacer ou tout deplacer, c'est ce seul dossier.
+   (Des sauvegardes d'une version precedente du mod ? Copiez  Parties enregistrees\Arx Libertatis\save\
+   dans  userdata\save\ .)
+   Le dossier  localisation\  contient la traduction anglaise du mod : si le jeu est en anglais
+   (Options > Language), les menus et messages du mod le sont aussi. Le francais est integre.
+2. Le Windows Firewall demandera peut-etre l'autorisation au premier lancement : accepter (reseau prive).
+
+JOUER
+- L'hote lance heberger.cmd (ou : arx.exe --coop-host 27015 --nickname MonPseudo).
+- Les autres lancent rejoindre.cmd et entrent l'adresse IP de l'hote
+  (ou : arx.exe --coop-join 192.168.1.10:27015 --nickname MonPseudo).
+- Meme reseau local ou VPN (Radmin VPN, Hamachi, ZeroTier). Par internet, l'hote doit ouvrir le port TCP 27015.
+- Tout le monde arrive dans le salon. En bas, l'hote a deux boutons :
+    "Continuer : <derniere sauvegarde>"  -> reprend la partie ; chaque joueur recharge automatiquement
+                                            son personnage "coop: <nom>" (ou en cree un s'il est nouveau).
+    "Commencer du debut"                 -> nouvelle partie, chacun cree son personnage.
+- On peut aussi tout faire depuis le menu : Cooperation > "Heberger une partie" ou "Rejoindre une partie".
+  HEBERGER : pseudo, port, puis "Heberger une nouvelle partie" (arrivee dans le salon).
+  En bas : votre IP locale (reseau local / VPN) et votre IP internet, a donner a vos amis.
+  REJOINDRE : pseudo, adresse de l'hote, port, favoris ("Memoriser cette adresse"), puis "Rejoindre la partie".
+- Rejoindre une partie en cours est possible : le nouveau venu cree son perso (ou recharge son perso "coop:" s'il en a un).
+- Charger une autre sauvegarde que la derniere : dans le salon ou en jeu, menu Sauvegardes de l'hote ;
+  les autres rechargent alors leur personnage "coop: <nom>".
+
+CE QUI EST PARTAGE
+- Le monde (PNJ, portes, leviers, pieges, objets, quetes, cles, runes, XP, variables des scripts) appartient
+  a l'hote et est vu par tous : ce qu'un joueur declenche (dialogue, laissez-passer, passage degage...)
+  vaut pour tout le monde.
+- Coffres et marchands : un objet depose dans un coffre ou vendu a un marchand y est pour tout le monde ;
+  un objet pris ou achete disparait pour les autres (y compris une unite d'une pile, ou des pieces d'or).
+- Chaque joueur garde son propre personnage : stats, points, inventaire, equipement, bourse (l'or ramasse
+  ou gagne en vendant est a lui ; l'or et l'XP donnes par les quetes vont a tout le monde).
+- Rejoindre une partie avancee : le nouveau venu recoit les quetes, cles, runes, sacs et l'XP de l'hote
+  (donc ses niveaux, avec les points a repartir).
+- Sauvegarde : seul l'hote sauvegarde (F5 ou menu). Chaque autre joueur sauvegarde alors automatiquement
+  son personnage sous "coop: <nom>". Quand l'hote charge une sauvegarde, chacun recharge la sienne.
+- Mort : un joueur a 0 PV reste a terre. Un coequipier maintient CLIC GAUCHE en le regardant de pres (~2 m)
+  pendant 4 s pour le relever (jauge affichee). Tout le monde a terre = fin de partie.
+- Le menu de l'hote ne met pas le monde en pause.
+- Un joueur qui utilise un sac a dos donne l'inventaire supplementaire a tout le monde.
+- Les autres joueurs sont vus avec leur tete (ou leur visage personnalise), leur armure et leur arme.
+- Torche : quand un joueur allume une torche (ou une lampe), les autres voient la flamme a sa hanche
+  droite et ce qu'elle eclaire. En vue 3e personne, on voit aussi la sienne.
+- CLIC MOLETTE : marqueur "par ici" a l'endroit vise (double cercle rouge avec la distance, visible 12 s
+  par tout le monde, fleche au bord de l'ecran s'il est hors champ). Touche modifiable dans Options > Commandes.
+- Les coequipiers hors champ sont indiques par une fleche au bord de l'ecran avec leur distance ;
+  ils apparaissent aussi sur la mini-carte et sur la carte du livre (fleche de couleur).
+- Ping (latence) affiche a cote des noms dans le HUD (a gauche) et a cote de votre vie.
+- Les demembrements des PNJ sont les memes chez tout le monde.
+- Le sang des coups (le votre, celui des autres, celui des PNJ) est visible par tout le monde.
+- DONNER un objet : selectionnez-le dans l'inventaire (clic droit, il suit le curseur) puis cliquez sur
+  le coequipier. Il le recoit dans son inventaire (ou a ses pieds s'il est plein).
+- A TERRE : "X est a terre !" s'affiche avec un signal sonore ; le joueur a terre voit un compte a rebours
+  de 2 minutes, passe ce delai c'est la mort normale. Une POTION DE VIE utilisee (touche H) en regardant
+  un coequipier a terre le releve instantanement.
+- F8 (modifiable dans Options > Commandes) : menu ADMINISTRATION en jeu, le monde continue de tourner.
+  Hote : choisir un joueur puis le teleporter a soi / se teleporter a lui / le relever et soigner /
+  lui donner de l'or, de l'XP (quantite) ou un objet (nom de classe : potion_life, short_sword,
+  gold_coin, ring_regeneration... un nom approchant affiche les noms possibles) / l'expulser ;
+  et pour tous : tout le monde a moi, soigner tout le monde, invulnerabilite, tuer les PNJ hostiles
+  autour de moi (20 m, pour se sortir d'un blocage), sauvegarder maintenant.
+  Client : "Me teleporter vers ce joueur" (hote ou autre joueur) si vous etes coince dans le niveau.
+- Les penches (A / E) et la tete qui parle sont visibles par les autres joueurs.
+- MENUS PERSONNALISES : le mod est livre avec son propre habillage (fond "Arx Fatalis COOP", cadre dore,
+  panneau gris) sous forme de trois images dans  userdata\coop\  ; l'archive les remet a chaque mise a jour.
+  Vous pouvez les remplacer par les votres (png, jpg ou bmp ; supprimer le fichier = retour au jeu d'origine) :
+    menu_background.*  fond du menu principal (16:9 conseille, etire a l'ecran ; remplace l'image d'origine,
+                       logo compris).
+    menu_panel.*       fond du cadre des menus (321x419 ; il ASSOMBRIT ce qu'il y a derriere : blanc = rien,
+                       noir = opaque).
+    menu_border.*      bordure du cadre (322x424 ; PNG avec transparence, ou noir = transparent).
+  "Ouvrir le dossier des visages" (Options > Cooperation) exporte les images d'origine dans
+  userdata\coop\menu_modeles\  comme point de depart.
+- Scenes scriptees (intro, dialogues qui deplacent l'hote) : a la fin de la scene, les coequipiers restes
+  loin sont teleportes a cote de l'hote. Apres un changement de niveau, pareil quelques secondes plus tard.
+- Reconnexion : si quelqu'un plante ou se deconnecte, il relance rejoindre.cmd : son personnage est
+  recharge (sauvegarde automatique toutes les 3 min) et l'hote le remet la ou il etait.
+- Les sons du monde de l'hote (coups, impacts, PNJ...) sont entendus par tout le monde.
+- Options > Cooperation : visage, vue 3e personne au lancement, epaule, "me figer quand un
+  coequipier dialogue" (les autres ne bougent plus pendant un dialogue cinematique), intro.
+- A gauche de l'ecran : pseudo, barre de vie (rouge) et barre de faim (orange) des coequipiers.
+  En bas a gauche, a la place de l'orbe rouge : les memes barres pour vous (pseudo, vie avec le
+  chiffre, faim). L'orbe bleue de mana reste. En haut au centre : temps de jeu.
+
+VISAGES PERSONNALISES (nouveau)
+- "Visage" : "Personnage" = la tete choisie a la creation du perso (comme avant),
+  ou une image a vous. Les autres joueurs la voient sur votre personnage (et vous dans le livre).
+- Menu Options > Cooperation > "Visage" : la tete du personnage s'affiche en 3D en dessous, avec
+  le visage choisi (comme a la creation du personnage).
+- Cliquer "Ouvrir le dossier des visages" : le jeu cree le dossier  userdata\coop\faces\  (dans le
+  dossier du jeu) et l'ouvre. Deposez-y votre image, revenez sur la page Cooperation, choisissez-la
+  dans "Visage" (apercu affiche dessous).
+- PHOTO (le plus simple) : n'importe quel jpg/png, cadre SERRE sur le visage, de face, du haut du
+  front au menton, sans les cheveux ni les epaules (voir visages\cadrage_photo.png : tout ce qui est
+  dans l'ovale vert est colle sur le visage, le reste est fondu avec la tete du jeu). Le jeu
+  recadre en 5:7 et reduit la photo tout seul ; une photo trop large donnera un visage minuscule.
+- TETE COMPLETE (pour les bricoleurs) : editez visages\tete_hero_N_skin.png (la texture de la tete,
+  N = 1 a 4 ; *_zones.png montre ou tombe le visage) et enregistrez-la dans le dossier des visages
+  avec "_skin" dans le nom (ex. bob_skin.png) : elle est alors utilisee telle quelle (tete nue ;
+  avec cotte de mailles ou capuche, la tete du jeu revient).
+- La photo est envoyee une fois aux autres joueurs (~20 a 40 Ko). Rien n'est envoye ailleurs.
+
+VUE A LA 3E PERSONNE (nouveau)
+- V : bascule vue subjective / vue a la 3e personne (camera par-dessus l'epaule, personnage decale
+  sur le cote, style Ghost Recon Wildlands). La camera se rapproche toute seule devant un mur.
+- N : changer d'epaule (personnage a gauche ou a droite de l'ecran).
+- O : en 3e personne, camera libre : la souris tourne la camera autour du personnage sans le faire
+  tourner (re-appuyer pour revenir a la camera normale).
+- Molette haut / bas : en 3e personne, rapprocher / eloigner la camera.
+- Ces touches se changent dans Options > Commandes (lignes "Vue 1re / 3e personne",
+  "Camera libre", "Changer d'epaule", "Camera plus pres / plus loin").
+- Le jeu demarre maintenant directement sur le menu principal, sans la cinematique d'intro
+  (pour la retrouver : cfg.ini, section [misc], skip_intro=false).
+
+CONSOLE (touche ² a gauche du 1, ou la touche configuree pour la console)
+- tp p2       : teleporte le joueur 2 (ordre du salon, p1 = l'hote) a cote de moi (utilisable par tous)
+- tp Pseudo   : idem par pseudo ;  tp all : tout le monde vient a moi
+  (le joueur doit etre dans le meme niveau)
+
+LIMITES CONNUES (version de developpement)
+- Fait pour le reseau local ; jamais teste avec une vraie latence internet.
+- Les sorts des autres joueurs sont visibles ; leurs degats sont calcules chez le lanceur.
+- Les cinematiques du scenario ne sont vues qu'avec la camera par celui qui les declenche.
+- Les sauvegardes du mod (userdata\) sont separees de celles du jeu d'origine : aucun risque pour elles.
+
+Sources : disponibles sur demande (GPLv3), branche "coop" du depot Arx Libertatis modifie.

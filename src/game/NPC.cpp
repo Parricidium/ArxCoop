@@ -171,11 +171,11 @@ static void CheckHit(Entity * source, float ratioaim) {
 		dmg = 40.f;
 	}
 	
-	Entity * target = entities.get(source->targetinfo);
+	Entity * target = entities.get(coop::attackTarget(*source, source->targetinfo));
 	if(!target) {
 		return;
 	}
-	
+
 	if(target->ioflags & (IO_MARKER | IO_CAMERA)) {
 		return;
 	}
@@ -648,7 +648,7 @@ bool ARX_NPC_LaunchPathfind(Entity * io, EntityHandle target)
 	Vec3f pos2 = io->pos;
 	if(io->_npcdata->behavior & BEHAVIOUR_GO_HOME) {
 		pos2 = io->initpos;
-	} else if(Entity * entity = entities.get(target)) {
+	} else if(Entity * entity = entities.get(coop::attackTarget(*io, target))) {
 		pos2 = entity->pos;
 	}
 	
@@ -1124,11 +1124,16 @@ void StareAtTarget(Entity * io) {
 	
 }
 
+//! Co-op: "the player" as a target means the nearest standing player, a teammate's puppet included.
+static Entity * targetEntity(Entity * io, EntityHandle handle) {
+	return entities.get(coop::attackTarget(*io, handle));
+}
+
 static float GetTRUETargetDist(Entity * io) {
-	
+
 	arx_assert(io->ioflags & IO_NPC);
-	
-	Entity * target = entities.get(io->_npcdata->pathfind.truetarget);
+
+	Entity * target = targetEntity(io, io->_npcdata->pathfind.truetarget);
 	if(!target) {
 		return 99999999.f;
 	}
@@ -1402,9 +1407,9 @@ static void ARX_NPC_Manage_Anims(Entity * io, float TOLERANCE) {
 	AnimLayer & layer1 = io->animlayer[1];
 	
 	float tdist = std::numeric_limits<float>::max();
-	if(Entity * target = entities.get(io->_npcdata->pathfind.truetarget); target && io->_npcdata->pathfind.listnb) {
+	if(Entity * target = targetEntity(io, io->_npcdata->pathfind.truetarget); target && io->_npcdata->pathfind.listnb) {
 		tdist = arx::distance2(io->pos, target->pos);
-	} else if(Entity * fallback = entities.get(io->targetinfo)) {
+	} else if(Entity * fallback = targetEntity(io, io->targetinfo)) {
 		tdist = arx::distance2(io->pos, fallback->pos);
 	}
 	
@@ -1646,12 +1651,13 @@ static void ARX_NPC_Manage_Anims(Entity * io, float TOLERANCE) {
 						if(   ctime > animtime * STRIKE_MUL
 						   && ctime <= animtime * STRIKE_MUL2
 						) {
+							EntityHandle victim = coop::attackTarget(*io, io->targetinfo);
 							if(!(io->ioflags & IO_HIT)) {
-								if(ARX_EQUIPMENT_Strike_Check(io, io->_npcdata->weapon, 1, 0, io->targetinfo)) {
+								if(ARX_EQUIPMENT_Strike_Check(io, io->_npcdata->weapon, 1, 0, victim)) {
 									io->ioflags |= IO_HIT;
 								}
 							} else {
-								ARX_EQUIPMENT_Strike_Check(io, io->_npcdata->weapon, 1, 1, io->targetinfo);
+								ARX_EQUIPMENT_Strike_Check(io, io->_npcdata->weapon, 1, 1, victim);
 							}
 						}
 					}
@@ -2130,7 +2136,7 @@ static void ManageNPCMovement_End(Entity * io) {
 	   && (io->_npcdata->behavior & BEHAVIOUR_MOVE_TO)
 	   && !(io->_npcdata->behavior & BEHAVIOUR_FLEE)
 	) {
-		if(Entity * target = entities.get(io->_npcdata->pathfind.truetarget)) {
+		if(Entity * target = targetEntity(io, io->_npcdata->pathfind.truetarget)) {
 			long t = AnchorData_GetNearest(target->pos, io->physics.cyl);
 			if(t != -1 && t != io->_npcdata->pathfind.list[io->_npcdata->pathfind.listnb - 1]) {
 				long anchor = io->_npcdata->pathfind.list[io->_npcdata->pathfind.listnb - 1];
@@ -2729,12 +2735,16 @@ void ManageIgnition(Entity & io) {
 		}
 		
 		if(addParticles) {
-			createFireParticles(io.obj->vertexWorldPositions[io.obj->fastaccess.fire].v, 2, 2ms);
+			// (co-op hip torches: a smaller flame than the wall-mounted ones)
+			createFireParticles(io.obj->vertexWorldPositions[io.obj->fastaccess.fire].v, io.coopPuppet ? 1 : 2,
+			                    io.coopPuppet ? 5ms : 2ms);
 		}
 		
 	} else {
 		
-		io.ignition -= g_framedelay * 0.01f;
+		if(!io.coopPuppet) { // (co-op hip lamps without a "fire" point keep burning)
+			io.ignition -= g_framedelay * 0.01f;
+		}
 		
 		if(addParticles && io.obj && !io.obj->facelist.empty()) {
 			float p = io.ignition * g_framedelay * 0.001f * float(io.obj->facelist.size()) * 0.001f * 2.f;
@@ -2774,8 +2784,8 @@ void ManageIgnition_2(Entity & io) {
 			light->rgb = (Color3f(1.f, 0.8f, 0.6f) - randomColor3f() * Color3f(0.2f, 0.2f, 0.2f)) * v;
 			light->pos = position + Vec3f(0.f, -30.f, 0.f);
 			light->ex_flaresize = 40.f;
-			if(io.show == SHOW_FLAG_IN_SCENE || io.show == SHOW_FLAG_TELEPORTING) {
-				light->extras |= EXTRAS_FLARE;
+			if((io.show == SHOW_FLAG_IN_SCENE || io.show == SHOW_FLAG_TELEPORTING) && !io.coopPuppet) {
+				light->extras |= EXTRAS_FLARE; // (no lens flare for the co-op hip torches)
 			} else {
 				light->extras &= ~EXTRAS_FLARE;
 			}
