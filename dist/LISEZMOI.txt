@@ -85,6 +85,7 @@ CE QUI EST PARTAGE
 - Reconnexion : si quelqu'un plante ou se deconnecte, il relance rejoindre.cmd : son personnage est
   recharge (sauvegarde automatique toutes les 3 min) et l'hote le remet la ou il etait.
 - Les sons du monde de l'hote (coups, impacts, PNJ...) sont entendus par tout le monde.
+- Les voix des heros (repliques de dialogue, efforts) sont entendues par les autres joueurs.
 - Options > Cooperation : visage, vue 3e personne au lancement, epaule, "me figer quand un
   coequipier dialogue" (les autres ne bougent plus pendant un dialogue cinematique), intro.
 - A gauche de l'ecran : pseudo, barre de vie (rouge) et barre de faim (orange) des coequipiers.

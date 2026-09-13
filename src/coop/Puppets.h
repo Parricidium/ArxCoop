@@ -78,6 +78,9 @@ EntityHandle attackTarget(const Entity & npc, EntityHandle target);
 //! Owner of a puppet entity, or InvalidPlayerId.
 PlayerId puppetOwner(const Entity & io);
 
+//! Host: is a teammate (in this level) within \a limit of \a pos?
+bool teammateWithin(const Vec3f & pos, float limit);
+
 /*!
  * A hit drew blood here: the others replay the same effect on their copy of the victim
  * (a mirrored NPC, or a player through its puppet). \a effects: 1 splat + decal, 2 bleeding.

@@ -166,6 +166,7 @@ ef update().
 
 	//! Same routing as PlayerState, for blood effects of hits landed elsewhere.
 	std::function<void(PlayerId id, Reader & payload)> onBlood;
+	std::function<void(PlayerId id, Reader & payload)> onPlayerSpeech;
 
 	//! Client: round trip time to the host in ms (0 until measured).
 	u16 ownLatency() const { return m_ownLatency; }

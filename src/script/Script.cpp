@@ -1677,7 +1677,9 @@ SCR_TIMER & createScriptTimer(Entity * io, std::string && name) {
 		}
 	}
 	
-	return g_scriptTimers.emplace_back(io, std::move(name));
+	SCR_TIMER & timer = g_scriptTimers.emplace_back(io, std::move(name));
+	timer.coopActor = coop::currentActor(); // a timer armed by a player's action stays that player's
+	return timer;
 }
 
 size_t ARX_SCRIPT_CountTimers() {
@@ -1815,7 +1817,8 @@ void ARX_SCRIPT_Timer_Check() {
 		const EERIE_SCRIPT * es = timer.es;
 		Entity * io = timer.io;
 		size_t pos = timer.pos;
-		
+		unsigned actor = timer.coopActor;
+
 		if(!es && Manage_Specific_RAT_Timer(&timer)) {
 			continue;
 		}
@@ -1839,6 +1842,7 @@ void ARX_SCRIPT_Timer_Check() {
 		
 		if(es && ValidIOAddress(io)) {
 			LogDebug("running timer \"" << name << "\" for entity " << io->idString());
+			coop::PlayerActorScope actorScope(actor);
 			ScriptEvent::resume(es, io, pos);
 		} else {
 			LogDebug("could not run timer \"" << name << "\" - entity vanished");

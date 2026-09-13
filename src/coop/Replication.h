@@ -99,6 +99,19 @@ public:
 	~PuppetActorScope();
 };
 
+/*!
+ * The player whose action is being processed right now (0xFF if none), so that a script that
+ * resumes later (after a speech, from a timer) can act for the same player.
+ */
+unsigned currentActor();
+class PlayerActorScope {
+	bool m_active = false;
+	unsigned m_previous = 0;
+public:
+	explicit PlayerActorScope(unsigned actor);
+	~PlayerActorScope();
+};
+
 //! Sends a recorded (executed) command to the players that need it.
 void commandReplicated(std::string_view command, const std::vector<std::string> & words,
                        const script::Context & context);
@@ -199,6 +212,15 @@ public:
 
 //! The local player changed the size of a stack in a world container (bought one, took one).
 void itemCountChanged(const Entity & item);
+
+//! The local player's character said a line: the others hear it from the puppet.
+void playerSpoke(const std::string & sample);
+
+//! Host: is this entity within \a limit of a teammate (so that it gets updated like the ones around us)?
+bool nearTeammate(const Entity & entity, float limit);
+
+//! Aim pitch of another player's puppet (its owner's look pitch), for projectile spells it casts.
+bool puppetAimPitch(const Entity & caster, float & pitch);
 
 } // namespace coop
 

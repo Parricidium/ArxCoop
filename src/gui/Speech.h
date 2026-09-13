@@ -116,7 +116,8 @@ struct Speech {
 	Entity * scriptEntity = nullptr;
 	const EERIE_SCRIPT * script = nullptr;
 	size_t scriptPos = 0;
-	
+	unsigned coopActor = 0xFF; //!< co-op: the player this speech is for, restored when the script goes on
+
 };
 
 void ARX_SPEECH_Reset();

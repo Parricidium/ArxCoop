@@ -487,7 +487,9 @@ void applyShared(PlayerId from, MessageType type, Reader & reader) {
 	switch(type) {
 		case MessageType::SharedQuest: {
 			std::string quest = reader.string();
-			ARX_PLAYER_Quest_Add(quest);
+			if(std::find(g_playerQuestLogEntries.begin(), g_playerQuestLogEntries.end(), quest) == g_playerQuestLogEntries.end()) {
+				ARX_PLAYER_Quest_Add(quest);
+			}
 			relay.string(quest);
 			break;
 		}
@@ -1291,6 +1293,24 @@ ActorScope::~ActorScope() {
 	}
 }
 
+unsigned currentActor() {
+	return g_coop.isHost() ? g_actingPlayer : InvalidPlayerId;
+}
+
+PlayerActorScope::PlayerActorScope(unsigned actor) {
+	if(g_coop.isHost() && g_applyingRemote == 0 && actor != InvalidPlayerId && g_coop.player(PlayerId(actor))) {
+		m_active = true;
+		m_previous = g_actingPlayer;
+		g_actingPlayer = PlayerId(actor);
+	}
+}
+
+PlayerActorScope::~PlayerActorScope() {
+	if(m_active) {
+		g_actingPlayer = PlayerId(m_previous);
+	}
+}
+
 PuppetActorScope::PuppetActorScope(const Entity * io) {
 	if(g_coop.isHost() && g_applyingRemote == 0 && io && io->coopPuppet) {
 		PlayerId owner = puppetOwner(*io);
@@ -1701,6 +1721,23 @@ void applyInventoryAdd(Reader & reader) {
 	g_applyingRemote--;
 }
 
+void playerSpoke(const std::string & sample) {
+	if(!g_coop.isActive() || g_coop.state() != State::InGame || g_applyingRemote > 0 || sample.empty()) {
+		return;
+	}
+	Writer writer;
+	writer.u8_(g_coop.localId());
+	writer.string(sample);
+	g_coop.sendToOthers(MessageType::PlayerSpeech, writer);
+}
+
+bool nearTeammate(const Entity & entity, float limit) {
+	if(!g_coop.isHost() || g_coop.state() != State::InGame) {
+		return false;
+	}
+	return teammateWithin(entity.pos, limit);
+}
+
 bool keptOverLevelState(const Entity & io) {
 	return g_coop.isClient() && g_coop.state() == State::InGame && isPlayerSide(&io);
 }
@@ -1908,6 +1945,9 @@ CommandSync commandSync(std::string_view command, const script::Context & contex
 			}
 			return CommandSync::Local;
 		}
+		if(command == "teleport" && g_actingPlayer != g_coop.localId() && peekTeleportChangesLevel(context)) {
+			return CommandSync::Replicate; // a client walked into the exit: the host leads the level change
+		}
 		if((command == "playanim" || command == "forceanim") && g_actingPlayer != g_coop.localId()
 		   && peekFlags(context).find('e') != std::string::npos) {
 			// "-e <command when done>": the host must run the animation too so that the script goes
@@ -2022,8 +2062,18 @@ void commandRedirected(std::string_view command, script::Context & context) {
 	LogDebug("[coop] redirected to player " << int(g_actingPlayer) << ": " << buildLine(command, words));
 }
 
+/*!
+ * Progress (globals, quests, keys, runes, xp, gold, bags) is shared as it changes, except while a
+ * level is loading or while a client is not yet in the host's world: a newcomer creating its
+ * character runs the player's init script, which resets about a hundred quest globals.
+ */
+bool sharingAllowed() {
+	return g_coop.isActive() && g_coop.state() == State::InGame && g_applyingRemote == 0 && g_levelLoading == 0
+	       && (!g_coop.isClient() || g_levelSynced);
+}
+
 void globalVariableChanged(std::string_view name, const SCRIPT_VAR & var) {
-	if(!g_coop.isActive() || g_applyingRemote > 0) {
+	if(!sharingAllowed()) {
 		return;
 	}
 	Writer writer;
@@ -2042,7 +2092,7 @@ void globalVariableChanged(std::string_view name, const SCRIPT_VAR & var) {
 }
 
 void sharedQuestAdded(std::string_view quest) {
-	if(g_coop.isActive() && g_applyingRemote == 0) {
+	if(sharingAllowed()) {
 		Writer writer;
 		writer.string(quest);
 		g_coop.sendToOthers(MessageType::SharedQuest, writer);
@@ -2050,7 +2100,7 @@ void sharedQuestAdded(std::string_view quest) {
 }
 
 void sharedKeyAdded(std::string_view key) {
-	if(g_coop.isActive() && g_applyingRemote == 0) {
+	if(sharingAllowed()) {
 		Writer writer;
 		writer.string(key);
 		g_coop.sendToOthers(MessageType::SharedKey, writer);
@@ -2058,7 +2108,7 @@ void sharedKeyAdded(std::string_view key) {
 }
 
 void sharedRuneAdded(unsigned rune) {
-	if(g_coop.isActive() && g_applyingRemote == 0) {
+	if(sharingAllowed()) {
 		Writer writer;
 		writer.u32_(rune);
 		g_coop.sendToOthers(MessageType::SharedRune, writer);
@@ -2066,7 +2116,7 @@ void sharedRuneAdded(unsigned rune) {
 }
 
 void sharedGold(long amount) {
-	if(g_coop.isActive() && g_applyingRemote == 0 && amount != 0) {
+	if(sharingAllowed() && amount != 0) {
 		Writer writer;
 		writer.s32_(s32(amount));
 		g_coop.sendToOthers(MessageType::SharedGold, writer);
@@ -2074,13 +2124,13 @@ void sharedGold(long amount) {
 }
 
 void sharedBag() {
-	if(g_coop.isActive() && g_applyingRemote == 0) {
+	if(sharingAllowed()) {
 		g_coop.sendToOthers(MessageType::SharedBag, Writer());
 	}
 }
 
 void sharedExperience(long amount) {
-	if(g_coop.isActive() && g_applyingRemote == 0 && amount != 0) {
+	if(sharingAllowed() && amount != 0) {
 		Writer writer;
 		writer.s32_(s32(amount));
 		g_coop.sendToOthers(MessageType::SharedXP, writer);

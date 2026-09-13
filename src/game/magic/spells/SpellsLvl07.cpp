@@ -20,6 +20,7 @@
 #include "game/magic/spells/SpellsLvl07.h"
 
 #include "animation/AnimationRender.h"
+#include "coop/Replication.h"
 #include "core/Application.h"
 #include "core/Config.h"
 #include "core/Core.h"
@@ -566,9 +567,13 @@ void LightningStrikeSpell::Update() {
 		}
 	}
 	
+	float puppetPitch = 0.f;
 	if(m_caster == EntityHandle_Player) {
 		falpha = -player.angle.getPitch();
 		fBeta = player.angle.getYaw();
+	} else if(caster && coop::puppetAimPitch(*caster, puppetPitch)) {
+		falpha = -puppetPitch; // another player: where they look
+		fBeta = caster->angle.getYaw();
 	} else {
 		fBeta = caster ? caster->angle.getYaw() : 0.f;
 		if(caster && entities.get(caster->targetinfo) && caster->targetinfo != m_caster) {

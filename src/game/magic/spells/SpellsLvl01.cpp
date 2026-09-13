@@ -21,6 +21,7 @@
 
 #include <utility>
 
+#include "coop/Replication.h"
 #include "core/Application.h"
 #include "core/Core.h"
 #include "core/GameTime.h"
@@ -141,6 +142,7 @@ void MagicMissileSpell::Launch() {
 		}
 	} else {
 		pitch = 0.f;
+		coop::puppetAimPitch(*entities[m_caster], pitch); // another player: where they look
 		yaw = entities[m_caster]->angle.getYaw();
 		if(!m_hand_group) {
 			startPos = entities[m_caster]->pos;

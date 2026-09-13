@@ -81,6 +81,7 @@
 #include "math/Vector.h"
 #include "physics/CollisionShapes.h"
 #include "platform/Time.h"
+#include "scene/GameSound.h"
 #include "scene/Interactive.h"
 #include "scene/ChangeLevel.h"
 #include "scene/Object.h"
@@ -784,6 +785,16 @@ void handleSpellCast(PlayerId from, Reader & reader) {
 	g_applyingRemoteSpell--;
 }
 
+void handlePlayerSpeech(PlayerId from, Reader & reader) {
+	std::string sample = reader.string();
+	Entity * puppet = findPuppet(from);
+	if(!puppet || !puppetsAllowed() || sample.empty()) {
+		return;
+	}
+	ARX_SOUND_PlaySpeech(res::path::load(sample), nullptr, puppet);
+	LogInfo << "[coop] player " << int(from) << " says " << sample;
+}
+
 // NPC mirroring ------------------------------------------------------------------------
 
 struct NpcSnapshot {
@@ -1063,6 +1074,7 @@ void puppetsInit() {
 		}
 	};
 	g_coop.onSpellCast = handleSpellCast;
+	g_coop.onPlayerSpeech = handlePlayerSpeech;
 	g_coop.onNpcState = [](Reader & reader) {
 		if(npcsAreMirrored()) {
 			applyNpcState(reader);
@@ -1280,6 +1292,28 @@ PlayerId puppetOwner(const Entity & io) {
 		}
 	}
 	return InvalidPlayerId;
+}
+
+bool teammateWithin(const Vec3f & pos, float limit) {
+	for(const auto & entry : g_remote) {
+		if(entry.second.area == g_currentArea.handleData() && arx::distance2(entry.second.pos, pos) < limit * limit) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool puppetAimPitch(const Entity & caster, float & pitch) {
+	PlayerId owner = puppetOwner(caster);
+	if(owner == InvalidPlayerId) {
+		return false;
+	}
+	auto it = g_remote.find(owner);
+	if(it == g_remote.end()) {
+		return false;
+	}
+	pitch = it->second.angle.getPitch();
+	return true;
 }
 
 void puppetsReset() {
@@ -1544,6 +1578,7 @@ void puppetsTestUpdate() {
 	static bool adminClientDone = false;
 	static bool pingDone = false;
 	static bool giveDone = false;
+	static bool voiceDone = false;
 	static bool chestHostDone = false;
 	static bool chestClientDone = false;
 	static bool chestChecked = false;
@@ -1836,6 +1871,10 @@ void puppetsTestUpdate() {
 			LogInfo << "[coop] test: client takes " << item->idString();
 			giveToPlayer(item);
 		}
+	} else if(step >= 3 && elapsed > std::chrono::seconds(64) && g_coop.isClient() && !voiceDone) {
+		voiceDone = true;
+		LogInfo << "[coop] test: client's hero speaks";
+		ARX_SPEECH_AddSpeech(*entities.player(), "player_jump", ANIM_TALK_NEUTRAL, ARX_SPEECH_FLAG_NOTEXT);
 	} else if(step >= 3 && elapsed > std::chrono::seconds(100) && g_coop.isClient() && !equipDone) {
 		equipDone = true;
 		if(Entity * item = AddItem("graph/obj3d/interactive/items/armor/legging_leather/legging_leather", -1, IO_IMMEDIATELOAD)) {

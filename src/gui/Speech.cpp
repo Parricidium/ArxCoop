@@ -60,6 +60,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "game/EntityManager.h"
 #include "game/NPC.h"
+#include "coop/Replication.h"
 #include "coop/Session.h"
 #include "game/Player.h"
 
@@ -161,11 +162,15 @@ static void endSpeech(Speech & speech) {
 	Entity * scriptEntity = speech.scriptEntity;
 	const EERIE_SCRIPT * script = speech.script;
 	size_t scriptPos = speech.scriptPos;
-	
+	unsigned actor = speech.coopActor;
+
 	releaseSpeech(speech);
-	
+
 	if(script) {
 		arx_assert(ValidIOAddress(scriptEntity));
+		// Co-op: a conversation started by another player goes on for that player (its lines,
+		// its cinemascope off / controls back), not for the host's character
+		coop::PlayerActorScope actorScope(actor);
 		ScriptEvent::resume(script, scriptEntity, scriptPos);
 	}
 	
@@ -196,6 +201,7 @@ Speech * ARX_SPEECH_AddSpeech(Entity & speaker, std::string_view data, long mood
 	Speech & speech = g_speech.emplace_back();
 	
 	speech = Speech();
+	speech.coopActor = coop::currentActor();
 	speech.time_creation = g_gameTime.now();
 	speech.speaker = &speaker;
 	speech.duration = 2s; // Minimum value
@@ -251,6 +257,9 @@ Speech * ARX_SPEECH_AddSpeech(Entity & speaker, std::string_view data, long mood
 	speech.sample = ARX_SOUND_PlaySpeech(sample, nullptr, source);
 	if(g_coop.isActive()) {
 		LogInfo << "[coop] speech " << speaker.idString() << ": " << sample;
+		if(&speaker == entities.player()) {
+			coop::playerSpoke(sample.string()); // our hero's voice, heard by the others from our puppet
+		}
 	}
 	
 	// TODO Next lines must be removed (use callback instead)

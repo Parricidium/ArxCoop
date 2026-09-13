@@ -19,6 +19,7 @@
 
 #include "game/magic/spells/SpellsLvl03.h"
 
+#include "coop/Replication.h"
 #include "core/Core.h"
 #include "core/GameTime.h"
 
@@ -194,6 +195,7 @@ void FireballSpell::Launch() {
 			float d = glm::distance(getXZ(end), getXZ(start));
 			anglea = glm::degrees(getAngle(start.y, start.z, end.y, end.z + d));
 		}
+		coop::puppetAimPitch(*caster, anglea); // another player: where they look
 		angleb = caster->angle.getYaw();
 	}
 	
@@ -253,7 +255,8 @@ void FireballSpell::Update() {
 				float d = glm::distance(getXZ(p2), getXZ(*p1));
 				afAlpha = 360.f - (glm::degrees(getAngle(p1->y, p1->z, p2.y, p2.z + d)));
 			}
-			
+			coop::puppetAimPitch(*caster, afAlpha); // another player: where they look
+
 		}
 		
 		eMove = angleToVector(Anglef(afAlpha, afBeta, 0.f)) * 100.f;

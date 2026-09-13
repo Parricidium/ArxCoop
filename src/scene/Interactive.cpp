@@ -477,6 +477,9 @@ void PrepareIOTreatZone(long flag) {
 				}
 			}
 			treat = (dists < square(TREATZONE_LIMIT));
+			if(!treat && coop::nearTeammate(entity, TREATZONE_LIMIT)) {
+				treat = true; // co-op host: the world lives around every player, not just us
+			}
 		}
 		if(&entity == g_draggedEntity) {
 			treat = true;

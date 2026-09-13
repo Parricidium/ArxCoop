@@ -206,7 +206,8 @@ struct SCR_TIMER {
 	GameInstant start;
 	Entity * io;
 	const EERIE_SCRIPT * es;
-	
+	unsigned coopActor; //!< co-op: the player whose action armed the timer (0xFF: none)
+
 	explicit SCR_TIMER(Entity * entity = nullptr, std::string && timerName = std::string()) noexcept
 		: name(std::move(timerName))
 		, exist(entity != nullptr)
@@ -217,6 +218,7 @@ struct SCR_TIMER {
 		, start(0)
 		, io(entity)
 		, es(nullptr)
+		, coopActor(0xFF)
 	{ }
 	
 };
