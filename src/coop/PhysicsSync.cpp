@@ -182,6 +182,14 @@ void physicsSyncInit() {
 }
 
 void physicsSyncUpdate() {
+	// Hitch diagnostics: the latency shown in game is a round trip through both game loops, so a
+	// long frame on either side shows up as a latency spike
+	static PlatformInstant lastFrame;
+	PlatformInstant now = platform::getTime();
+	if(lastFrame != PlatformInstant() && toMsi(now - lastFrame) >= 120 && g_coop.state() == State::InGame) {
+		LogInfo << "[coop] frame hitch: " << toMsi(now - lastFrame) << " ms";
+	}
+	lastFrame = now;
 	// Clients show what the host simulates, and simulate nothing themselves
 	physics::setMirrorMode(npcsAreMirrored());
 	if(!g_coop.isHost()) {
