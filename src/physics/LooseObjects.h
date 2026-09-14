@@ -85,6 +85,10 @@ void dumpLooseObjects();
 //! State of a loose object received from the simulating machine; active = still moving
 void mirrorLooseObject(Entity & io, const Vec3f & pos, const Anglef & angle, bool active);
 
+//! Per frame: glide the mirrored objects towards their last received state
+void updateMirroredObjects();
+void clearMirroredObjects();
+
 //! Visit the objects simulated here (active = still moving)
 void forEachLooseObject(const std::function<void(Entity & io, bool active)> & visit);
 
