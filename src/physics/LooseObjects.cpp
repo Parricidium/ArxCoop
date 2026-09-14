@@ -40,6 +40,49 @@
 #include "scene/GameSound.h"
 #include "script/Script.h"
 
+namespace physics {
+
+namespace {
+
+//! Put the engine's box to rest where the entity is, as ARX_PHYSICS_BOX_ApplyModel does
+void settleEngineBox(Entity & io) {
+
+	if(!io.obj || !io.obj->pbox) {
+		return;
+	}
+	PHYSICS_BOX_DATA & pbox = *io.obj->pbox;
+	glm::quat rotation = toQuaternion(io.angle);
+	for(PhysicsParticle & particle : pbox.vert) {
+		particle.pos = io.pos + rotation * particle.initpos;
+		particle.velocity = Vec3f(0.f);
+		particle.force = Vec3f(0.f);
+	}
+	pbox.active = 2;
+	pbox.stopcount = 0;
+	pbox.storedtiming = 0;
+
+	io.soundcount = 0;
+	io.soundtime = g_gameTime.now() + 2s;
+}
+
+} // anonymous namespace
+
+void mirrorLooseObject(Entity & io, const Vec3f & pos, const Anglef & angle, bool active) {
+	if(!io.obj || !io.obj->pbox) {
+		return;
+	}
+	io.pos = io.lastpos = pos;
+	io.angle = angle;
+	io.requestRoomUpdate = true;
+	if(active) {
+		io.obj->pbox->active = 1; // in flight: not to be picked up, the engine's box is skipped (mirror mode)
+	} else {
+		settleEngineBox(io);
+	}
+}
+
+} // namespace physics
+
 #ifdef ARX_HAVE_JOLT
 
 #include "physics/PhysicsInternal.h"
@@ -258,27 +301,6 @@ void removeLooseBody(std::unordered_map<Entity *, LooseBody>::iterator it) {
 	g_loose.erase(it);
 }
 
-//! Put the engine's box to rest where the entity is, as ARX_PHYSICS_BOX_ApplyModel does
-void settleEngineBox(Entity & io) {
-
-	if(!io.obj || !io.obj->pbox) {
-		return;
-	}
-	PHYSICS_BOX_DATA & pbox = *io.obj->pbox;
-	glm::quat rotation = toQuaternion(io.angle);
-	for(PhysicsParticle & particle : pbox.vert) {
-		particle.pos = io.pos + rotation * particle.initpos;
-		particle.velocity = Vec3f(0.f);
-		particle.force = Vec3f(0.f);
-	}
-	pbox.active = 2;
-	pbox.stopcount = 0;
-	pbox.storedtiming = 0;
-
-	io.soundcount = 0;
-	io.soundtime = g_gameTime.now() + 2s;
-}
-
 void playContactSound(Entity & io, int material, float speed, const Vec3f & position) {
 
 	// As ARX_TEMPORARY_TrySound(): a few sounds per object, none faster than every 100 ms
@@ -302,7 +324,7 @@ void playContactSound(Entity & io, int material, float speed, const Vec3f & posi
 void launchObject(EERIE_3DOBJ * obj, const Vec3f & pos, const Anglef & angle, const Vec3f & vect, Entity * io) {
 
 	JPH::PhysicsSystem * world = system();
-	if(!world || !obj) {
+	if(!world || !obj || isMirrorMode()) {
 		return;
 	}
 
@@ -378,6 +400,10 @@ void launchObject(EERIE_3DOBJ * obj, const Vec3f & pos, const Anglef & angle, co
 }
 
 bool updateLooseObject(Entity & io) {
+
+	if(isMirrorMode()) {
+		return true; // the simulating machine tells where it is
+	}
 
 	auto it = g_loose.find(&io);
 	if(it == g_loose.end()) {
@@ -600,6 +626,17 @@ size_t looseObjectCount() {
 	return g_loose.size();
 }
 
+void forEachLooseObject(const std::function<void(Entity & io, bool active)> & visit) {
+	JPH::PhysicsSystem * world = system();
+	if(!world) {
+		return;
+	}
+	const JPH::BodyInterface & bodies = world->GetBodyInterface();
+	for(auto & entry : g_loose) {
+		visit(*entry.first, bodies.IsActive(entry.second.id));
+	}
+}
+
 void dumpLooseObjects() {
 	for(const auto & entry : g_loose) {
 		const Entity & io = *entry.first;
@@ -617,7 +654,7 @@ namespace physics {
 void launchObject(EERIE_3DOBJ * obj, const Vec3f & pos, const Anglef & angle, const Vec3f & vect, Entity * io) {
 	ARX_UNUSED(obj), ARX_UNUSED(pos), ARX_UNUSED(angle), ARX_UNUSED(vect), ARX_UNUSED(io);
 }
-bool updateLooseObject(Entity & io) { ARX_UNUSED(io); return false; }
+bool updateLooseObject(Entity & io) { ARX_UNUSED(io); return isMirrorMode(); }
 void createObstacles() { }
 void syncObstacles() { }
 void updateLooseObjects() { }
@@ -625,6 +662,7 @@ void removeLooseObject(Entity & io) { ARX_UNUSED(io); }
 void clearLooseObjects() { }
 size_t looseObjectCount() { return 0; }
 void dumpLooseObjects() { }
+void forEachLooseObject(const std::function<void(Entity & io, bool active)> & visit) { ARX_UNUSED(visit); }
 
 } // namespace physics
 
