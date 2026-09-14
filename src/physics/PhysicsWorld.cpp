@@ -315,6 +315,8 @@ void levelCleared() {
 
 void update() {
 
+	updateMirroredObjects(); // objects following another machine (co-op client)
+
 	if(!g_world) {
 		return;
 	}
@@ -366,7 +368,7 @@ void init() { }
 void shutdown() { }
 void levelLoaded() { }
 void levelCleared() { }
-void update() { }
+void update() { updateMirroredObjects(); }
 void onEntityDestroyed(Entity & io) { ARX_UNUSED(io); }
 void dumpState() { }
 

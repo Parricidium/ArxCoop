@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <cstring>
 #include <unordered_map>
 #include <vector>
@@ -35,27 +36,57 @@
 #include "io/log/Logger.h"
 #include "math/GtxFunctions.h"
 #include "math/Vector.h"
+#include "platform/Time.h"
 
 namespace physics {
 
 namespace {
 
+/*!
+ * A mirrored ragdoll glides from the pose it showed to the pose last received over the time the
+ * sender takes between two states (measured), instead of jumping: at 10-15 states a second the
+ * jumps would show as stepping.
+ */
 struct MirroredRagdoll {
-	std::vector<BonePose> bones;
+	std::vector<BonePose> from;
+	std::vector<BonePose> to;
 	bool active = false;
+	PlatformInstant start;
+	PlatformInstant received;
+	PlatformDuration duration = std::chrono::milliseconds(100);
 };
+
+constexpr PlatformDuration MinMirrorStep = std::chrono::milliseconds(30);
+constexpr PlatformDuration MaxMirrorStep = std::chrono::milliseconds(300);
 
 bool g_mirrorMode = false;
 std::unordered_map<Entity *, MirroredRagdoll> g_mirrored;
 
+float mirrorFactor(PlatformInstant start, PlatformDuration duration, bool active) {
+	if(!active || duration <= PlatformDuration(0)) {
+		return 1.f;
+	}
+	return glm::clamp(toMsf(platform::getTime() - start) / toMsf(duration), 0.f, 1.f);
+}
+
+BonePose mixPose(const BonePose & a, const BonePose & b, float t) {
+	BonePose pose;
+	pose.pos = glm::mix(a.pos, b.pos, t);
+	pose.rot = glm::slerp(a.rot, b.rot, t);
+	return pose;
+}
+
 bool applyMirroredPose(Entity & io, Skeleton & skeleton) {
 	auto it = g_mirrored.find(&io);
-	if(it == g_mirrored.end() || it->second.bones.size() != skeleton.bones.size()) {
+	if(it == g_mirrored.end() || it->second.to.size() != skeleton.bones.size()) {
 		return false;
 	}
+	const MirroredRagdoll & mirrored = it->second;
+	float t = mirrored.from.size() == mirrored.to.size() ? mirrorFactor(mirrored.start, mirrored.duration, mirrored.active) : 1.f;
 	size_t i = 0;
 	for(VertexGroupId bone : skeleton.bones.handles()) {
-		const BonePose & pose = it->second.bones[i++];
+		BonePose pose = (t >= 1.f) ? mirrored.to[i] : mixPose(mirrored.from[i], mirrored.to[i], t);
+		i++;
 		Bone & data = skeleton.bones[bone];
 		data.anim.trans = pose.pos;
 		data.anim.quat = pose.rot;
@@ -88,9 +119,30 @@ void mirrorRagdoll(Entity & io, const Vec3f & pos, bool active, const std::vecto
 	if(!io.obj || !io.obj->m_skeleton || io.obj->m_skeleton->bones.size() != bones.size()) {
 		return;
 	}
-	MirroredRagdoll & mirrored = g_mirrored[&io];
-	mirrored.bones = bones;
-	mirrored.active = active;
+	PlatformInstant now = platform::getTime();
+	auto existing = g_mirrored.find(&io);
+	if(existing == g_mirrored.end()) {
+		MirroredRagdoll & mirrored = g_mirrored[&io];
+		mirrored.to = bones;
+		mirrored.active = active;
+		mirrored.start = mirrored.received = now;
+	} else {
+		MirroredRagdoll & mirrored = existing->second;
+		// Start from where the body is shown right now, reach the new pose in the time the last
+		// state took to arrive
+		if(mirrored.from.size() == mirrored.to.size()) {
+			float t = mirrorFactor(mirrored.start, mirrored.duration, mirrored.active);
+			for(size_t i = 0; i < mirrored.to.size(); i++) {
+				mirrored.from[i] = (t >= 1.f) ? mirrored.to[i] : mixPose(mirrored.from[i], mirrored.to[i], t);
+			}
+		} else {
+			mirrored.from = mirrored.to;
+		}
+		mirrored.duration = std::clamp(now - mirrored.received, MinMirrorStep, MaxMirrorStep);
+		mirrored.received = mirrored.start = now;
+		mirrored.to = bones;
+		mirrored.active = active;
+	}
 	if(io.pos != pos) {
 		io.pos = io.lastpos = pos;
 		io.requestRoomUpdate = true;
