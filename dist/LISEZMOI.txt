@@ -92,6 +92,21 @@ CE QUI EST PARTAGE
   En bas a gauche, a la place de l'orbe rouge : les memes barres pour vous (pseudo, vie avec le
   chiffre, faim). L'orbe bleue de mana reste. En haut au centre : temps de jeu.
 
+EDITION HD (zip ArxCoop-HD-* uniquement)
+- Meme mod, meme reseau, mais avec un moteur modernise : eclairage dynamique par pixel, ombres des
+  torches et des sorts, relief des textures, bloom, eau avec vagues et reflets, et une physique
+  (Jolt) : les PNJ tues tombent en ragdoll et restent ou ils gisent, les objets laches ou jetes
+  roulent et se posent. Les personnages des joueurs ne sont pas concernes.
+- Tout se regle dans le menu "Options HD" (menu principal ou Options) : prereglages Off / Faible /
+  Moyenne / Elevee / Ultra et reglages detailles, appliques immediatement. "Off" = rendu d'origine.
+  Reglages dans userdata\cfg.ini, section [video] : pipeline, lighting, shadows, shadow_resolution,
+  postprocess, bloom, fxaa, ambient_occlusion, normal_maps, water, physics.
+- Prerequis : carte graphique OpenGL 3.0 (2008 ou plus recent). Cout mesure du prereglage
+  "Elevee" : environ 1 ms de plus par image en 720p.
+- Touche F7 : recharge les shaders (fichiers Graph\shaders\*.vert / *.frag, modifiables).
+- L'hote simule la physique, les clients voient la meme chose. Un joueur avec le zip classique
+  ne peut pas rejoindre une partie HD (protocole reseau different) : tout le monde prend le meme zip.
+
 VISAGES PERSONNALISES (nouveau)
 - "Visage" : "Personnage" = la tete choisie a la creation du perso (comme avant),
   ou une image a vous. Les autres joueurs la voient sur votre personnage (et vous dans le livre).
