@@ -67,7 +67,7 @@ public:
 	 * Copy the scene as rendered so far into the textures below (for passes that read the
 	 * scene while drawing into it: the water). Rendering continues into the scene buffer.
 	 */
-	bool captureScene();
+	bool captureScene(bool depthOnly = false);
 	[[nodiscard]] GLuint sceneTexture() const { return m_sceneTexture; }
 	[[nodiscard]] GLuint depthTexture() const { return m_depthTexture; }
 	[[nodiscard]] int width() const { return m_width; }

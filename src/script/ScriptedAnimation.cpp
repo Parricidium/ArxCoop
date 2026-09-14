@@ -43,6 +43,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "script/ScriptedAnimation.h"
 
+#include "physics/Debris.h"
+
 #include <cstring>
 #include <string>
 #include <string_view>
@@ -253,6 +255,9 @@ public:
 		
 		iot->ioflags |= IO_NO_PHYSICS_INTERPOL;
 		setNextAnim(iot, iot->anims[num], layer, loop, nointerpol);
+		if(!loop && (iot->ioflags & IO_FIX)) {
+			physics::onBreakAnimation(*iot, iot->anims[num]->path); // ArxModern: break animations become debris
+		}
 		
 		if(!loop) {
 			CheckSetAnimOutOfTreatZone(iot, layer);

@@ -53,11 +53,26 @@ GLShaderPipeline::GLShaderPipeline(OpenGLRenderer * renderer)
 	, m_uShadowCount(-1)
 	, m_uNormalMapped(-1)
 	, m_uNormalStrength(-1)
+	, m_uMaterial(-1)
+	, m_uSpecular(-1)
+	, m_uCameraPos(-1)
+	, m_uSoftMode(-1)
+	, m_uProjection(-1)
+	, m_uInvSize(-1)
 	, m_normalMap(nullptr)
 	, m_glNormalMap(nullptr)
 	, m_glNormalMapped(-1)
 	, m_normalStrength(1.f)
 	, m_normalStrengthDirty(true)
+	, m_glMaterialSet(false)
+	, m_parallaxStrength(1.f)
+	, m_specularStrength(1.f)
+	, m_materialStrengthDirty(true)
+	, m_softDepth(0)
+	, m_glSoftMode(-1)
+	, m_softDirty(true)
+	, m_softWidth(1)
+	, m_softHeight(1)
 	, m_shadowProgram(0)
 	, m_uShadowViewProj(-1)
 	, m_uShadowTransform(-1)
@@ -249,6 +264,12 @@ bool GLShaderPipeline::init() {
 	m_uShadowCount = glGetUniformLocation(m_program, "u_shadowCount");
 	m_uNormalMapped = glGetUniformLocation(m_program, "u_normalMapped");
 	m_uNormalStrength = glGetUniformLocation(m_program, "u_normalStrength");
+	m_uMaterial = glGetUniformLocation(m_program, "u_material");
+	m_uSpecular = glGetUniformLocation(m_program, "u_specular");
+	m_uCameraPos = glGetUniformLocation(m_program, "u_cameraPos");
+	m_uSoftMode = glGetUniformLocation(m_program, "u_softMode");
+	m_uProjection = glGetUniformLocation(m_program, "u_projection");
+	m_uInvSize = glGetUniformLocation(m_program, "u_invSize");
 
 	glUseProgram(m_program);
 
@@ -262,6 +283,8 @@ bool GLShaderPipeline::init() {
 	glUniform1i(glGetUniformLocation(m_program, "u_shadow2"), 6);
 	glUniform1i(glGetUniformLocation(m_program, "u_shadow3"), 7);
 	glUniform1i(glGetUniformLocation(m_program, "u_normalMap"), 3);
+	// Scene depth for the soft particles, on unit 8 (the water pass uses 8 and 9 for itself)
+	glUniform1i(glGetUniformLocation(m_program, "u_depth"), 8);
 
 	resetCache();
 
@@ -335,7 +358,24 @@ void GLShaderPipeline::resetCache() {
 	m_glNormalMap = nullptr;
 	m_glNormalMapped = -1;
 	m_normalStrengthDirty = true;
+	m_glMaterialSet = false;
+	m_materialStrengthDirty = true;
+	m_glSoftMode = -1;
+	m_softDirty = true;
 
+}
+
+void GLShaderPipeline::setSoftDepth(GLuint depthTexture, int width, int height) {
+	m_softDepth = depthTexture;
+	m_softWidth = std::max(width, 1);
+	m_softHeight = std::max(height, 1);
+	m_softDirty = true;
+	m_glSoftMode = -1;
+	if(m_program) {
+		glActiveTexture(GL_TEXTURE8);
+		glBindTexture(GL_TEXTURE_2D, depthTexture);
+		glActiveTexture(GL_TEXTURE0);
+	}
 }
 
 bool GLShaderPipeline::initShadows(size_t count, int resolution) {
@@ -461,6 +501,9 @@ void GLShaderPipeline::setLights(const RendererLight * lights, size_t dynamicCou
 
 void GLShaderPipeline::setMatrices(const glm::mat4 & view, const glm::mat4 & projection) {
 	m_view = view;
+	if(projection != m_projection) {
+		m_softDirty = true;
+	}
 	m_projection = projection;
 	m_matricesDirty = true;
 }
@@ -527,6 +570,9 @@ void GLShaderPipeline::apply() {
 			glUniformMatrix4fv(m_uMVP, 1, GL_FALSE, glm::value_ptr(mvp));
 			glUniformMatrix4fv(m_uView, 1, GL_FALSE, glm::value_ptr(m_view));
 		}
+		// The camera position (for the view-dependent material effects), from the view matrix
+		glm::vec3 camera = glm::vec3(glm::inverse(m_view)[3]);
+		glUniform3fv(m_uCameraPos, 1, glm::value_ptr(camera));
 		m_matricesDirty = false;
 	}
 
@@ -587,6 +633,46 @@ void GLShaderPipeline::apply() {
 	if(m_normalStrengthDirty) {
 		glUniform1f(m_uNormalStrength, m_normalStrength);
 		m_normalStrengthDirty = false;
+	}
+	if(normalMap && (!m_glMaterialSet || m_material.parallax != m_glMaterial.parallax
+	                 || m_material.gloss != m_glMaterial.gloss || m_material.metal != m_glMaterial.metal
+	                 || m_material.generated != m_glMaterial.generated)) {
+		glUniform4f(m_uMaterial, m_material.parallax * m_parallaxStrength, m_material.gloss, m_material.metal,
+		            m_material.generated ? 1.f : 0.f);
+		m_glMaterial = m_material;
+		m_glMaterialSet = true;
+	}
+	if(m_materialStrengthDirty) {
+		glUniform1f(m_uSpecular, m_specularStrength);
+		m_materialStrengthDirty = false;
+		m_glMaterialSet = false; // the parallax scale is folded into u_material
+	}
+
+	// Soft particles: which fade applies to the blend mode of this draw
+	int softMode = 0;
+	if(m_softDepth) {
+		RenderState state = m_renderer->getRenderState();
+		if(state.isBlendEnabled() && state.getDepthTest() && !state.getDepthWrite()) {
+			BlendingFactor src = state.getBlendSrc();
+			BlendingFactor dst = state.getBlendDst();
+			if(dst == BlendInvSrcAlpha) {
+				softMode = 2;
+			} else if(src == BlendDstColor && (dst == BlendZero || dst == BlendSrcColor)) {
+				softMode = 3;
+			} else {
+				softMode = 1;
+			}
+		}
+	}
+	if(softMode != m_glSoftMode) {
+		glUniform1i(m_uSoftMode, softMode);
+		m_glSoftMode = softMode;
+	}
+	if(m_softDirty) {
+		const glm::mat4 & proj = m_projection;
+		glUniform4f(m_uProjection, proj[0][0], proj[1][1], proj[2][2], -proj[3][2]);
+		glUniform2f(m_uInvSize, 1.f / float(m_softWidth), 1.f / float(m_softHeight));
+		m_softDirty = false;
 	}
 	
 	int shadowCount = int(m_shadowedLights);

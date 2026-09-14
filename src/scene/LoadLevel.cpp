@@ -45,6 +45,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 // Copyright (c) 1999-2000 ARKANE Studios SA. All rights reserved
 
 #include "scene/LoadLevel.h"
+#include "scene/Scene.h"
 
 #include <stddef.h>
 #include <cstdio>
@@ -481,6 +482,7 @@ bool DanaeLoadLevel(AreaId area, bool loadEntities) {
 	if(buffer.empty()) {
 		USE_PLAYERCOLLISIONS = true;
 		physics::levelLoaded();
+	ResetFluidCaches();
 		LogInfo << "Done loading level";
 		return true;
 	}
@@ -509,6 +511,7 @@ bool DanaeLoadLevel(AreaId area, bool loadEntities) {
 	USE_PLAYERCOLLISIONS = true;
 	
 	physics::levelLoaded();
+	ResetFluidCaches();
 	
 	LogInfo << "Done loading level";
 	

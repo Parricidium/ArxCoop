@@ -26,6 +26,8 @@
 
 #include "graphics/Renderer.h"
 #include "graphics/opengl/GLPostProcess.h"
+#include "graphics/opengl/GLLava.h"
+#include "graphics/opengl/GLReflect.h"
 #include "graphics/opengl/GLWater.h"
 #include "graphics/opengl/GLShaderPipeline.h"
 #include "graphics/opengl/GLTexture.h"
@@ -109,11 +111,18 @@ public:
 	void setPixelLighting(bool enable) override;
 	void renderShadowMaps(ShadowCasterDrawFunc drawCasters) override;
 	void applyGraphicsConfig() override;
-	void setNormalMap(Texture * normalMap) override;
+	void setNormalMap(Texture * normalMap, const MaterialParams & material) override;
+	void beginSoftParticles() override;
 	void beginScene() override;
 	void endScene() override;
 	bool beginWater(float time, const Vec3f & cameraPos) override;
 	void endWater() override;
+	bool beginLava(float time, const Vec3f & cameraPos) override;
+	void setLavaHaze(bool haze, float raise) override;
+	void endLava() override;
+	bool beginReflections() override;
+	void setReflectionMaterial(Texture * normalMap, const MaterialParams & material) override;
+	void endReflections() override;
 	void forgetTextureBindings();
 	
 	bool hasTextureNPOT() const { return m_hasTextureNPOT; }
@@ -189,6 +198,8 @@ private:
 	std::unique_ptr<GLShaderPipeline> m_shaders;
 	std::unique_ptr<GLPostProcess> m_post;
 	std::unique_ptr<GLWater> m_water;
+	std::unique_ptr<GLLava> m_lava;
+	std::unique_ptr<GLReflect> m_reflect;
 	void applyShaders();
 	
 	enum GLTransformMode {

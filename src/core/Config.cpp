@@ -134,6 +134,12 @@ constexpr const float
 	ambientOcclusion = 0.f,
 	normalMaps = 1.f,
 	water = 1.f,
+	lava = 1.f,
+	parallax = 1.f,
+	specular = 1.f,
+	reflections = 1.f,
+	softParticles = true,
+	smaa = false,
 	fogDistance = 10.f,
 	gamma = 5.f,
 	fov = 75.f,
@@ -248,6 +254,12 @@ constexpr const std::string_view
 	normalMaps = "normal_maps",
 	physics = "physics",
 	water = "water",
+	lava = "lava",
+	parallax = "parallax",
+	specular = "specular",
+	reflections = "reflections",
+	softParticles = "soft_particles",
+	smaa = "smaa",
 	postDebug = "post_debug";
 
 // Interface options
@@ -519,6 +531,12 @@ bool Config::save() {
 	writer.writeKey(Key::normalMaps, video.normalMaps);
 	writer.writeKey(Key::physics, video.physics);
 	writer.writeKey(Key::water, video.water);
+	writer.writeKey(Key::lava, video.lava);
+	writer.writeKey(Key::parallax, video.parallax);
+	writer.writeKey(Key::specular, video.specular);
+	writer.writeKey(Key::reflections, video.reflections);
+	writer.writeKey(Key::softParticles, video.softParticles);
+	writer.writeKey(Key::smaa, video.smaa);
 	writer.writeKey(Key::postDebug, video.postDebug);
 	
 	// interface
@@ -665,6 +683,12 @@ bool Config::init(const fs::path & file) {
 	video.normalMaps = reader.getKey(Section::Video, Key::normalMaps, Default::normalMaps);
 	video.physics = reader.getKey(Section::Video, Key::physics, Default::physics);
 	video.water = reader.getKey(Section::Video, Key::water, Default::water);
+	video.lava = reader.getKey(Section::Video, Key::lava, Default::lava);
+	video.parallax = reader.getKey(Section::Video, Key::parallax, Default::parallax);
+	video.specular = reader.getKey(Section::Video, Key::specular, Default::specular);
+	video.reflections = reader.getKey(Section::Video, Key::reflections, Default::reflections);
+	video.softParticles = reader.getKey(Section::Video, Key::softParticles, Default::softParticles);
+	video.smaa = reader.getKey(Section::Video, Key::smaa, Default::smaa);
 	video.postDebug = reader.getKey(Section::Video, Key::postDebug, Default::postDebug);
 	
 	// Get interface settings

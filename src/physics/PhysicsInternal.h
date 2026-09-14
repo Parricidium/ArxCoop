@@ -78,7 +78,9 @@ enum BodyKind : JPH::uint64 {
 	KindFixed = 1, //!< a fixed entity (IO_FIX), value = entity index | material << 20
 	KindNpc = 2, //!< a living NPC's cylinder, value = entity index
 	KindLoose = 3, //!< a dropped or thrown entity, value = entity index
-	KindRagdoll = 4 //!< a ragdoll part, value = entity index
+	KindRagdoll = 4, //!< a ragdoll part, value = entity index
+	KindDebris = 5, //!< a piece of a broken object, value = entity index at the time it broke
+	KindCloth = 6 //!< a soft body (banner, curtain), value = cloth index
 };
 
 inline JPH::uint64 makeUserData(BodyKind kind, JPH::uint64 value) {

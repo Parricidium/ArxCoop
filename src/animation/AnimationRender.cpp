@@ -85,6 +85,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "math/Vector.h"
 
 #include "physics/Collisions.h"
+#include "physics/Debris.h"
 #include "physics/Ragdoll.h"
 
 #include "platform/Platform.h"
@@ -1562,7 +1563,10 @@ void EERIEDrawAnimQuatUpdate(EERIE_3DOBJ * eobj,
 	arx_assert(eobj->m_skeleton);
 	animateSkeleton(eobj, animlayer, angle, pos, scale, ftr, io, *eobj->m_skeleton, io ? &io->animBlend : nullptr);
 	if(io) {
-		physics::applyRagdollPose(*io, *eobj->m_skeleton); // ArxModern: corpses follow their ragdoll
+		// ArxModern: corpses follow their ragdoll, broken objects their pieces
+		if(!physics::applyRagdollPose(*io, *eobj->m_skeleton)) {
+			physics::applyDebrisPose(*io, *eobj->m_skeleton);
+		}
 	}
 	
 	Cedric_TransformVerts(eobj);
@@ -1574,6 +1578,16 @@ void EERIEDrawAnimQuatUpdate(EERIE_3DOBJ * eobj,
 	if(io) {
 		io->bbox2D = UpdateBbox2d(*eobj);
 	}
+}
+
+// ArxModern: an object without an entity whose bones were posed by the caller (debris)
+void DrawDetachedObject(EERIE_3DOBJ * eobj, const Vec3f & pos) {
+	if(!eobj->m_skeleton || !Cedric_IO_Visible(pos)) {
+		return;
+	}
+	Cedric_TransformVerts(eobj);
+	DrawEERIEInter_ViewProjectTransform(eobj);
+	Cedric_AnimateDrawEntityRender(eobj, pos, nullptr, 0.f);
 }
 
 void EERIEDrawAnimQuatRender(EERIE_3DOBJ * eobj, const Vec3f & pos, Entity * io, float invisibility) {

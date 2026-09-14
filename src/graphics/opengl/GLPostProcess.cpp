@@ -301,7 +301,7 @@ void GLPostProcess::drawFullscreen() {
 	glDrawArrays(GL_TRIANGLES, 0, 3);
 }
 
-bool GLPostProcess::captureScene() {
+bool GLPostProcess::captureScene(bool depthOnly) {
 
 	if(!m_inScene) {
 		return false;
@@ -314,7 +314,9 @@ bool GLPostProcess::captureScene() {
 	}
 	glBindFramebuffer(GL_READ_FRAMEBUFFER, m_sceneFramebuffer);
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_resolveFramebuffer);
-	glBlitFramebuffer(0, 0, m_width, m_height, 0, 0, m_width, m_height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+	if(!depthOnly) {
+		glBlitFramebuffer(0, 0, m_width, m_height, 0, 0, m_width, m_height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+	}
 	glBlitFramebuffer(0, 0, m_width, m_height, 0, 0, m_width, m_height, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
 	glBindFramebuffer(GL_FRAMEBUFFER, m_sceneFramebuffer);
 	if(scissor) {
