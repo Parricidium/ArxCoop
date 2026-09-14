@@ -98,6 +98,9 @@ bool getRagdollPose(const Entity & io, Vec3f & pos, bool & active, std::vector<B
 //! Visit the local ragdolls
 void forEachRagdoll(const std::function<void(Entity & io, bool active)> & visit);
 
+//! true if the entity's bones follow a ragdoll, simulated here or mirrored
+bool hasRagdoll(const Entity & io);
+
 //! Recreate the ragdolls saved by serializeRagdolls(), once the level's entities are restored
 void restoreRagdolls(std::string_view buffer);
 

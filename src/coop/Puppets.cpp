@@ -41,6 +41,7 @@
 #include "coop/Session.h"
 #include "coop/Text.h"
 #include "coop/ThirdPerson.h"
+#include "physics/Ragdoll.h"
 #include "core/Application.h"
 #include "core/Core.h"
 #include "core/GameTime.h"
@@ -1976,7 +1977,9 @@ void puppetsTestUpdate() {
 		if(Entity * goblin = entities.getById("goblin_base_0006")) {
 			LogInfo << "[coop] test: goblin dead=" << (goblin->mainevent == SM_DEAD) << " life " << goblin->_npcdata->lifePool.current
 			        << " enemy=" << isEnemy(goblin) << " behavior " << goblin->_npcdata->behavior
-			        << " cuts " << int(DismembermentFlags::Type(goblin->_npcdata->cuts));
+			        << " cuts " << int(DismembermentFlags::Type(goblin->_npcdata->cuts))
+			        << " ragdoll " << physics::hasRagdoll(*goblin) << " pos " << int(goblin->pos.x) << "," << int(goblin->pos.y) << "," << int(goblin->pos.z)
+			        << " head " << int(goblin->obj->vertexWorldPositions[goblin->obj->fastaccess.head_group_origin].v.y);
 		}
 		Logger::flush();
 	} else if(step >= 3 && elapsed > std::chrono::seconds(78) && g_coop.isClient() && !throwTaken) {

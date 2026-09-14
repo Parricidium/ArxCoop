@@ -54,6 +54,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "ai/PathFinderManager.h"
 
 #include "coop/Faces.h"
+#include "coop/PhysicsSync.h"
 #include "coop/Puppets.h"
 #include "coop/Admin.h"
 #include "coop/Qol.h"
@@ -857,6 +858,7 @@ bool ArxGame::initGame()
 	entities.init();
 	coop::puppetsInit();
 	coop::replicationInit();
+	coop::physicsSyncInit();
 	
 	player = ARXCHARACTER();
 	ARX_PLAYER_InitPlayer();
@@ -1820,6 +1822,7 @@ void ArxGame::updateLevel() {
 	coop::localTorchDisplayUpdate();
 	coop::qolUpdate();
 	coop::npcSyncUpdate();
+	coop::physicsSyncUpdate();
 	coop::replicationUpdate();
 
 	g_miniMap.setActiveBackground(g_tiles);
