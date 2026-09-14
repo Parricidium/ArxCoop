@@ -115,6 +115,9 @@ void EERIEDrawAnimQuatUpdate(EERIE_3DOBJ * eobj,
                              Entity * io,
                              bool update_movement);
 
+//! ArxModern: draw an object without an entity, its bones already posed (debris)
+void DrawDetachedObject(EERIE_3DOBJ * eobj, const Vec3f & pos);
+
 void EERIEDrawAnimQuatRender(EERIE_3DOBJ * eobj, const Vec3f & pos, Entity * io, float invisibility);
 
 void AnimatedEntityRender(Entity * entity, float invisibility);

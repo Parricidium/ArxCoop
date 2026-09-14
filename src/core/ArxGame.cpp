@@ -141,6 +141,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "math/Vector.h"
 
 #include "physics/Attractors.h"
+#include "physics/Cloth.h"
 #include "physics/PhysicsWorld.h"
 #include "physics/LooseObjects.h"
 #include "physics/Physics.h"
@@ -662,6 +663,46 @@ static void waterTest(u32 frames) {
 	g_waterTestFrames = long(frames);
 }
 ARX_PROGRAM_OPTION_ARG("watertest", "", "Look at the largest pool of the level from frame N (water shader test)", &waterTest, "FRAMES")
+// ArxModern: at frame N, hit the nearest breakable fixed object (one with a "break" animation)
+static long g_breakTestFrames = -1000;
+static EntityHandle g_breakTestTarget;
+static void breakTest(u32 frames) {
+	g_breakTestFrames = long(frames);
+}
+ARX_PROGRAM_OPTION_ARG("breaktest", "", "Hit the nearest breakable object at frame N (debris test)", &breakTest, "FRAMES")
+
+// ArxModern: at frame N, stand in front of the largest cloth of the level
+static long g_clothTestFrames = -1;
+static void clothTest(u32 frames) {
+	g_clothTestFrames = long(frames);
+}
+ARX_PROGRAM_OPTION_ARG("clothtest", "", "Look at the largest cloth of the level from frame N (soft body test)", &clothTest, "FRAMES")
+
+static bool g_waterTestLava = false;
+static void lavaTest(u32 frames) {
+	g_waterTestFrames = long(frames);
+	g_waterTestLava = true;
+}
+ARX_PROGRAM_OPTION_ARG("lavatest", "", "Look at the largest lava pool of the level from frame N (lava shader test)", &lavaTest, "FRAMES")
+
+// ArxModern: fixed view direction while in game, "pitch,yaw[,x,y,z]" (material / reflection tests)
+static bool g_viewTestActive = false;
+static Anglef g_viewTestAngle;
+static Vec3f g_viewTestPos;
+static bool g_viewTestTeleport = false;
+static void viewTest(const std::string & spec) {
+	float v[5] = { 0.f, 0.f, 0.f, 0.f, 0.f };
+	int n = std::sscanf(spec.c_str(), "%f,%f,%f,%f,%f", &v[0], &v[1], &v[2], &v[3], &v[4]);
+	if(n >= 2) {
+		g_viewTestActive = true;
+		g_viewTestAngle = Anglef(v[0], v[1], 0.f);
+		if(n >= 5) {
+			g_viewTestPos = Vec3f(v[2], v[3], v[4]);
+			g_viewTestTeleport = true;
+		}
+	}
+}
+ARX_PROGRAM_OPTION_ARG("viewtest", "", "Look in a fixed direction \"pitch,yaw[,x,y,z]\" while in game (render tests)", &viewTest, "SPEC")
 
 static bool HandleGameFlowTransitions() {
 	
@@ -2268,6 +2309,75 @@ void ArxGame::render() {
 		g_throwTestFrames--;
 	}
 	
+	if(g_breakTestFrames > -1000 && ARXmenu.mode() == Mode_InGame && !isInCinematic()) {
+		if(g_breakTestFrames == 30) {
+			float nearest = std::numeric_limits<float>::max();
+			for(Entity & io : entities) {
+				if(!(io.ioflags & IO_FIX) || io.show != SHOW_FLAG_IN_SCENE
+				   || io.classPath().string().find("door") != std::string_view::npos) {
+					continue; // doors only break on a scripted cue
+				}
+				bool breakable = false;
+				for(const ANIM_HANDLE * anim : io.anims) {
+					if(anim && anim->path.basename().find("break") != std::string_view::npos) {
+						breakable = true;
+					}
+				}
+				float distance = glm::distance(io.pos, player.pos);
+				if(breakable && distance < nearest) {
+					nearest = distance;
+					g_breakTestTarget = io.index();
+				}
+			}
+			if(Entity * target = entities.get(g_breakTestTarget)) {
+				Vec3f away = player.pos - target->pos;
+				away.y = 0.f;
+				away = (arx::length2(away) > 1.f) ? glm::normalize(away) : Vec3f(1.f, 0.f, 0.f);
+				ARX_INTERACTIVE_Teleport(entities.player(), target->pos + away * 220.f - Vec3f(0.f, 120.f, 0.f), true);
+				LogInfo << "breaktest: target " << target->idString() << " at " << target->pos.x << " " << target->pos.y
+				        << " " << target->pos.z;
+			} else {
+				LogInfo << "breaktest: no breakable object in this level";
+			}
+		}
+		if(g_breakTestFrames == 0) {
+			if(Entity * target = entities.get(g_breakTestTarget)) {
+				SendIOScriptEvent(entities.player(), target, SM_HIT, ScriptParameters(1000.f));
+				LogInfo << "breaktest: hit " << target->idString();
+			}
+		}
+		if(g_breakTestFrames == -300) {
+			physics::dumpState();
+		}
+		g_breakTestFrames--;
+	}
+	if(Entity * target = entities.get(g_breakTestTarget)) {
+		if(target->pos != player.pos) {
+			player.desiredangle = player.angle = Camera::getLookAtAngle(player.pos, target->pos - Vec3f(0.f, 40.f, 0.f));
+		}
+	}
+
+	static Vec3f g_clothTestTarget(0.f);
+	static bool g_clothTestActive = false;
+	if(g_clothTestFrames >= 0 && ARXmenu.mode() == Mode_InGame && !isInCinematic()) {
+		if(g_clothTestFrames == 0) {
+			float radius = 0.f;
+			if(physics::largestCloth(g_clothTestTarget, radius)) {
+				g_clothTestActive = true;
+				Vec3f eye = g_clothTestTarget + Vec3f(radius * 1.2f + 120.f, 0.f, radius * 0.6f);
+				ARX_INTERACTIVE_Teleport(entities.player(), eye, true);
+				LogInfo << "clothtest: cloth at " << g_clothTestTarget.x << " " << g_clothTestTarget.y << " "
+				        << g_clothTestTarget.z << " radius " << radius;
+			} else {
+				LogInfo << "clothtest: no cloth in this level";
+			}
+		}
+		g_clothTestFrames--;
+	}
+	if(g_clothTestActive) {
+		player.desiredangle = player.angle = Camera::getLookAtAngle(player.pos, g_clothTestTarget);
+	}
+
 	static Vec3f g_waterTestTarget(0.f);
 	static bool g_waterTestActive = false;
 	if(g_waterTestFrames >= 0 && ARXmenu.mode() == Mode_InGame && !isInCinematic()) {
@@ -2276,7 +2386,8 @@ void ArxGame::render() {
 			std::vector<const EERIEPOLY *> water;
 			for(auto tile : g_tiles->tiles()) {
 				for(const EERIEPOLY & poly : tile.polygons()) {
-					if((poly.type & POLY_WATER) && !(poly.type & POLY_FALL)) {
+					PolyType wanted = g_waterTestLava ? POLY_LAVA : POLY_WATER;
+					if((poly.type & wanted) && !(poly.type & POLY_FALL)) {
 						water.push_back(&poly);
 					}
 				}
@@ -2310,6 +2421,13 @@ void ArxGame::render() {
 	}
 	if(g_waterTestActive) {
 		player.desiredangle = player.angle = Camera::getLookAtAngle(player.pos, g_waterTestTarget);
+	}
+	if(g_viewTestActive && ARXmenu.mode() == Mode_InGame) {
+		if(g_viewTestTeleport) {
+			ARX_INTERACTIVE_Teleport(entities.player(), g_viewTestPos, true);
+			g_viewTestTeleport = false;
+		}
+		player.desiredangle = player.angle = g_viewTestAngle;
 	}
 	
 	// Keep looking at the nearest victim while it falls

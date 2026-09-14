@@ -87,8 +87,23 @@ public:
 	void setFogParams(float fogStart, float fogEnd);
 	void setLights(const RendererLight * lights, size_t dynamicCount, size_t count);
 	void setPixelLighting(bool enable) { m_pixelLighting = enable; }
-	void setNormalMap(GLTexture * normalMap) { m_normalMap = normalMap; }
+	void setNormalMap(GLTexture * normalMap, const MaterialParams & material) {
+		m_normalMap = normalMap;
+		m_material = material;
+	}
 	void setNormalMapStrength(float strength) { m_normalStrength = strength; m_normalStrengthDirty = true; }
+	//! Depth of the parallax relief (0 = off) and strength of the specular highlights (0 = off)
+	void setMaterialStrength(float parallax, float specular) {
+		m_parallaxStrength = parallax;
+		m_specularStrength = specular;
+		m_materialStrengthDirty = true;
+	}
+
+	/*!
+	 * Soft particles: from now on the blended, depth-tested draws without depth write fade
+	 * against the scene depth in the given texture (0 = off).
+	 */
+	void setSoftDepth(GLuint depthTexture, int width, int height);
 	
 	//! Compile a program from graph/shaders/<name>.vert/.frag (or the given fallbacks); 0 on failure
 	GLuint buildProgram(std::string_view name, std::string_view vertFallback, std::string_view fragFallback) {
@@ -145,11 +160,28 @@ private:
 	GLint m_uShadowCount;
 	GLint m_uNormalMapped;
 	GLint m_uNormalStrength;
+	GLint m_uMaterial;
+	GLint m_uSpecular;
+	GLint m_uCameraPos;
+	GLint m_uSoftMode;
+	GLint m_uProjection;
+	GLint m_uInvSize;
 	GLTexture * m_normalMap;
 	GLTexture * m_glNormalMap;
 	int m_glNormalMapped;
 	float m_normalStrength;
 	bool m_normalStrengthDirty;
+	MaterialParams m_material;
+	MaterialParams m_glMaterial;
+	bool m_glMaterialSet;
+	float m_parallaxStrength;
+	float m_specularStrength;
+	bool m_materialStrengthDirty;
+	GLuint m_softDepth;
+	int m_glSoftMode;
+	bool m_softDirty;
+	int m_softWidth;
+	int m_softHeight;
 	
 	// shadow pass program
 	GLuint m_shadowProgram;

@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "graphics/Color.h"
+#include "graphics/texture/Material.h"
 #include "graphics/texture/TextureStage.h"
 #include "math/Types.h"
 #include "platform/Platform.h"
@@ -419,10 +420,17 @@ public:
 	virtual void renderShadowMaps(ShadowCasterDrawFunc drawCasters) { ARX_UNUSED(drawCasters); }
 	//! ArxModern: (re)apply the [video] HD settings from the configuration (pipeline, shadows, post-processing)
 	virtual void applyGraphicsConfig() { }
-	//! ArxModern: normal map that goes with the texture of stage 0 (null = flat)
-	virtual void setNormalMap(Texture * normalMap) { ARX_UNUSED(normalMap); }
+	//! ArxModern: material map that goes with the texture of stage 0 (null = flat) and its parameters
+	virtual void setNormalMap(Texture * normalMap, const MaterialParams & material) {
+		ARX_UNUSED(normalMap), ARX_UNUSED(material);
+	}
 	//! ArxModern: start rendering the 3D scene (may go off-screen for post-processing)
 	virtual void beginScene() { }
+	/*!
+	 * ArxModern: the opaque scene is complete; the blended draws that follow (particles,
+	 * halos, fog) fade out where they get close to it (soft particles). Until endScene().
+	 */
+	virtual void beginSoftParticles() { }
 
 	/*!
 	 * ArxModern: draw the water polygons with the water shader (scene refraction, waves,
@@ -431,6 +439,24 @@ public:
 	 */
 	virtual bool beginWater(float time, const Vec3f & cameraPos) { ARX_UNUSED(time), ARX_UNUSED(cameraPos); return false; }
 	virtual void endWater() { }
+	/*!
+	 * ArxModern: draw the lava polygons with the lava shader (glowing veins, heat haze).
+	 * \return false if unavailable: the caller draws the overlay as before
+	 */
+	virtual bool beginLava(float time, const Vec3f & cameraPos) { ARX_UNUSED(time), ARX_UNUSED(cameraPos); return false; }
+	//! ArxModern: between the two lava draws: the heat haze cap, raised above the pool
+	virtual void setLavaHaze(bool haze, float raise) { ARX_UNUSED(haze), ARX_UNUSED(raise); }
+	virtual void endLava() { }
+	/*!
+	 * ArxModern: draw glossy level polygons again with screen-space reflections of the scene
+	 * rendered so far. \return false if unavailable (nothing to draw then)
+	 */
+	virtual bool beginReflections() { return false; }
+	//! ArxModern: the material of the polygons drawn next in the reflection pass
+	virtual void setReflectionMaterial(Texture * normalMap, const MaterialParams & material) {
+		ARX_UNUSED(normalMap), ARX_UNUSED(material);
+	}
+	virtual void endReflections() { }
 	//! ArxModern: the 3D scene is complete; apply post-processing and return to the window
 	virtual void endScene() { }
 	
