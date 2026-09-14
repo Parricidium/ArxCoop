@@ -64,22 +64,32 @@ protocol number is checked when joining).
 is optional and switched from the new **Options HD** menu (quality presets *Off / Low / Medium / High /
 Ultra* and individual settings, applied live): the *Off* preset gives exactly the original look.
 
-- **Per-pixel dynamic lighting** of the level and the characters, with generated normal maps (relief
-  on stone, wood, cloth; a mod can ship its own `<texture>_n.png`).
-- **Dynamic shadows** of the torches, spells and other lights, cast by the level and the characters.
-- **Post-processing**: bloom, FXAA, experimental ambient occlusion.
+- **Per-pixel dynamic lighting** of the level and the characters, with generated material maps: relief
+  (normal map + parallax occlusion mapping) and glossiness from the texture name (metal, marble, ice,
+  glass, wet stone shine; cloth and earth stay matte). A mod can ship its own `<texture>_n.png`.
+- **Dynamic shadows** of the torches, spells and other lights, cast by the level and the characters
+  (the original blurred shadow discs go away).
+- **Specular highlights** of the lights on every material and **screen-space reflections** of the
+  scene on the glossy floors and walls (marble, metal, ice, wet stone).
+- **Post-processing**: bloom, FXAA (SMAA setting reserved), experimental ambient occlusion, **soft
+  particles** (fire, smoke and magic no longer cut into the walls and floors).
 - **Water**: refraction through animated waves, specular reflections of the lights, soft banks.
-- **Physics** ([Jolt](https://github.com/jrouwe/JoltPhysics)): killed NPCs fall as ragdolls (down the
-  stairs, against the walls, and they stay where they lie, saves included); dropped and thrown objects
-  tumble, roll and come to rest; keys and coins lie flat. The host simulates, the clients see the same
-  thing. Player characters are not affected.
-- **Modding**: the shaders are plain files in `Graph\shaders\` (`legacy`, `shadow`, `water`,
-  `post_*`), reloaded in game with **F7**.
+  **Lava**: glowing, pulsing veins over a darker crust, heat haze above the pools.
+- **Physics** ([Jolt](https://github.com/jrouwe/JoltPhysics)): killed NPCs fall as ragdolls, thrown by
+  the killing blow (a fireball sends the body flying, an arrow knocks it over), down the stairs, against
+  the walls, and they stay where they lie, saves included; dropped and thrown objects tumble, roll and
+  come to rest; keys and coins lie flat; the game's breakable objects (glass cases, glass crypts, the
+  wooden grid, brittle walls, grave stones) shatter into pieces that stay on the floor; the banners,
+  curtains and tapestries of the levels hang as cloth and move in a light breeze and when someone walks
+  into them. The host simulates the corpses and objects, the clients see the same thing (cloths are
+  simulated on each machine). Player characters are not affected.
+- **Modding**: the shaders are plain files in `Graph\shaders\` (`legacy`, `shadow`, `water`, `lava`,
+  `reflect`, `post_*`), reloaded in game with **F7**.
 
 Requirements: OpenGL 3.0 (2008 or later hardware); measured cost of the *High* preset: about one
 extra millisecond per frame in 720p. `[video]` keys in `userdata\cfg.ini`: `pipeline`, `lighting`,
-`shadows`, `shadow_resolution`, `postprocess`, `bloom`, `fxaa`, `ambient_occlusion`, `normal_maps`,
-`water`, `physics`.
+`shadows`, `shadow_resolution`, `postprocess`, `bloom`, `fxaa`, `smaa`, `ambient_occlusion`, `normal_maps`,
+`parallax`, `specular`, `reflections`, `soft_particles`, `water`, `lava`, `physics`.
 
 Not the HD edition: the classic zip has none of this and cannot play with the HD one (different network
 protocol).
@@ -309,22 +319,34 @@ optionnel et se règle dans le nouveau menu **Options HD** (préréglages *Off /
 Ultra* et réglages individuels, appliqués à chaud) : le préréglage *Off* redonne exactement le rendu
 d'origine.
 
-- **Éclairage dynamique par pixel** du niveau et des personnages, avec normal maps générées (relief de la
-  pierre, du bois, des tissus ; un mod peut fournir ses propres `<texture>_n.png`).
-- **Ombres dynamiques** des torches, sorts et autres lumières, portées par le décor et les personnages.
-- **Post-traitement** : bloom, FXAA, occlusion ambiante expérimentale.
+- **Éclairage dynamique par pixel** du niveau et des personnages, avec cartes de matériau générées :
+  relief (normal map + parallax occlusion mapping) et brillance déduite du nom de la texture (le métal,
+  le marbre, la glace, le verre et la pierre mouillée brillent ; tissus et terre restent mats). Un mod
+  peut fournir ses propres `<texture>_n.png`.
+- **Ombres dynamiques** des torches, sorts et autres lumières, portées par le décor et les personnages
+  (les disques d'ombre flous d'origine disparaissent).
+- **Reflets spéculaires** des lumières sur tous les matériaux et **reflets du décor en espace écran**
+  sur les sols et murs brillants (marbre, métal, glace, pierre mouillée).
+- **Post-traitement** : bloom, FXAA (réglage SMAA réservé), occlusion ambiante expérimentale,
+  **particules douces** (feu, fumée et magie ne coupent plus les murs et les sols).
 - **Eau** : réfraction à travers des vagues animées, reflets spéculaires des lumières, berges douces.
-- **Physique** ([Jolt](https://github.com/jrouwe/JoltPhysics)) : les PNJ tués tombent en ragdoll (dans
-  l'escalier, contre le mur, et ils restent là où ils gisent, sauvegardes comprises) ; les objets lâchés
-  ou jetés roulent, rebondissent et se posent ; clés et pièces restent à plat. L'hôte simule, les
-  clients voient la même chose. Les personnages des joueurs ne sont pas concernés.
+  **Lave** : veines incandescentes qui pulsent sur une croûte plus sombre, brume de chaleur au-dessus.
+- **Physique** ([Jolt](https://github.com/jrouwe/JoltPhysics)) : les PNJ tués tombent en ragdoll,
+  projetés par le coup fatal (une boule de feu envoie le corps valser, une flèche le renverse), dans
+  l'escalier, contre le mur, et ils restent là où ils gisent, sauvegardes comprises ; les objets lâchés
+  ou jetés roulent, rebondissent et se posent ; clés et pièces restent à plat ; les objets cassables du
+  jeu (vitrines, cryptes de verre, grille de bois, murs friables, pierres tombales) éclatent en morceaux
+  qui restent au sol ; les bannières, rideaux et tapisseries des niveaux pendent comme du tissu et
+  bougent sous une brise légère ou quand on les traverse. L'hôte simule cadavres et objets, les clients
+  voient la même chose (les tissus sont simulés sur chaque machine). Les personnages des joueurs ne sont
+  pas concernés.
 - **Modding** : les shaders sont des fichiers dans `Graph\shaders\` (`legacy`, `shadow`, `water`,
-  `post_*`), rechargés en jeu avec **F7**.
+  `lava`, `reflect`, `post_*`), rechargés en jeu avec **F7**.
 
 Prérequis : OpenGL 3.0 (matériel de 2008 ou plus récent) ; coût mesuré du préréglage *Élevée* : environ
 une milliseconde de plus par image en 720p. Clés `[video]` de `userdata\cfg.ini` : `pipeline`,
-`lighting`, `shadows`, `shadow_resolution`, `postprocess`, `bloom`, `fxaa`, `ambient_occlusion`,
-`normal_maps`, `water`, `physics`.
+`lighting`, `shadows`, `shadow_resolution`, `postprocess`, `bloom`, `fxaa`, `smaa`, `ambient_occlusion`,
+`normal_maps`, `parallax`, `specular`, `reflections`, `soft_particles`, `water`, `lava`, `physics`.
 
 Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition HD (protocole réseau différent).
 

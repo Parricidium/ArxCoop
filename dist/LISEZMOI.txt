@@ -94,13 +94,18 @@ CE QUI EST PARTAGE
 
 EDITION HD (zip ArxCoop-HD-* uniquement)
 - Meme mod, meme reseau, mais avec un moteur modernise : eclairage dynamique par pixel, ombres des
-  torches et des sorts, relief des textures, bloom, eau avec vagues et reflets, et une physique
-  (Jolt) : les PNJ tues tombent en ragdoll et restent ou ils gisent, les objets laches ou jetes
-  roulent et se posent. Les personnages des joueurs ne sont pas concernes.
+  torches et des sorts, relief des textures (normal maps + parallax), reflets speculaires des
+  materiaux (metal, marbre, sols mouilles) et reflets du decor sur les sols brillants, bloom,
+  particules douces, eau avec vagues et refraction, lave incandescente avec brume de chaleur,
+  et une physique (Jolt) : les PNJ tues tombent en ragdoll (projetes par le coup fatal) et restent
+  ou ils gisent, les objets laches ou jetes roulent et se posent, les objets cassables du jeu
+  (vitrines, cryptes de verre, grilles) eclatent en morceaux, les bannieres et rideaux bougent.
+  Les personnages des joueurs ne sont pas concernes.
 - Tout se regle dans le menu "Options HD" (menu principal ou Options) : prereglages Off / Faible /
   Moyenne / Elevee / Ultra et reglages detailles, appliques immediatement. "Off" = rendu d'origine.
   Reglages dans userdata\cfg.ini, section [video] : pipeline, lighting, shadows, shadow_resolution,
-  postprocess, bloom, fxaa, ambient_occlusion, normal_maps, water, physics.
+  postprocess, bloom, fxaa, smaa, ambient_occlusion, normal_maps, parallax, specular, reflections,
+  soft_particles, water, lava, physics.
 - Prerequis : carte graphique OpenGL 3.0 (2008 ou plus recent). Cout mesure du prereglage
   "Elevee" : environ 1 ms de plus par image en 720p.
 - Touche F7 : recharge les shaders (fichiers Graph\shaders\*.vert / *.frag, modifiables).
