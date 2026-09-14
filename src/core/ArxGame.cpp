@@ -47,6 +47,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
+#include <limits>
 #include <sstream>
 #include <string_view>
 
@@ -124,6 +125,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "gui/Logo.h"
 #include "gui/Menu.h"
 #include "gui/MenuPublic.h"
+#include "gui/MainMenu.h"
+#include "gui/menu/HdMenuPages.h"
 #include "gui/MenuWidgets.h"
 #include "gui/MiniMap.h"
 #include "gui/Notification.h"
@@ -141,9 +144,15 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "math/Angle.h"
 #include "math/Types.h"
 #include "math/Rectangle.h"
+#include "math/GtxFunctions.h"
+#include "math/RandomVector.h"
 #include "math/Vector.h"
 
 #include "physics/Attractors.h"
+#include "physics/PhysicsWorld.h"
+#include "physics/LooseObjects.h"
+#include "physics/Physics.h"
+#include "physics/Ragdoll.h"
 
 #include "io/fs/FilePath.h"
 #include "io/fs/Filesystem.h"
@@ -236,6 +245,12 @@ bool ArxGame::initialize() {
 	if(!init) {
 		return false;
 	}
+	
+	// ArxModern: the renderer was created before the game resources, so pick up any
+	// graph/shaders/* override now that they are available
+	GRenderer->reloadShaders();
+	
+	physics::init();
 	
 	init = initInput();
 	if(!init) {
@@ -625,6 +640,68 @@ static void coopNickname(const std::string & name) {
 	g_coop.startup.nickname = name;
 }
 ARX_PROGRAM_OPTION_ARG("nickname", "", "Nickname to use in co-op games", &coopNickname, "NAME")
+// ArxModern: take a screenshot after N in-game frames, then quit.
+// Used to compare renderer changes against reference images at fixed spots.
+static long g_autoSnapshotFrames = -1;
+static bool g_autoSnapshotAnyMode = false;
+static void autoSnapshot(u32 frames) {
+	g_autoSnapshotFrames = long(frames);
+}
+ARX_PROGRAM_OPTION_ARG("autosnapshot", "", "Take a screenshot after N in-game frames and quit", &autoSnapshot, "FRAMES")
+static void menuSnapshot(u32 frames) {
+	g_autoSnapshotFrames = long(frames);
+	g_autoSnapshotAnyMode = true;
+}
+ARX_PROGRAM_OPTION_ARG("menusnapshot", "", "Take a screenshot after N frames (menu included) and quit", &menuSnapshot, "FRAMES")
+
+// ArxModern: open a menu page for --menusnapshot ("hd" = Options HD, "options", "render")
+static std::string g_snapshotMenuPage;
+static void menuPage(const std::string & page) {
+	g_snapshotMenuPage = page;
+}
+ARX_PROGRAM_OPTION_ARG("menupage", "", "Open this menu page before --menusnapshot (hd, options, render)", &menuPage, "PAGE")
+
+// ArxModern: at frame N, render the same game state with the fixed-function pipeline, the shader
+// pipeline and the fixed-function pipeline again (snapshots 1, 2, 3 after the normal frame 0),
+// so the two pipelines can be compared without any temporal noise, then quit.
+static long g_pipelineTestFrames = -1;
+static void pipelineTest(u32 frames) {
+	g_pipelineTestFrames = long(frames);
+}
+ARX_PROGRAM_OPTION_ARG("pipelinetest", "", "Compare the fixed and shader pipelines on frame N and quit", &pipelineTest, "FRAMES")
+
+// ArxModern: at frame N, apply each HD quality preset in turn (off, low, medium, high, ultra),
+// render the same frame with it and take a snapshot, then quit. Exercises the runtime switching
+// done by the "Options HD" menu.
+static long g_presetTestFrames = -1;
+static void presetTest(u32 frames) {
+	g_presetTestFrames = long(frames);
+}
+ARX_PROGRAM_OPTION_ARG("presettest", "", "Render frame N with every HD quality preset and quit", &presetTest, "FRAMES")
+
+// ArxModern: at frame N, kill every NPC within 1500 units of the player (ragdoll test); pair
+// with --autosnapshot M (M > N) to capture the result.
+static long g_killTestFrames = -1000;
+static EntityHandle g_killTestTarget;
+static void killTest(u32 frames) {
+	g_killTestFrames = long(frames);
+}
+ARX_PROGRAM_OPTION_ARG("killtest", "", "Kill the NPCs near the player at frame N (ragdoll test)", &killTest, "FRAMES")
+
+// ArxModern: at frame N, throw the items lying near the player in front of them (loose object test)
+static long g_throwTestFrames = -1000;
+static EntityHandle g_throwTestTarget;
+static void throwTest(u32 frames) {
+	g_throwTestFrames = long(frames);
+}
+ARX_PROGRAM_OPTION_ARG("throwtest", "", "Throw the items near the player at frame N (physics test)", &throwTest, "FRAMES")
+
+// ArxModern: at frame N, stand at the edge of the largest pool of the level and look at it
+static long g_waterTestFrames = -1;
+static void waterTest(u32 frames) {
+	g_waterTestFrames = long(frames);
+}
+ARX_PROGRAM_OPTION_ARG("watertest", "", "Look at the largest pool of the level from frame N (water shader test)", &waterTest, "FRAMES")
 
 static bool HandleGameFlowTransitions() {
 	
@@ -635,7 +712,7 @@ static bool HandleGameFlowTransitions() {
 		return false;
 	}
 
-	if(GInput->isAnyKeyPressed()) {
+	if(GInput->isAnyKeyPressed() || g_autoSnapshotAnyMode) {
 		ARXmenu.requestMode(Mode_MainMenu);
 		ARX_MENU_Launch(false);
 		GameFlow::setTransition(GameFlow::InGame);
@@ -999,6 +1076,7 @@ void ArxGame::shutdownGame() {
 	
 	Menu2_Close();
 	DanaeClearLevel();
+	physics::shutdown();
 	TextureContainer::DeleteAll();
 	
 	cinematicDestroy();
@@ -1644,6 +1722,17 @@ void ArxGame::updateInput() {
 	if(GInput->isKeyPressedNowPressed(Keyboard::Key_F10)) {
 		GetSnapShot();
 	}
+	
+	// ArxModern: F6 dumps the lights used for per-pixel lighting to the log (diagnostics)
+	if(GInput->isKeyPressedNowPressed(Keyboard::Key_F6)) {
+		ARX_SCENE_DumpPixelLights();
+	}
+	
+	// ArxModern: reload graph/shaders/* without restarting (for shader modding).
+	// F7: F8 is the co-op admin menu, F5/F9 quick save/load, F10-F12 engine debug keys.
+	if(GInput->isKeyPressedNowPressed(Keyboard::Key_F7)) {
+		GRenderer->reloadShaders();
+	}
 
 	if(GInput->actionNowPressed(CONTROLS_CUST_DEBUG)) {
 		drawDebugCycleViews();
@@ -1793,6 +1882,7 @@ void ArxGame::updateLevel() {
 	
 	PrepareIOTreatZone();
 	ARX_PHYSICS_Apply();
+	physics::update(); // ArxModern: ragdolls and loose objects, before the entities are animated
 	
 	PrecalcIOLighting(g_camera->m_pos, g_camera->cdepth * 0.6f);
 	
@@ -1861,6 +1951,9 @@ void ArxGame::renderLevel() {
 	
 	ARX_PROFILE_FUNC();
 	
+	// ArxModern: the 3D scene may be rendered off-screen for post-processing
+	GRenderer->beginScene();
+	
 	// Clear screen & Z buffers
 	GRenderer->Clear(Renderer::ColorBuffer | Renderer::DepthBuffer, g_fogColor);
 	
@@ -1922,6 +2015,9 @@ void ArxGame::renderLevel() {
 	// Manage Death visual & Launch menu...
 	ARX_PLAYER_Manage_Death();
 
+	// ArxModern: compose the post-processed scene into the window before the interface
+	GRenderer->endScene();
+	
 	// INTERFACE
 	g_renderBatcher.clear();
 	
@@ -2095,6 +2191,251 @@ void ArxGame::render() {
 	}
 
 	LastMouseClick = EERIEMouseButton;
+	
+	if(g_autoSnapshotFrames >= 0 && (g_autoSnapshotAnyMode || (ARXmenu.mode() == Mode_InGame && !isInCinematic()))) {
+		// Average frame time over the last 100 frames before the snapshot (performance tracking)
+		static float frameTimeSum = 0.f;
+		static int frameTimeCount = 0;
+		if(g_autoSnapshotFrames < 100) {
+			frameTimeSum += toMsf(g_platformTime.lastFrameDuration());
+			frameTimeCount++;
+		}
+		if(g_autoSnapshotFrames == 30 && g_autoSnapshotAnyMode && !g_snapshotMenuPage.empty() && g_mainMenu) {
+			MENUSTATE page = (g_snapshotMenuPage == "hd") ? Page_OptionsHd
+			                 : (g_snapshotMenuPage == "render") ? Page_OptionsRender : Page_Options;
+			g_mainMenu->requestPage(page);
+		}
+		if(g_autoSnapshotFrames == 0) {
+			if(frameTimeCount > 0) {
+				LogInfo << "autosnapshot: average frame time " << (frameTimeSum / float(frameTimeCount))
+				        << " ms over " << frameTimeCount << " frames";
+			}
+			if(g_autoSnapshotAnyMode) {
+				InitSnapShot(fs::getUserDir() / "snapshot"); // normally done when a level loads
+			}
+			GetSnapShot();
+			mainApp->quit();
+		}
+		g_autoSnapshotFrames--;
+	}
+	
+	if(g_killTestFrames > -1000 && ARXmenu.mode() == Mode_InGame && !isInCinematic()) {
+		if(g_killTestFrames == 30) {
+			// Pick the victim: the nearest NPC with a weapon in hand if there is one (its weapon
+			// must drop next to it), else the nearest. Stand next to it for a few frames first so
+			// that its skeleton gets placed in the world.
+			float nearest = std::numeric_limits<float>::max();
+			bool armed = false;
+			for(Entity & npc : entities(IO_NPC)) {
+				if(&npc == entities.player() || npc.show != SHOW_FLAG_IN_SCENE || IsDeadNPC(npc)) {
+					continue;
+				}
+				bool weaponInHand = npc._npcdata->weapon && !locateInInventories(npc._npcdata->weapon);
+				float distance = glm::distance(npc.pos, player.pos);
+				if((weaponInHand && !armed) || (weaponInHand == armed && distance < nearest)) {
+					nearest = distance;
+					armed = weaponInHand;
+					g_killTestTarget = npc.index();
+				}
+			}
+			if(Entity * target = entities.get(g_killTestTarget)) {
+				Vec3f away = player.pos - target->pos;
+				away.y = 0.f;
+				away = (arx::length2(away) > 1.f) ? glm::normalize(away) : Vec3f(1.f, 0.f, 0.f);
+				ARX_INTERACTIVE_Teleport(entities.player(), target->pos + away * 220.f - Vec3f(0.f, 20.f, 0.f), true);
+				LogInfo << "killtest: target " << target->idString() << (armed ? " (weapon in hand)" : "");
+			}
+		}
+		if(g_killTestFrames == 0) {
+			size_t killed = 0;
+			for(Entity & npc : entities(IO_NPC)) {
+				if(&npc != entities.player() && npc.show == SHOW_FLAG_IN_SCENE && !IsDeadNPC(npc)
+				   && closerThan(npc.pos, player.pos, 600.f)) {
+					LogInfo << "killtest: killing " << npc.idString();
+					ARX_DAMAGES_ForceDeath(npc, entities.player());
+					killed++;
+				}
+			}
+			LogInfo << "killtest: killed " << killed << " NPCs, ragdolls: " << physics::ragdollCount()
+			        << ", loose objects: " << physics::looseObjectCount();
+		}
+		// Save once the corpse lies still, reload, and check that it is back where it lay
+		if(g_killTestFrames == -400) {
+			ARX_QuickSave();
+			LogInfo << "killtest: quicksaved";
+		}
+		if(g_killTestFrames == -450) {
+			ARX_QuickLoad();
+			LogInfo << "killtest: quickload requested";
+		}
+		if(g_killTestFrames == -300 || g_killTestFrames == -700) {
+			physics::dumpState();
+			for(Entity & item : entities(IO_ITEM)) {
+				if(item.show == SHOW_FLAG_IN_SCENE && item.obj && item.obj->pbox && item.obj->pbox->active == 2
+				   && closerThan(item.pos, player.pos, 800.f)) {
+					LogInfo << "  at rest " << item.idString() << " at " << item.pos.x << " " << item.pos.y << " " << item.pos.z;
+				}
+			}
+			if(Entity * target = entities.get(g_killTestTarget)) {
+				LogInfo << "  victim " << target->idString() << " at " << target->pos.x << " " << target->pos.y << " " << target->pos.z;
+			}
+		}
+		g_killTestFrames--;
+	}
+	if(g_throwTestFrames > -1000 && ARXmenu.mode() == Mode_InGame && !isInCinematic()) {
+		if(g_throwTestFrames == 30) {
+			// A "door" group fixed entity nearby (spider web, glass crypt)? Stand in front of it:
+			// the thrown objects must trigger its collide_door script
+			float nearest = std::numeric_limits<float>::max();
+			bool reactive = false; // spider webs and the glass crypt have a collide_door script
+			for(Entity & io : entities) {
+				if(!(io.ioflags & IO_FIX) || !(io.gameFlags & GFLAG_DOOR) || io.show != SHOW_FLAG_IN_SCENE
+				   || (io.ioflags & IO_NO_COLLISIONS)) {
+					continue;
+				}
+				std::string_view path = io.classPath().string();
+				bool reacts = path.find("spider_web") != std::string_view::npos || path.find("glass_crypt") != std::string_view::npos;
+				float distance = glm::distance(io.pos, player.pos);
+				if((reacts && !reactive) || (reacts == reactive && distance < nearest)) {
+					nearest = distance;
+					reactive = reacts;
+					g_throwTestTarget = io.index();
+				}
+			}
+			if(Entity * target = entities.get(g_throwTestTarget)) {
+				Vec3f away = player.pos - target->pos;
+				away.y = 0.f;
+				away = (arx::length2(away) > 1.f) ? glm::normalize(away) : Vec3f(1.f, 0.f, 0.f);
+				ARX_INTERACTIVE_Teleport(entities.player(), target->pos + away * 160.f - Vec3f(0.f, 120.f, 0.f), true);
+				LogInfo << "throwtest: target " << target->idString() << " (door group)";
+			}
+		}
+		if(g_throwTestFrames == 0) {
+			Vec3f forward = angleToVectorXZ(player.angle.getYaw());
+			if(Entity * target = entities.get(g_throwTestTarget)) {
+				forward = target->pos - Vec3f(0.f, 60.f, 0.f) - player.pos;
+				forward.y = 0.f;
+				forward = glm::normalize(forward);
+				player.desiredangle = player.angle = Camera::getLookAtAngle(player.pos, target->pos - Vec3f(0.f, 60.f, 0.f));
+			}
+			// Small flat things first (keys, coins): the hardest to keep above the floor
+			std::vector<Entity *> candidates;
+			for(Entity & item : entities(IO_ITEM)) {
+				if(item.show == SHOW_FLAG_IN_SCENE && item.obj && item.obj->pbox) {
+					candidates.push_back(&item);
+				}
+			}
+			std::stable_sort(candidates.begin(), candidates.end(), [](const Entity * a, const Entity * b) {
+				auto rank = [](const Entity * io) {
+					std::string_view path = io->classPath().string();
+					return (path.find("key") != std::string_view::npos || path.find("coin") != std::string_view::npos
+					        || path.find("gold") != std::string_view::npos) ? 0 : 1;
+				};
+				return rank(a) < rank(b);
+			});
+			size_t thrown = 0;
+			for(Entity * item : candidates) {
+				if(thrown >= 8) {
+					break;
+				}
+				Vec3f start = player.pos + forward * 80.f + Vec3f(0.f, 20.f, 0.f) + Vec3f(float(thrown) * 15.f - 50.f, 0.f, 0.f);
+				Vec3f direction = glm::normalize(forward + Vec3f(0.f, -0.35f, 0.f) + arx::randomVec(-0.2f, 0.2f));
+				LogInfo << "throwtest: " << item->idString();
+				EERIE_PHYSICS_BOX_Launch(item->obj, start, item->angle, direction, item);
+				thrown++;
+			}
+			if(!entities.get(g_throwTestTarget)) {
+				player.desiredangle = player.angle = Anglef(25.f, player.angle.getYaw(), 0.f);
+			}
+			LogInfo << "throwtest: thrown " << thrown << " items, loose bodies: " << physics::looseObjectCount();
+		}
+		if(g_throwTestFrames == -200 && g_throwTestTarget) {
+			Entity * target = entities.get(g_throwTestTarget);
+			LogInfo << "throwtest: target " << (target ? target->idString() + " still there, collisions "
+			                                    + ((target->ioflags & IO_NO_COLLISIONS) ? "off" : "on") : std::string("gone"));
+		}
+		g_throwTestFrames--;
+	}
+	
+	static Vec3f g_waterTestTarget(0.f);
+	static bool g_waterTestActive = false;
+	if(g_waterTestFrames >= 0 && ARXmenu.mode() == Mode_InGame && !isInCinematic()) {
+		if(g_waterTestFrames == 0 && g_tiles) {
+			// The water polygon with the most water around it = the middle of the largest pool
+			std::vector<const EERIEPOLY *> water;
+			for(auto tile : g_tiles->tiles()) {
+				for(const EERIEPOLY & poly : tile.polygons()) {
+					if((poly.type & POLY_WATER) && !(poly.type & POLY_FALL)) {
+						water.push_back(&poly);
+					}
+				}
+			}
+			const EERIEPOLY * best = nullptr;
+			size_t bestCount = 0;
+			for(size_t i = 0; i < water.size(); i += std::max<size_t>(1, water.size() / 200)) {
+				size_t count = 0;
+				for(const EERIEPOLY * other : water) {
+					if(closerThan(other->center, water[i]->center, 400.f)) {
+						count++;
+					}
+				}
+				if(count > bestCount) {
+					bestCount = count;
+					best = water[i];
+				}
+			}
+			if(best) {
+				g_waterTestTarget = best->center;
+				g_waterTestActive = true;
+				Vec3f eye = best->center + Vec3f(-260.f, -140.f, 180.f);
+				ARX_INTERACTIVE_Teleport(entities.player(), eye, true);
+				LogInfo << "watertest: " << water.size() << " water polygons, pool of " << bestCount << " at "
+				        << best->center.x << " " << best->center.y << " " << best->center.z;
+			} else {
+				LogInfo << "watertest: no water in this level";
+			}
+		}
+		g_waterTestFrames--;
+	}
+	if(g_waterTestActive) {
+		player.desiredangle = player.angle = Camera::getLookAtAngle(player.pos, g_waterTestTarget);
+	}
+	
+	// Keep looking at the nearest victim while it falls
+	if(Entity * target = entities.get(g_killTestTarget)) {
+		if(target->pos != player.pos) {
+			player.desiredangle = player.angle = Camera::getLookAtAngle(player.pos, target->pos);
+		}
+	}
+	
+	if(g_presetTestFrames >= 0 && ARXmenu.mode() == Mode_InGame && !isInCinematic()) {
+		if(g_presetTestFrames == 0) {
+			for(int preset = 0; preset <= 4; preset++) {
+				applyHdPreset(preset);
+				updateLevel(); // re-uploads the lights to the (possibly re-created) pipeline
+				renderLevel();
+				GetSnapShot();
+			}
+			mainApp->quit();
+		}
+		g_presetTestFrames--;
+	}
+	
+	if(g_pipelineTestFrames >= 0 && ARXmenu.mode() == Mode_InGame && !isInCinematic()) {
+		if(g_pipelineTestFrames == 0) {
+			GetSnapShot();
+			bool wasShaders = GRenderer->useShaders();
+			const bool modes[] = { false, true, false };
+			for(bool mode : modes) {
+				GRenderer->setShaderPipeline(mode);
+				renderLevel();
+				GetSnapShot();
+			}
+			GRenderer->setShaderPipeline(wasShaders);
+			mainApp->quit();
+		}
+		g_pipelineTestFrames--;
+	}
 	
 	gldebug::endFrame();
 }

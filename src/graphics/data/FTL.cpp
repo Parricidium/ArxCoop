@@ -168,6 +168,7 @@ std::unique_ptr<EERIE_3DOBJ> ARX_FTL_Load(const res::path & file) {
 	object->vertexWorldPositions.resize(object->vertexlist.size());
 	object->vertexClipPositions.resize(object->vertexlist.size());
 	object->vertexColors.resize(object->vertexlist.size());
+	object->vertexWorldNormals.resize(object->vertexlist.size());
 	
 	// Copy the face data in
 	for(EERIE_FACE & face : object->facelist) {

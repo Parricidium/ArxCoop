@@ -97,7 +97,13 @@ struct PHYSICS_BOX_DATA {
 bool EERIE_PHYSICS_BOX_IsValidPosition(const Vec3f & pos);
 
 void EERIE_PHYSICS_BOX_Create(EERIE_3DOBJ * obj);
-void EERIE_PHYSICS_BOX_Launch(EERIE_3DOBJ * obj, const Vec3f & pos, const Anglef & angle, const Vec3f & vect);
+/*!
+ * Launch the physics box of an object.
+ * ArxModern: io is the entity the object belongs to - needed because some objects are shared
+ * between entities (gold coins); without it the entity is looked up by its object.
+ */
+void EERIE_PHYSICS_BOX_Launch(EERIE_3DOBJ * obj, const Vec3f & pos, const Anglef & angle, const Vec3f & vect,
+                              Entity * io = nullptr);
 void ARX_PHYSICS_BOX_ApplyModel(PHYSICS_BOX_DATA & pbox, float framediff, float rubber, Entity & source);
 
 #endif // ARX_PHYSICS_PHYSICS_H

@@ -105,6 +105,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "math/Vector.h"
 
 #include "physics/CollisionShapes.h"
+#include "physics/LooseObjects.h"
 #include "physics/Collisions.h"
 #include "physics/Physics.h"
 
@@ -902,6 +903,9 @@ void ARX_PHYSICS_Apply() {
 			PHYSICS_BOX_DATA & pbox = *io->obj->pbox;
 			
 			if(pbox.active == 1) {
+				if(physics::updateLooseObject(*io)) { // ArxModern: simulated as a rigid body
+					continue;
+				}
 				ARX_PHYSICS_BOX_ApplyModel(pbox, g_framedelay, io->rubber, *io);
 				
 				if(io->soundcount > 12) {

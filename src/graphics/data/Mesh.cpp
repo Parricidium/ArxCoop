@@ -1110,6 +1110,9 @@ void ComputePortalVertexBuffer() {
 		u32 startIndex = 0;
 		u32 startIndexCull = 0;
 		
+		room->shadowIndexBuffer.clear();
+		bool haveBounds = false;
+		
 		size_t ntextures = infos.size();
 		
 		LogDebug(" - room " << roomIndex << ": " << ntextures << " textures, "
@@ -1124,6 +1127,8 @@ void ComputePortalVertexBuffer() {
 			const SINFO_TEXTURE_VERTEX & info = entry.second;
 			
 			u16 index = 0;
+			
+			u32 shadowIndexStart = u32(room->shadowIndexBuffer.size());
 			
 			// Upload all vertices for this texture and remember the indices
 			for(const EP_DATA & epd : room->epdata) {
@@ -1140,8 +1145,31 @@ void ComputePortalVertexBuffer() {
 				vertex->p.x = poly.v[0].p.x;
 				vertex->p.y = poly.v[0].p.y;
 				vertex->p.z = poly.v[0].p.z;
+				for(size_t k = 0; k < ((poly.type & POLY_QUAD) ? 4u : 3u); k++) {
+					if(!haveBounds) {
+						room->bboxMin = room->bboxMax = poly.v[k].p;
+						haveBounds = true;
+					} else {
+						room->bboxMin = glm::min(room->bboxMin, poly.v[k].p);
+						room->bboxMax = glm::max(room->bboxMax, poly.v[k].p);
+					}
+				}
+				
+				if(!(poly.type & (POLY_TRANS | POLY_NODRAW))) {
+					// Opaque polygon: shadow caster
+					room->shadowIndexBuffer.push_back(index);
+					room->shadowIndexBuffer.push_back(index + 1);
+					room->shadowIndexBuffer.push_back(index + 2);
+					if(poly.type & POLY_QUAD) {
+						room->shadowIndexBuffer.push_back(index + 3);
+						room->shadowIndexBuffer.push_back(index + 2);
+						room->shadowIndexBuffer.push_back(index + 1);
+					}
+				}
+				
 				vertex->color = poly.v[0].color;
 				vertex->uv = poly.v[0].uv + texture->hd;
+				vertex->normal = poly.nrml[0];
 				vertex++;
 				poly.uslInd[0] = index++;
 				
@@ -1150,6 +1178,7 @@ void ComputePortalVertexBuffer() {
 				vertex->p.z = poly.v[1].p.z;
 				vertex->color = poly.v[1].color;
 				vertex->uv = poly.v[1].uv + texture->hd;
+				vertex->normal = poly.nrml[1];
 				vertex++;
 				poly.uslInd[1] = index++;
 				
@@ -1158,6 +1187,7 @@ void ComputePortalVertexBuffer() {
 				vertex->p.z = poly.v[2].p.z;
 				vertex->color = poly.v[2].color;
 				vertex->uv = poly.v[2].uv + texture->hd;
+				vertex->normal = poly.nrml[2];
 				vertex++;
 				poly.uslInd[2] = index++;
 				
@@ -1167,6 +1197,7 @@ void ComputePortalVertexBuffer() {
 					vertex->p.z = poly.v[3].p.z;
 					vertex->color = poly.v[3].color;
 					vertex->uv = poly.v[3].uv + texture->hd;
+					vertex->normal = poly.nrml[3];
 					vertex++;
 					poly.uslInd[3] = index++;
 				}
@@ -1181,6 +1212,9 @@ void ComputePortalVertexBuffer() {
 			
 			m.vertexOffset = startIndex;
 			m.vertexCount = index;
+			
+			m.shadowIndexOffset = shadowIndexStart;
+			m.shadowIndexCount = u32(room->shadowIndexBuffer.size()) - shadowIndexStart;
 			
 			m.indexOffsets[BatchBucket_Opaque]         =  startIndexCull;
 			m.indexOffsets[BatchBucket_Blended]        = (startIndexCull += info.opaque);

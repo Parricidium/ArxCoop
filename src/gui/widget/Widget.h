@@ -51,6 +51,7 @@ enum MENUSTATE {
 	Page_CoopLobby,
 	Page_CoopAdmin,
 	Page_CoopOptions,
+	Page_OptionsHd, // ArxModern
 };
 
 enum WidgetType {

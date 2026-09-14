@@ -180,6 +180,7 @@ EERIE_3DOBJ * Eerie_Copy(const EERIE_3DOBJ * obj) {
 	nouvo->vertexWorldPositions.resize(nouvo->vertexlist.size());
 	nouvo->vertexClipPositions.resize(nouvo->vertexlist.size());
 	nouvo->vertexColors.resize(nouvo->vertexlist.size());
+	nouvo->vertexWorldNormals.resize(nouvo->vertexlist.size());
 	
 	nouvo->file = obj->file;
 	

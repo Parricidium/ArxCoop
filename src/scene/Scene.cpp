@@ -47,10 +47,13 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "scene/Scene.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <cstdio>
+#include <algorithm>
 #include <array>
 #include <memory>
 #include <utility>
+#include <unordered_map>
 #include <vector>
 
 #include "ai/Paths.h"
@@ -59,9 +62,11 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "core/Application.h"
 #include "core/ArxGame.h"
+#include "core/Config.h"
 #include "core/GameTime.h"
 #include "core/Core.h"
 
+#include "game/Camera.h"
 #include "game/EntityManager.h"
 #include "game/Inventory.h"
 #include "game/Player.h"
@@ -103,6 +108,10 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "platform/profiler/Profiler.h"
 
 #include "util/Range.h"
+
+// ArxModern: true while the room geometry is lit per pixel by the shader pipeline
+static bool g_pixelLighting = false;
+
 
 
 extern bool EXTERNALVIEW; // *sigh*
@@ -946,12 +955,19 @@ void RoomDrawRelease() {
 	}
 }
 
+static bool g_waterShader = false; // ArxModern: the water pass is using the water shader
+
 static void RenderWaterBatch() {
-	
+
 	if(!dynamicVertices.nbindices) {
 		return;
 	}
-	
+
+	if(g_waterShader) {
+		dynamicVertices.draw(Renderer::TriangleList);
+		return;
+	}
+
 	GRenderer->GetTextureStage(1)->setColorOp(TextureStage::OpModulate4X);
 	GRenderer->GetTextureStage(1)->setAlphaOp(TextureStage::OpDisable);
 	
@@ -1032,9 +1048,13 @@ static void RenderWater() {
 	int iNb = vPolyWater.size();
 	
 	dynamicVertices.lock(iNb * 4);
-	
-	UseRenderState state(render3D().depthWrite(false).cull().depthOffset(8).blend(BlendDstColor, BlendOne));
-	
+
+	// ArxModern: with the water shader the surface is drawn opaque (it rewrites the pixels from
+	// the captured scene), otherwise the engine's highlight overlay is blended on
+	g_waterShader = GRenderer->beginWater(float(toMsi(g_gameTime.now())) * 0.001f, g_camera->m_pos);
+	UseRenderState state(g_waterShader ? render3D().depthWrite(false).cull().depthOffset(8)
+	                                   : render3D().depthWrite(false).cull().depthOffset(8).blend(BlendDstColor, BlendOne));
+
 	GRenderer->SetTexture(0, enviro);
 	GRenderer->SetTexture(1, enviro);
 	GRenderer->SetTexture(2, enviro);
@@ -1092,9 +1112,14 @@ static void RenderWater() {
 	dynamicVertices.unlock();
 	RenderWaterBatch();
 	dynamicVertices.done();
-	
+
+	if(g_waterShader) {
+		GRenderer->endWater();
+		g_waterShader = false;
+	}
+
 	vPolyWater.clear();
-	
+
 }
 
 static void RenderLavaBatch() {
@@ -1295,6 +1320,14 @@ static void ARX_PORTALS_Frustrum_RenderRoomTCullSoft(RoomHandle roomIndex, const
 				vertices[ep->uslInd[2]].color = Color::white.toRGBA();
 				if(to == 4) {
 					vertices[ep->uslInd[3]].color = Color::white.toRGBA();
+				}
+			} else if(g_pixelLighting && !(ep->type & POLY_TRANS)) {
+				// The shader adds the dynamic lights per pixel to the precomputed static color
+				vertices[ep->uslInd[0]].color = ep->v[0].color;
+				vertices[ep->uslInd[1]].color = ep->v[1].color;
+				vertices[ep->uslInd[2]].color = ep->v[2].color;
+				if(to & 4) {
+					vertices[ep->uslInd[3]].color = ep->v[3].color;
 				}
 			} else  if(!(ep->type & POLY_TRANS)) {
 				ApplyTileLights(ep, epd.tile);
@@ -1543,6 +1576,204 @@ static void ARX_PORTALS_Frustrum_ComputeRoom(RoomHandle roomIndex,
 	
 }
 
+bool ARX_SCENE_PixelLighting() {
+	return g_pixelLighting;
+}
+
+static bool g_dumpPixelLights = false;
+
+void ARX_SCENE_DumpPixelLights() {
+	g_dumpPixelLights = true;
+}
+
+//! Order the lights by importance for the camera (nearest edge of the light volume first) and keep at most max
+static void SortAndTrimLights(std::vector<EERIE_LIGHT *> & lights, const Vec3f & camPos, size_t max) {
+	std::sort(lights.begin(), lights.end(), [&camPos](const EERIE_LIGHT * a, const EERIE_LIGHT * b) {
+		return glm::distance(a->pos, camPos) - a->fallend < glm::distance(b->pos, camPos) - b->fallend;
+	});
+	if(lights.size() > max) {
+		lights.resize(max);
+	}
+}
+
+/*!
+ * ArxModern: hand the lights to the renderer for per-pixel lighting.
+ * Dynamic lights first (level geometry and entities), then the static lights (entities only,
+ * the level has them precomputed in its vertex colors).
+ */
+static void UploadPixelLights(const Vec3f & camPos, float camDepth) {
+	
+	g_pixelLighting = (config.video.lighting != "vertex") && GRenderer->hasPixelLighting()
+	                  && !player.m_improve;
+	if(!g_pixelLighting) {
+		return;
+	}
+	
+	const size_t maxDynamic = Renderer::MaxPixelLights / 2;
+	
+	static std::vector<EERIE_LIGHT *> dynamic;
+	dynamic.assign(g_culledDynamicLights, g_culledDynamicLights + g_culledDynamicLightsCount);
+	SortAndTrimLights(dynamic, camPos, maxDynamic);
+	
+	static std::vector<EERIE_LIGHT *> statics;
+	statics.clear();
+	for(EERIE_LIGHT & light : g_staticLights) {
+		// Same selection as PrecalcIOLighting()
+		if(light.m_ignitionStatus && !(light.extras & EXTRAS_SEMIDYNAMIC)
+		   && closerThan(light.pos, camPos, camDepth + light.fallend)) {
+			RecalcLight(&light);
+			statics.push_back(&light);
+		}
+	}
+	SortAndTrimLights(statics, camPos, Renderer::MaxPixelLights - dynamic.size());
+	
+	static std::vector<RendererLight> lights;
+	lights.clear();
+	
+	// The engine keeps the player's torch light at the eye position, which lights the walls
+	// head-on: no shading of the relief, no shadows of the player's surroundings. Held in the
+	// left hand, it makes sense a little to the left, below and in front of the camera.
+	const EERIE_LIGHT * torchLight = player.torch ? lightHandleGet(torchLightHandle) : nullptr;
+	Vec3f torchOffset(0.f);
+	if(torchLight) {
+		const glm::mat4 & viewToWorld = g_preparedCamera.m_viewToWorld;
+		// View space: x right, y down (the projection flips it), z forward
+		Vec3f right = Vec3f(viewToWorld[0]);
+		Vec3f down = Vec3f(viewToWorld[1]);
+		Vec3f forward = Vec3f(viewToWorld[2]);
+		torchOffset = -right * 30.f + down * 25.f + forward * 25.f;
+	}
+	
+	// The entity carrying each dynamic light (a wall torch, a candle, a character with a torch
+	// at the belt...): its geometry, and that of the objects attached to it, must not shadow
+	// that light (RendererLight::owner, see shadow.frag). Attached objects belong to their carrier.
+	static std::unordered_map<const Entity *, const Entity *> carriers;
+	carriers.clear();
+	for(const Entity & entity : entities) {
+		if(!entity.obj) {
+			continue;
+		}
+		for(const EERIE_LINKED & link : entity.obj->linked) {
+			if(link.io) {
+				carriers[link.io] = &entity;
+			}
+		}
+	}
+	static std::unordered_map<const EERIE_LIGHT *, int> owners;
+	owners.clear();
+	for(const Entity & entity : entities) {
+		for(LightHandle handle : { entity.ignit_light, entity.dynlight }) {
+			const EERIE_LIGHT * light = lightHandleGet(handle);
+			if(!light || light == torchLight) {
+				continue;
+			}
+			const Entity * root = &entity;
+			for(int depth = 0; depth < 4; depth++) {
+				auto it = carriers.find(root);
+				if(it == carriers.end()) {
+					break;
+				}
+				root = it->second;
+			}
+			owners[light] = int(root->index().handleData());
+		}
+	}
+	if(torchLight) {
+		owners[torchLight] = int(entities.player()->index().handleData());
+	}
+	
+	// Debug: ARX_DEBUG_LIGHT=1 adds a strong light at the camera (shadow testing)
+	static const bool debugLight = std::getenv("ARX_DEBUG_LIGHT") != nullptr;
+	size_t extraDynamic = 0;
+	if(debugLight) {
+		RendererLight & out = lights.emplace_back();
+		const glm::mat4 & viewToWorld = g_preparedCamera.m_viewToWorld;
+		out.pos = camPos - Vec3f(viewToWorld[0]) * 30.f + Vec3f(viewToWorld[1]) * 25.f + Vec3f(viewToWorld[2]) * 25.f;
+		out.fallstart = 100.f;
+		out.fallend = 900.f;
+		out.color = Color3f(1.f, 0.9f, 0.7f) * (2.f * 0.85f);
+		extraDynamic = 1;
+	}
+	
+	for(const std::vector<EERIE_LIGHT *> * list : { &dynamic, &statics }) {
+		for(const EERIE_LIGHT * light : *list) {
+			RendererLight & out = lights.emplace_back();
+			out.pos = (light == torchLight) ? light->pos + torchOffset : light->pos;
+			auto owner = owners.find(light);
+			out.owner = (owner != owners.end()) ? owner->second : -1;
+			out.fallstart = light->fallstart;
+			out.fallend = light->fallend;
+			// Same scale as ApplyLight(): rgb255 * intensity * GLOBAL_LIGHT_FACTOR, in [0, 1]
+			out.color = light->rgb * (light->intensity * 0.85f);
+		}
+	}
+	GRenderer->setPixelLights(lights.data(), dynamic.size() + extraDynamic, lights.size());
+	
+	if(g_dumpPixelLights) {
+		g_dumpPixelLights = false;
+		LogInfo << "pixel lights: camera " << camPos.x << " " << camPos.y << " " << camPos.z
+		        << ", " << dynamic.size() << " dynamic (" << g_culledDynamicLightsCount << " culled), "
+		        << statics.size() << " static, shadows " << config.video.shadows;
+		size_t i = 0;
+		for(const EERIE_LIGHT * light : dynamic) {
+			LogInfo << " dyn " << i++ << ": pos " << light->pos.x << " " << light->pos.y << " " << light->pos.z
+			        << " dist " << glm::distance(light->pos, camPos) << " fallstart " << light->fallstart
+			        << " fallend " << light->fallend << " intensity " << light->intensity
+			        << " rgb " << light->rgb.r << " " << light->rgb.g << " " << light->rgb.b
+			        << (light->m_isIgnitionLight ? " (ignition)" : "")
+			        << (owners.count(light) ? " owner " + std::to_string(owners[light]) : "");
+		}
+	}
+	
+}
+
+/*!
+ * ArxModern: draw the level geometry that can occlude the given light, for the shadow maps.
+ * Uses the static per-room caster index lists (every opaque polygon, not only what the camera
+ * sees), so that occluders outside the view still cast shadows into it.
+ */
+static void DrawShadowCasters(const RendererLight & light) {
+	
+	if(!g_rooms) {
+		return;
+	}
+	
+	// Alpha-tested materials (grates...) keep their holes, everything else is drawn solid
+	UseRenderState state(RenderState().depthTest().depthWrite().cull(false));
+	
+	for(RoomHandle roomIndex : g_rooms->rooms.handles()) {
+		Room & room = g_rooms->rooms[roomIndex];
+		if(!room.pVertexBuffer || room.shadowIndexBuffer.empty()) {
+			continue;
+		}
+		// Light volume vs room bounds
+		Vec3f nearest = glm::clamp(light.pos, room.bboxMin, room.bboxMax);
+		if(!closerThan(nearest, light.pos, light.fallend)) {
+			continue;
+		}
+		for(TextureContainer & material : util::dereference(room.ppTextureContainer)) {
+			const SMY_ARXMAT & roomMat = material.m_roomBatches[roomIndex];
+			if(!roomMat.shadowIndexCount) {
+				continue;
+			}
+			bool alpha = material.m_pTexture && material.m_pTexture->hasAlpha();
+			if(alpha) {
+				GRenderer->SetTexture(0, &material);
+			} else {
+				GRenderer->ResetTexture(0);
+			}
+			UseRenderState cutout(GRenderer->getRenderState().alphaCutout(alpha));
+			room.pVertexBuffer->drawIndexed(Renderer::TriangleList, roomMat.vertexCount, roomMat.vertexOffset,
+			                                room.shadowIndexBuffer.data() + roomMat.shadowIndexOffset,
+			                                roomMat.shadowIndexCount);
+		}
+	}
+	
+	// Entities (their batches are filled before the shadow pass, see ARX_SCENE_Render)
+	DrawEntityShadowCasters();
+	
+}
+
 void ARX_SCENE_Update() {
 	
 	CreateScreenFrustrum();
@@ -1560,6 +1791,7 @@ void ARX_SCENE_Update() {
 
 	TreatBackgroundDynlights();
 	PrecalcDynamicLighting(camPos, camDepth);
+	UploadPixelLights(camPos, camDepth);
 	
 	g_tiles->resetActiveTiles();
 	
@@ -1593,10 +1825,22 @@ void ARX_SCENE_Render() {
 		GRenderer->GetTextureStage(0)->setMipMapLODBias(10.f);
 	}
 	
+	// ArxModern: with shadows the entities must be batched before the shadow pass so that
+	// they cast shadows; the batches are then drawn by PopAllTriangleListOpaque() as usual
+	bool entitiesBatched = false;
+	if(g_rooms && g_pixelLighting) {
+		GRenderer->GetTextureStage(0)->setMipMapLODBias(-0.6f);
+		RenderInter();
+		entitiesBatched = true;
+		GRenderer->renderShadowMaps(DrawShadowCasters);
+	}
+	
 	if(g_rooms) {
+		GRenderer->setPixelLighting(g_pixelLighting);
 		for(RoomHandle room : g_rooms->visibleRooms) {
 			BackgroundRenderOpaque(room);
 		}
+		GRenderer->setPixelLighting(false);
 	}
 	
 	if(!player.m_improve) {
@@ -1605,9 +1849,10 @@ void ARX_SCENE_Render() {
 	
 	ARX_THROWN_OBJECT_Render();
 	
-	GRenderer->GetTextureStage(0)->setMipMapLODBias(-0.6f);
-	
-	RenderInter();
+	if(!entitiesBatched) {
+		GRenderer->GetTextureStage(0)->setMipMapLODBias(-0.6f);
+		RenderInter();
+	}
 	
 	GRenderer->GetTextureStage(0)->setMipMapLODBias(-0.3f);
 	

@@ -47,6 +47,13 @@ public:
 	
 	void apply();
 	
+	// ArxModern: state queries for the shader pipeline
+	[[nodiscard]] TextureOp getColorOp() const { return ops[ColorOp]; }
+	[[nodiscard]] TextureOp getAlphaOp() const { return ops[AlphaOp]; }
+	[[nodiscard]] bool hasTexture() const { return tex != nullptr; }
+	//! ArxModern: the GL binding of this unit was changed behind our back
+	void forgetBinding() { current = nullptr; }
+	
 private:
 	
 	bool isEnabled() { return ((ops[ColorOp] != OpDisable) || (ops[AlphaOp] != OpDisable)); }

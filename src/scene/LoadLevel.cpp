@@ -86,6 +86,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "io/log/Logger.h"
 
 #include "physics/CollisionShapes.h"
+#include "physics/PhysicsWorld.h"
 
 #include "scene/Object.h"
 #include "scene/GameSound.h"
@@ -484,6 +485,7 @@ bool DanaeLoadLevel(AreaId area, bool loadEntities) {
 	
 	if(buffer.empty()) {
 		USE_PLAYERCOLLISIONS = true;
+		physics::levelLoaded();
 		LogInfo << "Done loading level";
 		return true;
 	}
@@ -510,6 +512,8 @@ bool DanaeLoadLevel(AreaId area, bool loadEntities) {
 	LoadLevelScreen();
 	
 	USE_PLAYERCOLLISIONS = true;
+	
+	physics::levelLoaded();
 	
 	LogInfo << "Done loading level";
 	
@@ -543,6 +547,8 @@ void DanaeClearLevel() {
 	culledStaticLightsReset();
 	
 	UnlinkAllLinkedObjects();
+	
+	physics::levelCleared();
 	
 	entities.clear();
 	

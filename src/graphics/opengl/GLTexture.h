@@ -47,6 +47,9 @@ public:
 	
 	void updateMaxAnisotropy();
 	
+	//! ArxModern: the GL texture object (for bindings outside the texture stages)
+	[[nodiscard]] GLuint id() const { return tex; }
+	
 private:
 	
 	OpenGLRenderer * renderer;
