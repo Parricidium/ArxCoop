@@ -20,6 +20,7 @@
 #include "physics/LooseObjects.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <unordered_map>
 #include <vector>
@@ -37,6 +38,7 @@
 #include "math/Vector.h"
 #include "physics/Physics.h"
 #include "physics/Ragdoll.h"
+#include "platform/Time.h"
 #include "scene/GameSound.h"
 #include "script/Script.h"
 
@@ -65,20 +67,87 @@ void settleEngineBox(Entity & io) {
 	io.soundtime = g_gameTime.now() + 2s;
 }
 
+//! Inverse of toQuaternion(): the engine's pitch/yaw/roll of a rotation (M = Rz(-roll) Rx(pitch) Ry(yaw))
+Anglef rotationToAngle(const glm::quat & q) {
+	glm::mat3 m = glm::mat3_cast(q);
+	float t1 = std::atan2(-m[1][0], m[1][1]);
+	float c2 = std::sqrt(m[0][2] * m[0][2] + m[2][2] * m[2][2]);
+	float t2 = std::atan2(m[1][2], c2);
+	float s1 = std::sin(t1), c1 = std::cos(t1);
+	float t3 = std::atan2(c1 * m[2][0] + s1 * m[2][1], c1 * m[0][0] + s1 * m[0][1]);
+	return Anglef(glm::degrees(t2), glm::degrees(t3), -glm::degrees(t1));
+}
+
+//! A mirrored object glides from where it is shown to the state last received (see MirroredRagdoll)
+struct MirroredObject {
+	Vec3f fromPos = Vec3f(0.f), toPos = Vec3f(0.f);
+	glm::quat fromRot = glm::quat(1.f, 0.f, 0.f, 0.f), toRot = glm::quat(1.f, 0.f, 0.f, 0.f);
+	bool active = false;
+	PlatformInstant start;
+	PlatformInstant received;
+	PlatformDuration duration = std::chrono::milliseconds(100);
+};
+
+std::unordered_map<Entity *, MirroredObject> g_mirroredObjects;
+
 } // anonymous namespace
 
 void mirrorLooseObject(Entity & io, const Vec3f & pos, const Anglef & angle, bool active) {
 	if(!io.obj || !io.obj->pbox) {
 		return;
 	}
-	io.pos = io.lastpos = pos;
-	io.angle = angle;
+	PlatformInstant now = platform::getTime();
+	glm::quat rot = toQuaternion(angle);
+	auto existing = g_mirroredObjects.find(&io);
+	if(existing == g_mirroredObjects.end() || !existing->second.active) {
+		// First state, or a new flight: no gliding from where it was
+		MirroredObject & mirrored = g_mirroredObjects[&io];
+		mirrored.fromPos = mirrored.toPos = pos;
+		mirrored.fromRot = mirrored.toRot = rot;
+		mirrored.start = mirrored.received = now;
+		mirrored.active = active;
+		io.pos = io.lastpos = pos;
+		io.angle = angle;
+	} else {
+		MirroredObject & mirrored = existing->second;
+		mirrored.fromPos = io.pos;
+		mirrored.fromRot = toQuaternion(io.angle);
+		mirrored.toPos = pos;
+		mirrored.toRot = rot;
+		mirrored.duration = std::clamp(now - mirrored.received, PlatformDuration(std::chrono::milliseconds(30)), PlatformDuration(std::chrono::milliseconds(300)));
+		mirrored.received = mirrored.start = now;
+		mirrored.active = active;
+		if(!active) {
+			io.pos = io.lastpos = pos;
+			io.angle = angle;
+		}
+	}
 	io.requestRoomUpdate = true;
 	if(active) {
 		io.obj->pbox->active = 1; // in flight: not to be picked up, the engine's box is skipped (mirror mode)
 	} else {
 		settleEngineBox(io);
+		g_mirroredObjects.erase(&io);
 	}
+}
+
+void updateMirroredObjects() {
+	PlatformInstant now = platform::getTime();
+	for(auto & entry : g_mirroredObjects) {
+		Entity & io = *entry.first;
+		MirroredObject & mirrored = entry.second;
+		if(!mirrored.active || mirrored.duration <= PlatformDuration(0)) {
+			continue;
+		}
+		float t = glm::clamp(toMsf(now - mirrored.start) / toMsf(mirrored.duration), 0.f, 1.f);
+		io.pos = io.lastpos = glm::mix(mirrored.fromPos, mirrored.toPos, t);
+		io.angle = rotationToAngle(glm::slerp(mirrored.fromRot, mirrored.toRot, t));
+		io.requestRoomUpdate = true;
+	}
+}
+
+void clearMirroredObjects() {
+	g_mirroredObjects.clear();
 }
 
 } // namespace physics
@@ -135,17 +204,6 @@ struct Obstacle {
 std::unordered_map<Entity *, LooseBody> g_loose;
 std::unordered_map<Entity *, Obstacle> g_obstacles;
 std::vector<ContactEvent> g_contacts;
-
-//! Inverse of toQuaternion(): the engine's pitch/yaw/roll of a rotation (M = Rz(-roll) Rx(pitch) Ry(yaw))
-Anglef rotationToAngle(const glm::quat & q) {
-	glm::mat3 m = glm::mat3_cast(q);
-	float t1 = std::atan2(-m[1][0], m[1][1]);
-	float c2 = std::sqrt(m[0][2] * m[0][2] + m[2][2] * m[2][2]);
-	float t2 = std::atan2(m[1][2], c2);
-	float s1 = std::sin(t1), c1 = std::cos(t1);
-	float t3 = std::atan2(c1 * m[2][0] + s1 * m[2][1], c1 * m[0][0] + s1 * m[0][1]);
-	return Anglef(glm::degrees(t2), glm::degrees(t3), -glm::degrees(t1));
-}
 
 JPH::RefConst<JPH::Shape> hullShape(const EERIE_3DOBJ & obj, float scale) {
 
@@ -603,6 +661,7 @@ void updateLooseObjects() {
 }
 
 void removeLooseObject(Entity & io) {
+	g_mirroredObjects.erase(&io);
 	auto loose = g_loose.find(&io);
 	if(loose != g_loose.end()) {
 		removeLooseBody(loose);
@@ -614,6 +673,7 @@ void removeLooseObject(Entity & io) {
 }
 
 void clearLooseObjects() {
+	clearMirroredObjects();
 	while(!g_loose.empty()) {
 		removeLooseBody(g_loose.begin());
 	}
@@ -658,8 +718,8 @@ bool updateLooseObject(Entity & io) { ARX_UNUSED(io); return isMirrorMode(); }
 void createObstacles() { }
 void syncObstacles() { }
 void updateLooseObjects() { }
-void removeLooseObject(Entity & io) { ARX_UNUSED(io); }
-void clearLooseObjects() { }
+void removeLooseObject(Entity & io) { g_mirroredObjects.erase(&io); }
+void clearLooseObjects() { clearMirroredObjects(); }
 size_t looseObjectCount() { return 0; }
 void dumpLooseObjects() { }
 void forEachLooseObject(const std::function<void(Entity & io, bool active)> & visit) { ARX_UNUSED(visit); }
