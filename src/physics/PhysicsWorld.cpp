@@ -331,6 +331,8 @@ void update() {
 		return;
 	}
 
+	PlatformInstant start = platform::getTime();
+
 	syncObstacles(); // doors, platforms and NPCs moved by the engine since the last step
 
 	int steps = 0;
@@ -342,6 +344,14 @@ void update() {
 
 	updateRagdolls();
 	updateLooseObjects();
+
+	// Hitch diagnostics: a physics frame this long is worth knowing about
+	PlatformDuration elapsed = platform::getTime() - start;
+	if(toMsi(elapsed) >= 12) {
+		LogInfo << "physics: " << toMsi(elapsed) << " ms for " << steps << " steps, "
+		        << g_world->system.GetNumActiveBodies(JPH::EBodyType::RigidBody) << " active bodies, "
+		        << ragdollCount() << " ragdolls, " << looseObjectCount() << " loose objects";
+	}
 }
 
 void onEntityDestroyed(Entity & io) {
