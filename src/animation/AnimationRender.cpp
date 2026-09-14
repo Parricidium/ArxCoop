@@ -85,6 +85,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "math/Vector.h"
 
 #include "physics/Collisions.h"
+#include "physics/Ragdoll.h"
 
 #include "platform/Platform.h"
 #include "platform/profiler/Profiler.h"
@@ -193,6 +194,29 @@ void PopAllTriangleListOpaque(RenderState baseState, bool clear) {
 	while(pTex) {
 		PopOneTriangleList(baseState, pTex, clear);
 		pTex = pTex->m_pNext;
+	}
+	
+}
+
+// ArxModern: draw the opaque entity batches as shadow casters (buckets are kept for the main pass)
+void DrawEntityShadowCasters() {
+	
+	UseRenderState state(RenderState().depthTest().depthWrite().cull(false));
+	UseTextureState textureState(TextureStage::FilterLinear, TextureStage::WrapClamp);
+	
+	for(TextureContainer * pTex = GetTextureList(); pTex; pTex = pTex->m_pNext) {
+		std::vector<TexturedVertex> & bucket = pTex->m_modelBatch[BatchBucket_Opaque];
+		if(bucket.empty()) {
+			continue;
+		}
+		bool alpha = pTex->m_pTexture && pTex->m_pTexture->hasAlpha();
+		if(alpha) {
+			GRenderer->SetTexture(0, pTex);
+		} else {
+			GRenderer->ResetTexture(0);
+		}
+		UseRenderState cutout(GRenderer->getRenderState().alphaCutout(alpha));
+		EERIEDRAWPRIM(Renderer::TriangleList, bucket.data(), bucket.size(), true);
 	}
 	
 }
@@ -461,14 +485,45 @@ static bool Cedric_IO_Visible(const Vec3f & pos) {
 	return !g_tiles || g_tiles->isNearActiveTile(pos);
 }
 
+extern long IN_BOOK_DRAW;
+
+/*!
+ * ArxModern: can this entity be lit per pixel by the shader? Only the plain case is handled
+ * there: the ambient term goes into the vertex color and the shader adds the lights. Color
+ * modifiers (invisibility, highlights, improved vision) keep the per-vertex CPU path.
+ */
+static bool PixelLightingFor(const ColorMod & colorMod) {
+	return ARX_SCENE_PixelLighting() && !IN_BOOK_DRAW
+	       && colorMod.factor == Color3f::white && colorMod.term == Color3f::black;
+}
+
+static ColorRGBA AmbientColor(const ColorMod & colorMod) {
+	u8 r = clipByte255(int(colorMod.ambientColor.r));
+	u8 g = clipByte255(int(colorMod.ambientColor.g));
+	u8 b = clipByte255(int(colorMod.ambientColor.b));
+	return Color(r, g, b).toRGBA();
+}
+
 /* Object dynamic lighting */
-static void Cedric_ApplyLighting(ShaderLight lights[], size_t lightsCount, EERIE_3DOBJ * eobj, Skeleton * obj, const ColorMod & colorMod) {
+static bool Cedric_ApplyLighting(ShaderLight lights[], size_t lightsCount, EERIE_3DOBJ * eobj, Skeleton * obj, const ColorMod & colorMod) {
 	
 	ARX_PROFILE_FUNC();
 	
 	arx_assert(eobj->vertexColors.size() == eobj->vertexWorldPositions.size());
 	arx_assert(eobj->vertexColors.size() == eobj->vertexlist.size());
 	arx_assert(eobj->m_boneVertices.size() == obj->bones.size());
+	
+	if(PixelLightingFor(colorMod) && eobj->vertexWorldNormals.size() == eobj->vertexlist.size()) {
+		ColorRGBA ambient = AmbientColor(colorMod);
+		for(VertexGroupId group : obj->bones.handles()) {
+			const glm::quat & quat = obj->bones[group].anim.quat;
+			for(VertexId vertex : eobj->m_boneVertices[group]) {
+				eobj->vertexColors[vertex] = ambient;
+				eobj->vertexWorldNormals[vertex] = quat * eobj->vertexlist[vertex].norm;
+			}
+		}
+		return true;
+	}
 	
 	/* Apply light on all vertices */
 	for(VertexGroupId group : obj->bones.handles()) {
@@ -481,6 +536,7 @@ static void Cedric_ApplyLighting(ShaderLight lights[], size_t lightsCount, EERIE
 		}
 	}
 	
+	return false;
 }
 
 static EERIE_3D_BBOX UpdateBbox3d(EERIE_3DOBJ * eobj) {
@@ -616,6 +672,9 @@ static void AddFixedObjectHalo(const EERIE_FACE & face, const TransformInfo & t,
 			vert[1] = tvList[first];
 			vert[2] = tvList[second];
 			vert[3] = tvList[second];
+			for(TexturedVertex & v : vert) {
+				v.diffuse = 0.f; // halo quads are not lit
+			}
 			
 			Vec3f a = tvList[first].p / tvList[first].w;
 			Vec3f b = tvList[second].p / tvList[second].w;
@@ -650,6 +709,15 @@ static void AddFixedObjectHalo(const EERIE_FACE & face, const TransformInfo & t,
 
 extern float WATEREFFECT;
 
+// ArxModern: entity whose linked objects (weapon, shield, torch at the belt) are being drawn -
+// they carry its index so that none of them shadows a light the entity carries (see shadow.frag)
+static Entity * g_casterRoot = nullptr;
+
+static float CasterIdFor(Entity * io) {
+	Entity * root = g_casterRoot ? g_casterRoot : io;
+	return root ? float(root->index().handleData()) : -1.f;
+}
+
 void DrawEERIEInter_Render(EERIE_3DOBJ * eobj, const TransformInfo & t, Entity * io, float invisibility) {
 
 	ColorMod colorMod;
@@ -668,6 +736,10 @@ void DrawEERIEInter_Render(EERIE_3DOBJ * eobj, const TransformInfo & t, Entity *
 	size_t lightsCount;
 	UpdateLlights(lights, lightsCount, tv, false);
 	
+	bool pixelLit = PixelLightingFor(colorMod) && !(io && player.m_improve);
+	ColorRGBA ambient = pixelLit ? AmbientColor(colorMod) : ColorRGBA(0);
+	float caster = CasterIdFor(io);
+	
 	arx_assert(eobj->vertexColors.size() == eobj->vertexWorldPositions.size());
 		
 	for(size_t i = 0; i < eobj->facelist.size(); i++) {
@@ -685,13 +757,23 @@ void DrawEERIEInter_Render(EERIE_3DOBJ * eobj, const TransformInfo & t, Entity *
 		float fTransp = 0.f;
 		TexturedVertex * tvList = GetNewVertexList(pTex->m_modelBatch, face, invisibility, fTransp);
 		
+		bool lit = pixelLit && !(face.facetype & (POLY_GLOW | POLY_TRANS)) && invisibility <= 0.f;
+		
 		for(size_t n = 0; n < 3; n++) {
 			
 			const Vec3f & position = eobj->vertexWorldPositions[face.vid[n]].v;
 			Vec3f normal = t.rotation * (useFaceNormal ? face.norm : eobj->vertexlist[face.vid[n]].norm);
 			float diffuse = useFaceNormal ? 0.5f : 1.f;
 			
-			eobj->vertexColors[face.vid[n]] = ApplyLight(lights, lightsCount, position, normal, colorMod, diffuse);
+			tvList[n].worldPos = position; // shadow casting
+			tvList[n].caster = caster;
+			if(lit) {
+				eobj->vertexColors[face.vid[n]] = ambient;
+				tvList[n].normal = normal;
+				tvList[n].diffuse = diffuse;
+			} else {
+				eobj->vertexColors[face.vid[n]] = ApplyLight(lights, lightsCount, position, normal, colorMod, diffuse);
+			}
 			
 			tvList[n].p = Vec3f(eobj->vertexClipPositions[face.vid[n]]);
 			tvList[n].w = eobj->vertexClipPositions[face.vid[n]].w;
@@ -828,7 +910,6 @@ static void pushSlotHalo(HaloInfo & haloInfo, EquipmentSlot slot, VertexSelectio
 }
 
 //-----------------------------------------------------------------------------
-extern long IN_BOOK_DRAW;
 
 static void PrepareAnimatedObjectHalo(HaloInfo & haloInfo, const Vec3f & pos,
                                       Skeleton * obj, EERIE_3DOBJ * eobj) {
@@ -930,6 +1011,9 @@ static void AddAnimatedObjectHalo(const HaloInfo & haloInfo, const VertexId * pa
 			vert[1] = tvList[first];
 			vert[2] = tvList[second];
 			vert[3] = tvList[second];
+			for(TexturedVertex & v : vert) {
+				v.diffuse = 0.f; // halo quads are not lit
+			}
 			
 			Vec3f a = tvList[first].p / tvList[first].w;
 			Vec3f b = tvList[second].p / tvList[second].w;
@@ -974,7 +1058,7 @@ static void AddAnimatedObjectHalo(const HaloInfo & haloInfo, const VertexId * pa
 }
 
 static void Cedric_RenderObject(EERIE_3DOBJ * eobj, Skeleton * obj, Entity * io,
-                                const Vec3f & pos, float invisibility) {
+                                const Vec3f & pos, float invisibility, bool pixelLit) {
 	
 	ARX_PROFILE_FUNC();
 	
@@ -1015,6 +1099,8 @@ static void Cedric_RenderObject(EERIE_3DOBJ * eobj, Skeleton * obj, Entity * io,
 		}
 	}
 	
+	float caster = CasterIdFor(use_io);
+	
 	for(size_t i = 0; i < eobj->facelist.size(); i++) {
 		const EERIE_FACE & face = eobj->facelist[i];
 		
@@ -1035,11 +1121,18 @@ static void Cedric_RenderObject(EERIE_3DOBJ * eobj, Skeleton * obj, Entity * io,
 		
 		TexturedVertex * tvList = GetNewVertexList(pTex->m_modelBatch, face, invisibility, fTransp);
 		
+		bool lit = pixelLit && !(face.facetype & POLY_TRANS) && invisibility <= 0.f;
 		for(size_t n = 0; n < 3; n++) {
 			tvList[n].p = Vec3f(eobj->vertexClipPositions[face.vid[n]]);
 			tvList[n].w = eobj->vertexClipPositions[face.vid[n]].w;
 			tvList[n].uv = Vec2f(face.u[n], face.v[n]);
 			tvList[n].color = eobj->vertexColors[face.vid[n]];
+			tvList[n].worldPos = eobj->vertexWorldPositions[face.vid[n]].v; // shadow casting
+			tvList[n].caster = caster;
+			if(lit) {
+				tvList[n].normal = eobj->vertexWorldNormals[face.vid[n]];
+				tvList[n].diffuse = 1.f;
+			}
 		}
 		
 		if((face.facetype & POLY_TRANS) || invisibility > 0.f) {
@@ -1054,6 +1147,7 @@ static void Cedric_RenderObject(EERIE_3DOBJ * eobj, Skeleton * obj, Entity * io,
 			TexturedVertex * tv2 = PushVertexInTable(TexSpecialColor.m_modelBatch[BatchBucket_Opaque]);
 			std::copy(tvList, tvList + 3, tv2);
 			tv2[0].color = tv2[1].color = tv2[2].color = glowColor;
+			tv2[0].diffuse = tv2[1].diffuse = tv2[2].diffuse = 0.f; // unlit overlay
 		}
 		
 	}
@@ -1083,11 +1177,12 @@ static void Cedric_AnimateDrawEntityRender(EERIE_3DOBJ * eobj, const Vec3f & pos
 	size_t lightsCount;
 	UpdateLlights(lights, lightsCount, tv, false);
 	
-	Cedric_ApplyLighting(lights, lightsCount, eobj, obj, colorMod);
+	bool pixelLit = Cedric_ApplyLighting(lights, lightsCount, eobj, obj, colorMod);
 	
-	Cedric_RenderObject(eobj, obj, io, pos, invisibility);
+	Cedric_RenderObject(eobj, obj, io, pos, invisibility, pixelLit);
 	
 	// Now we can render Linked Objects
+	g_casterRoot = io;
 	for(const EERIE_LINKED & link : eobj->linked) {
 		
 		if(!link.lgroup || !link.obj) {
@@ -1108,6 +1203,7 @@ static void Cedric_AnimateDrawEntityRender(EERIE_3DOBJ * eobj, const Vec3f & pos
 		DrawEERIEInter(link.obj, t, link.io, true, invisibility);
 		
 	}
+	g_casterRoot = nullptr;
 	
 }
 
@@ -1465,6 +1561,9 @@ void EERIEDrawAnimQuatUpdate(EERIE_3DOBJ * eobj,
 	
 	arx_assert(eobj->m_skeleton);
 	animateSkeleton(eobj, animlayer, angle, pos, scale, ftr, io, *eobj->m_skeleton, io ? &io->animBlend : nullptr);
+	if(io) {
+		physics::applyRagdollPose(*io, *eobj->m_skeleton); // ArxModern: corpses follow their ragdoll
+	}
 	
 	Cedric_TransformVerts(eobj);
 	if(io) {

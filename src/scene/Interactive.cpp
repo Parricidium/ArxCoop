@@ -2140,7 +2140,7 @@ void ARX_INTERACTIVE_ActivatePhysics(Entity & entity) {
 	entity.show = SHOW_FLAG_IN_SCENE;
 	entity.soundtime = 0;
 	entity.soundcount = 0;
-	EERIE_PHYSICS_BOX_Launch(entity.obj, entity.pos, entity.angle, fallvector);
+	EERIE_PHYSICS_BOX_Launch(entity.obj, entity.pos, entity.angle, fallvector, &entity);
 	
 }
 

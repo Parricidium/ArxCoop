@@ -95,6 +95,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "math/RandomVector.h"
 
 #include "physics/Collisions.h"
+#include "physics/Ragdoll.h"
 #include "platform/profiler/Profiler.h"
 
 #include "scene/GameSound.h"
@@ -681,6 +682,8 @@ void ARX_DAMAGES_ForceDeath(Entity & io_dead, Entity * io_killer) {
 	if(io_dead.ioflags & IO_NPC) {
 		io_dead._npcdata->lifePool.current = 0;
 	}
+	
+	physics::onEntityDied(io_dead, io_killer); // ArxModern: the corpse becomes a ragdoll
 	
 }
 

@@ -1043,6 +1043,12 @@ set(GRAPHICS_OPENGL_SOURCES
 	src/graphics/opengl/GLDebug.cpp
 	src/graphics/opengl/GLTexture.cpp
 	src/graphics/opengl/GLTextureStage.cpp
+	src/graphics/opengl/GLShaderPipeline.cpp
+	src/graphics/opengl/GLShadowMaps.cpp
+	src/graphics/opengl/GLPostProcess.cpp
+	src/graphics/opengl/GLWater.cpp
+	src/gui/menu/HdMenuPages.cpp
+	src/graphics/texture/NormalMap.cpp
 	src/graphics/opengl/GLVertexBuffer.cpp
 	src/graphics/opengl/OpenGLRenderer.cpp
 	src/graphics/opengl/OpenGLUtil.cpp
@@ -1148,6 +1154,9 @@ set(PHYSICS_SOURCES
 	src/physics/CollisionShapes.cpp
 	src/physics/Projectile.cpp
 	src/physics/Physics.cpp
+	src/physics/LooseObjects.cpp
+	src/physics/PhysicsWorld.cpp
+	src/physics/Ragdoll.cpp
 )
 
 # Basic platform abstraction sources
@@ -1386,6 +1395,12 @@ if(LIBRT_LIBRARY AND ARX_HAVE_CRASHHANDLER_POSIX)
 endif()
 
 list(APPEND ARX_LIBRARIES ${BASE_LIBRARIES})
+
+# ArxModern: optional Jolt physics, the target is provided by the parent project
+if(ARX_JOLT_TARGET)
+	list(APPEND ARX_LIBRARIES ${ARX_JOLT_TARGET})
+	add_definitions(-DARX_HAVE_JOLT=1)
+endif()
 
 if(NOT ARX_HAVE_CXX17_FROM_CHARS_FLOAT)
 	include_directories(SYSTEM thirdparty/fast_float/include)

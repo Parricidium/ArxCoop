@@ -239,9 +239,25 @@ public:
 	
 };
 
+//! ArxModern: a point light as consumed by the shader pipeline
+struct RendererLight {
+	Vec3f pos = Vec3f(0.f);
+	float fallstart = 0.f;
+	float fallend = 0.f;
+	Color3f color; //!< rgb premultiplied by intensity and the engine's global factors
+	int owner = -1; //!< index of the entity carrying this light (its geometry does not shadow it), -1 if none
+	constexpr RendererLight() arx_noexcept_default
+};
+
+//! ArxModern: draws the geometry that casts shadows for one light (called once per cube map face)
+typedef void (*ShadowCasterDrawFunc)(const RendererLight & light);
+
 class Renderer {
 	
 public:
+	
+	//! ArxModern: maximum number of lights the shader pipeline evaluates per fragment
+	static constexpr size_t MaxPixelLights = 128;
 	
 	class Listener {
 		
@@ -377,6 +393,46 @@ public:
 	[[nodiscard]] virtual std::unique_ptr<VertexBuffer<SMY_VERTEX3>> createVertexBuffer3(size_t capacity, BufferUsage usage) = 0;
 	
 	virtual void drawIndexed(Primitive primitive, const TexturedVertex * vertices, size_t nvertices, unsigned short * indices, size_t nindices) = 0;
+	
+	// ArxModern: re-read the shader sources from the game resources (no-op without a shader pipeline)
+	virtual void reloadShaders() { }
+	//! ArxModern: switch between the fixed-function and shader pipelines at runtime; returns the new state
+	virtual bool setShaderPipeline(bool enable, bool verbose = false) { ARX_UNUSED(enable), ARX_UNUSED(verbose); return false; }
+	[[nodiscard]] virtual bool useShaders() const { return false; }
+	//! ArxModern: true when draws can be lit per pixel (shader pipeline active)
+	[[nodiscard]] virtual bool hasPixelLighting() const { return false; }
+	/*!
+	 * ArxModern: the lights used by per-pixel lighting until the next call.
+	 * The first  dynamicCount lights are the dynamic ones (applied to the level geometry),
+	 * the rest are static lights (only applied to entities, the level has them precomputed).
+	 */
+	virtual void setPixelLights(const RendererLight * lights, size_t dynamicCount, size_t count) {
+		ARX_UNUSED(lights), ARX_UNUSED(dynamicCount), ARX_UNUSED(count);
+	}
+	//! ArxModern: add the dynamic lights per pixel to the vertex color of the following draws
+	virtual void setPixelLighting(bool enable) { ARX_UNUSED(enable); }
+	/*!
+	 * ArxModern: render the shadow maps of the first dynamic lights (see setPixelLights) by
+	 * calling  drawCasters for every cube map face. Must be called before the lit geometry
+	 * is drawn; a no-op when shadows are disabled or unsupported.
+	 */
+	virtual void renderShadowMaps(ShadowCasterDrawFunc drawCasters) { ARX_UNUSED(drawCasters); }
+	//! ArxModern: (re)apply the [video] HD settings from the configuration (pipeline, shadows, post-processing)
+	virtual void applyGraphicsConfig() { }
+	//! ArxModern: normal map that goes with the texture of stage 0 (null = flat)
+	virtual void setNormalMap(Texture * normalMap) { ARX_UNUSED(normalMap); }
+	//! ArxModern: start rendering the 3D scene (may go off-screen for post-processing)
+	virtual void beginScene() { }
+
+	/*!
+	 * ArxModern: draw the water polygons with the water shader (scene refraction, waves,
+	 * specular lights) instead of the engine's highlight overlay.
+	 * \return false if unavailable: the caller draws the overlay as before
+	 */
+	virtual bool beginWater(float time, const Vec3f & cameraPos) { ARX_UNUSED(time), ARX_UNUSED(cameraPos); return false; }
+	virtual void endWater() { }
+	//! ArxModern: the 3D scene is complete; apply post-processing and return to the window
+	virtual void endScene() { }
 	
 	virtual bool getSnapshot(Image & image) = 0;
 	virtual bool getSnapshot(Image & image, size_t width, size_t height) = 0;

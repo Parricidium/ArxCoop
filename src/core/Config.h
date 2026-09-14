@@ -147,6 +147,23 @@ public:
 		std::string bufferUpload;
 		std::string extensionOverride;
 		
+		// ArxModern: "auto", "fixed" (legacy fixed-function pipeline) or "shader"
+		std::string pipeline;
+		// ArxModern: "vertex" (legacy CPU lighting) or "pixel" (dynamic lights in the fragment shader)
+		std::string lighting;
+		// ArxModern: number of dynamic lights casting shadows (0 = off) and cube map face size
+		int shadows;
+		int shadowResolution;
+		// ArxModern: off-screen scene + full-screen passes (bloom intensity 0 = off, FXAA)
+		bool postprocess;
+		float bloom;
+		bool fxaa;
+		float ambientOcclusion;
+		float normalMaps; // relief strength of the (generated or provided) normal maps, 0 = off
+		bool physics; // Jolt physics: ragdoll corpses, loose objects
+		float water; // water shader strength, 0 = the original overlay
+		std::string postDebug; // "", "ao" or "bloom": show that buffer instead of the scene
+		
 	} video;
 	
 	// section 'interface'

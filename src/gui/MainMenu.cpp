@@ -47,6 +47,7 @@
 #include "gui/Text.h"
 #include "gui/TextManager.h"
 #include "gui/book/Book.h"
+#include "gui/menu/HdMenuPages.h"
 #include "gui/menu/MenuCursor.h"
 #include "gui/menu/MenuFader.h"
 #include "gui/menu/MenuPage.h"
@@ -494,6 +495,12 @@ public:
 		{
 			auto txt = std::make_unique<TextWidget>(hFontMenu, getLocalised("system_menus_options_input"));
 			txt->setTargetPage(Page_OptionsInput);
+			addCenter(std::move(txt));
+		}
+		
+		{
+			auto txt = std::make_unique<TextWidget>(hFontMenu, getLocalised("system_menus_options_hd", "Options HD"));
+			txt->setTargetPage(Page_OptionsHd);
 			addCenter(std::move(txt));
 		}
 		
@@ -1810,6 +1817,7 @@ void MainMenu::initWindowPages() {
 	
 	m_window->add(std::make_unique<QuitConfirmMenuPage>());
 	m_window->add(std::make_unique<LocalizationMenuPage>());
+	m_window->add(createHdOptionsMenuPage());
 	
 }
 
@@ -1875,6 +1883,14 @@ void MainMenu::init() {
 	{
 		auto txt = std::make_unique<TextWidget>(hFontMainMenu, getLocalised("system_menus_main_options"));
 		txt->setTargetPage(Page_Options);
+		txt->setPosition(pos);
+		m_widgets.add(std::move(txt));
+	}
+	pos.y += yOffset;
+	{
+		// ArxModern
+		auto txt = std::make_unique<TextWidget>(hFontMainMenu, getLocalised("system_menus_options_hd", "Options HD"));
+		txt->setTargetPage(Page_OptionsHd);
 		txt->setPosition(pos);
 		m_widgets.add(std::move(txt));
 	}

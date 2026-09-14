@@ -97,6 +97,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "math/Random.h"
 
 #include "physics/Physics.h"
+#include "physics/Ragdoll.h"
 
 #include "platform/Platform.h"
 
@@ -358,6 +359,13 @@ void ARX_CHANGELEVEL_Change(AreaId area, std::string_view target, float angle) {
 	
 }
 
+// ArxModern: name of the save block file holding the ragdolls of a level
+static std::string physicsSaveName(AreaId area) {
+	std::ostringstream name;
+	name << "physics" << std::setfill('0') << std::setw(3) << u32(area);
+	return name.str();
+}
+
 static bool ARX_CHANGELEVEL_PushLevel(AreaId oldArea, AreaId newArea) {
 	
 	LogDebug("ARX_CHANGELEVEL_PushLevel " << oldArea << " " << newArea);
@@ -375,6 +383,10 @@ static bool ARX_CHANGELEVEL_PushLevel(AreaId oldArea, AreaId newArea) {
 	ok = ARX_CHANGELEVEL_Push_Player(newArea) || ok;
 	
 	ok = ARX_CHANGELEVEL_Push_AllIO(oldArea) || ok;
+	
+	// ArxModern: the ragdolls of the level, in a file of their own (the format above is untouched)
+	std::string ragdolls = physics::serializeRagdolls();
+	g_currentSavedGame->save(physicsSaveName(oldArea), ragdolls.data(), ragdolls.size());
 	
 	return ok;
 }
@@ -2473,6 +2485,10 @@ static bool ARX_CHANGELEVEL_PopLevel(AreaId area, bool reloadflag, std::string_v
 	
 	// Restoring all Missing Objects required by other objects...
 	ARX_CHANGELEVEL_PopAllIO_FINISH(reloadflag, firstTime);
+	
+	if(!firstTime) {
+		physics::restoreRagdolls(g_currentSavedGame->load(physicsSaveName(area))); // ArxModern
+	}
 	
 	progressBarAdvance(15.f);
 	LoadLevelScreen();

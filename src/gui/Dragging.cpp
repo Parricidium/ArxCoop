@@ -323,9 +323,9 @@ void updateDraggedEntity() {
 				Vec3f start = player.pos + Vec3f(0.f, 80.f, 0.f) - toXZ(result.offset);
 				Vec3f direction = glm::normalize(unstackedEntity->pos - start + arx::randomVec(-1.f, 1.f) * delta);
 				unstackedEntity->pos = start;
-				EERIE_PHYSICS_BOX_Launch(unstackedEntity->obj, unstackedEntity->pos, unstackedEntity->angle, direction);
+				EERIE_PHYSICS_BOX_Launch(unstackedEntity->obj, unstackedEntity->pos, unstackedEntity->angle, direction, unstackedEntity);
 			} else if(glm::abs(result.offsetY) > threshold) {
-				EERIE_PHYSICS_BOX_Launch(unstackedEntity->obj, unstackedEntity->pos, unstackedEntity->angle, Vec3f(0.f, 0.1f, 0.f));
+				EERIE_PHYSICS_BOX_Launch(unstackedEntity->obj, unstackedEntity->pos, unstackedEntity->angle, Vec3f(0.f, 0.1f, 0.f), unstackedEntity);
 			}
 			entity->_itemdata->count--;
 		}
@@ -337,12 +337,12 @@ void updateDraggedEntity() {
 		Vec3f start = player.pos + Vec3f(0.f, 80.f, 0.f) - toXZ(result.offset);
 		Vec3f direction = glm::normalize(entity->pos - start);
 		entity->pos = start;
-		EERIE_PHYSICS_BOX_Launch(entity->obj, entity->pos, entity->angle, direction);
+		EERIE_PHYSICS_BOX_Launch(entity->obj, entity->pos, entity->angle, direction, entity);
 		ARX_SOUND_PlaySFX(g_snd.WHOOSH, &entity->pos);
 		
 	} else if(glm::abs(result.offsetY) > threshold) {
 		
-		EERIE_PHYSICS_BOX_Launch(entity->obj, entity->pos, entity->angle, Vec3f(0.f, 0.1f, 0.f));
+		EERIE_PHYSICS_BOX_Launch(entity->obj, entity->pos, entity->angle, Vec3f(0.f, 0.1f, 0.f), entity);
 		ARX_SOUND_PlaySFX(g_snd.WHOOSH, &entity->pos);
 		
 	} else {
