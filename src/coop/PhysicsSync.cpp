@@ -28,6 +28,7 @@
 #include "coop/Protocol.h"
 #include "coop/Puppets.h"
 #include "coop/Session.h"
+#include "core/FrameProfile.h"
 #include "game/Entity.h"
 #include "game/EntityManager.h"
 #include "io/log/Logger.h"
@@ -187,7 +188,16 @@ void physicsSyncUpdate() {
 	static PlatformInstant lastFrame;
 	PlatformInstant now = platform::getTime();
 	if(lastFrame != PlatformInstant() && toMsi(now - lastFrame) >= 120 && g_coop.state() == State::InGame) {
-		LogInfo << "[coop] frame hitch: " << toMsi(now - lastFrame) << " ms";
+		const FrameProfile & f = g_lastFrameProfile;
+		std::string sections;
+		for(size_t i = 0; i < g_lastFrameSections.count; i++) {
+			if(g_lastFrameSections.ms[i] >= 2) {
+				sections += std::string(" ") + g_lastFrameSections.name[i] + "=" + std::to_string(g_lastFrameSections.ms[i]);
+			}
+		}
+		LogInfo << "[coop] frame hitch: " << toMsi(now - lastFrame) << " ms (previous frame: network " << f.network
+		        << ", update " << f.update << ", render " << f.render << ", shadows " << f.shadows << ", post " << f.post
+		        << ", swap " << f.swap << " ms; slow sections:" << sections << ")";
 	}
 	lastFrame = now;
 	// Clients show what the host simulates, and simulate nothing themselves
