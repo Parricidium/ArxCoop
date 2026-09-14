@@ -539,6 +539,7 @@ void DanaeClearLevel() {
 	EERIE_PATHFINDER_Release();
 	
 	arx_assert(g_tiles);
+	physics::levelCleared(); // ArxModern: before the polygons go (the cloths point at them)
 	EERIE_PORTAL_Release();
 	AnchorData_ClearAll();
 	g_tiles->clear();
@@ -550,8 +551,6 @@ void DanaeClearLevel() {
 	culledStaticLightsReset();
 	
 	UnlinkAllLinkedObjects();
-	
-	physics::levelCleared();
 	
 	entities.clear();
 	
