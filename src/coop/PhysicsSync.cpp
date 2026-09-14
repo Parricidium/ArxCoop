@@ -39,7 +39,7 @@ namespace coop {
 
 namespace {
 
-constexpr PlatformDuration SendInterval = std::chrono::milliseconds(100); // 10 Hz while moving
+constexpr PlatformDuration SendInterval = std::chrono::milliseconds(66); // 15 Hz while moving
 constexpr PlatformDuration KeyframeInterval = std::chrono::seconds(5);   // everything, for late joiners
 
 struct SentState {
