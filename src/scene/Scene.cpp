@@ -105,6 +105,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "scene/Rooms.h"
 #include "scene/Tiles.h"
 
+#include "physics/Cloth.h"
+#include "physics/Debris.h"
 #include "physics/Projectile.h"
 
 #include "platform/profiler/Profiler.h"
@@ -1124,14 +1126,83 @@ static void RenderWater() {
 
 }
 
+static bool g_lavaShader = false; // ArxModern: the lava pass is using the lava shader
+static constexpr float LavaHazeHeight = 110.f; // units above the pool where the heat haze is drawn
+
+/*!
+ * ArxModern: how far inside its pool each corner of a lava polygon is (1 = surrounded by lava,
+ * 0 = at the edge), so that the heat haze fades out at the banks. Built once per level.
+ */
+static std::unordered_map<const EERIEPOLY *, std::array<float, 4>> g_lavaInterior;
+static bool g_lavaInteriorBuilt = false;
+
+void ResetFluidCaches() {
+	g_lavaInterior.clear();
+	g_lavaInteriorBuilt = false;
+}
+
+static void BuildLavaInterior() {
+
+	g_lavaInterior.clear();
+	g_lavaInteriorBuilt = true;
+	if(!g_tiles) {
+		return;
+	}
+
+	// Count the lava polygons sharing each corner (positions rounded to the unit)
+	auto key = [](const Vec3f & p) {
+		return std::to_string(long(std::lround(p.x))) + "," + std::to_string(long(std::lround(p.y)))
+		       + "," + std::to_string(long(std::lround(p.z)));
+	};
+	std::unordered_map<std::string, int> corners;
+	std::vector<const EERIEPOLY *> polys;
+	for(auto tile : g_tiles->tiles()) {
+		for(const EERIEPOLY & poly : tile.polygons()) {
+			if(!(poly.type & POLY_LAVA)) {
+				continue;
+			}
+			polys.push_back(&poly);
+			size_t count = (poly.type & POLY_QUAD) ? 4 : 3;
+			for(size_t i = 0; i < count; i++) {
+				corners[key(poly.v[i].p)]++;
+			}
+		}
+	}
+	for(const EERIEPOLY * poly : polys) {
+		std::array<float, 4> interior = { 0.f, 0.f, 0.f, 0.f };
+		size_t count = (poly->type & POLY_QUAD) ? 4 : 3;
+		for(size_t i = 0; i < count; i++) {
+			// A corner of a regular tiling belongs to 4 polygons when inside the pool
+			interior[i] = std::clamp(float(corners[key(poly->v[i].p)] - 1) / 3.f, 0.f, 1.f);
+		}
+		g_lavaInterior[poly] = interior;
+	}
+
+}
+
+static float LavaInterior(const EERIEPOLY * poly, size_t corner) {
+	auto it = g_lavaInterior.find(poly);
+	return (it != g_lavaInterior.end()) ? it->second[corner] : 0.f;
+}
+
 static void RenderLavaBatch() {
-	
+
 	if(!dynamicVertices.nbindices) {
 		return;
 	}
-	
+
 	RenderState baseState = render3D().depthWrite(false).cull().depthOffset(8);
-	
+
+	if(g_lavaShader) {
+		// The surface, then the heat haze cap above it (raised in the vertex shader)
+		UseRenderState state(baseState);
+		GRenderer->setLavaHaze(false, 0.f);
+		dynamicVertices.draw(Renderer::TriangleList);
+		GRenderer->setLavaHaze(true, LavaHazeHeight);
+		dynamicVertices.draw(Renderer::TriangleList);
+		return;
+	}
+
 	GRenderer->GetTextureStage(0)->setColorOp(TextureStage::OpModulate2X);
 	
 	GRenderer->GetTextureStage(1)->setColorOp(TextureStage::OpModulate4X);
@@ -1167,18 +1238,24 @@ static void RenderLava() {
 	
 	size_t iNbIndice = 0;
 	int iNb = vPolyLava.size();
-	
+
 	dynamicVertices.lock(iNb * 4);
-	
+
+	// ArxModern: the lava shader rewrites the pixels from the captured scene
+	g_lavaShader = GRenderer->beginLava(float(toMsi(g_gameTime.now())) * 0.001f, g_camera->m_pos);
+	if(g_lavaShader && !g_lavaInteriorBuilt) {
+		BuildLavaInterior();
+	}
+
 	GRenderer->SetTexture(0, enviro);
 	GRenderer->SetTexture(1, enviro);
 	GRenderer->SetTexture(2, enviro);
-	
+
 	unsigned short * indices = dynamicVertices.indices.data();
-	
+
 	while(iNb--) {
 		EERIEPOLY * ep = vPolyLava[iNb];
-		
+
 		unsigned short iNbVertex = (ep->type & POLY_QUAD) ? 4 : 3;
 		SMY_VERTEX3 * pVertex = dynamicVertices.append(iNbVertex);
 		
@@ -1194,7 +1271,8 @@ static void RenderLava() {
 		
 		for(int j = 0; j < iNbVertex; ++j) {
 			pVertex->p = ep->v[j].p;
-			pVertex->color = Color::gray(0.4f).toRGBA();
+			pVertex->color = g_lavaShader ? Color::gray(LavaInterior(ep, size_t(j))).toRGBA()
+			                              : Color::gray(0.4f).toRGBA();
 			for(int i = 0; i < FTVU_STEP_COUNT; ++i) {
 				Vec2f uv = CalculateLavaDisplacement(ep, g_gameTime.now(), j, i);
 				pVertex->uv[i] = uv;
@@ -1218,7 +1296,12 @@ static void RenderLava() {
 	dynamicVertices.unlock();
 	RenderLavaBatch();
 	dynamicVertices.done();
-	
+
+	if(g_lavaShader) {
+		GRenderer->endLava();
+		g_lavaShader = false;
+	}
+
 	vPolyLava.clear();
 }
 
@@ -1433,6 +1516,51 @@ static void BackgroundRenderOpaque(RoomHandle roomIndex) {
 	
 	GRenderer->GetTextureStage(0)->setColorOp(TextureStage::OpModulate);
 	
+}
+
+/*!
+ * ArxModern: screen-space reflections on the glossy level polygons (metal, marble, ice,
+ * glass, wet stone) of the visible rooms, drawn after the opaque scene and the entities.
+ */
+static constexpr float ReflectiveGloss = 0.38f; // materials at least this glossy reflect
+
+static void RenderReflections() {
+
+	ARX_PROFILE_FUNC();
+
+	if(!g_rooms || !g_pixelLighting) {
+		return;
+	}
+
+	bool begun = false;
+	for(RoomHandle roomIndex : g_rooms->visibleRooms) {
+		Room & room = g_rooms->rooms[roomIndex];
+		for(TextureContainer & material : util::dereference(room.ppTextureContainer)) {
+			if(material.m_material.gloss < ReflectiveGloss) {
+				continue;
+			}
+			const SMY_ARXMAT & roomMat = material.m_roomBatches[roomIndex];
+			if(!roomMat.indexCounts[BatchBucket_Opaque]) {
+				continue;
+			}
+			if(!begun) {
+				if(!GRenderer->beginReflections()) {
+					return;
+				}
+				begun = true;
+			}
+			UseRenderState state(render3D().depthWrite(false).depthOffset(1).blend(BlendSrcAlpha, BlendInvSrcAlpha));
+			GRenderer->SetTexture(0, &material);
+			GRenderer->setReflectionMaterial(material.m_pNormalMap, material.m_material);
+			room.pVertexBuffer->drawIndexed(Renderer::TriangleList, roomMat.vertexCount, roomMat.vertexOffset,
+			                                room.indexBuffer.data() + roomMat.indexOffsets[BatchBucket_Opaque],
+			                                roomMat.indexCounts[BatchBucket_Opaque]);
+		}
+	}
+	if(begun) {
+		GRenderer->endReflections();
+	}
+
 }
 
 static constexpr std::array<BatchBucket, 4> transRenderOrder = {
@@ -1841,6 +1969,7 @@ void ARX_SCENE_Render() {
 	bool entitiesBatched = false;
 	if(g_rooms && g_pixelLighting) {
 		GRenderer->GetTextureStage(0)->setMipMapLODBias(-0.6f);
+		physics::renderDebris(); // ArxModern: pieces of broken objects, batched like the entities
 		RenderInter();
 		entitiesBatched = true;
 		PlatformInstant shadowStart = platform::getTime();
@@ -1853,10 +1982,12 @@ void ARX_SCENE_Render() {
 		for(RoomHandle room : g_rooms->visibleRooms) {
 			BackgroundRenderOpaque(room);
 		}
+		physics::renderCloths(); // ArxModern: the banners and curtains, simulated
 		GRenderer->setPixelLighting(false);
 	}
 	
-	if(!player.m_improve) {
+	// ArxModern: the blurred shadow discs of the entities are redundant under the real shadows
+	if(!player.m_improve && !(g_pixelLighting && config.video.shadows > 0)) {
 		ARXDRAW_DrawInterShadows();
 	}
 	
@@ -1864,6 +1995,7 @@ void ARX_SCENE_Render() {
 	
 	if(!entitiesBatched) {
 		GRenderer->GetTextureStage(0)->setMipMapLODBias(-0.6f);
+		physics::renderDebris();
 		RenderInter();
 	}
 	
@@ -1884,11 +2016,13 @@ void ARX_SCENE_Render() {
 	}
 	
 	eyeball.render();
-	
+
 	PolyBoomDraw();
-	
+
+	RenderReflections(); // ArxModern: the opaque scene is complete, the glossy floors and walls reflect it
+
 	PopAllTriangleListTransparency();
-	
+
 	GRenderer->SetFogColor(Color());
 	
 	if(g_rooms) {
@@ -1899,11 +2033,14 @@ void ARX_SCENE_Render() {
 	
 	RenderWater();
 	RenderLava();
-	
+
 	GRenderer->SetFogColor(g_fogColor);
 	GRenderer->GetTextureStage(0)->setColorOp(TextureStage::OpModulate);
-	
+
+	// ArxModern: everything blended from here on (halos, particles, spells, fog) is a soft particle
+	GRenderer->beginSoftParticles();
+
 	Halo_Render();
-	
+
 }
 

@@ -70,9 +70,15 @@ void applyHdPreset(int preset) {
 			config.video.postprocess = false;
 			config.video.bloom = 0.f;
 			config.video.fxaa = false;
+			config.video.smaa = false;
 			config.video.ambientOcclusion = 0.f;
 			config.video.normalMaps = 0.f;
+			config.video.parallax = 0.f;
+			config.video.specular = 0.f;
+			config.video.reflections = 0.f;
 			config.video.water = 0.f;
+			config.video.lava = 0.f;
+			config.video.softParticles = false;
 			break;
 		}
 		case HdLow: {
@@ -82,9 +88,15 @@ void applyHdPreset(int preset) {
 			config.video.postprocess = true;
 			config.video.bloom = 0.35f;
 			config.video.fxaa = false;
+			config.video.smaa = false;
 			config.video.ambientOcclusion = 0.f;
 			config.video.normalMaps = 1.f;
+			config.video.parallax = 0.f;
+			config.video.specular = 1.f;
+			config.video.reflections = 0.f;
 			config.video.water = 1.f;
+			config.video.lava = 1.f;
+			config.video.softParticles = true;
 			break;
 		}
 		case HdMedium: {
@@ -95,9 +107,15 @@ void applyHdPreset(int preset) {
 			config.video.postprocess = true;
 			config.video.bloom = 0.35f;
 			config.video.fxaa = false;
+			config.video.smaa = false;
 			config.video.ambientOcclusion = 0.f;
 			config.video.normalMaps = 1.f;
+			config.video.parallax = 1.f;
+			config.video.specular = 1.f;
+			config.video.reflections = 1.f;
 			config.video.water = 1.f;
+			config.video.lava = 1.f;
+			config.video.softParticles = true;
 			break;
 		}
 		case HdHigh: {
@@ -108,9 +126,15 @@ void applyHdPreset(int preset) {
 			config.video.postprocess = true;
 			config.video.bloom = 0.35f;
 			config.video.fxaa = false;
+			config.video.smaa = true;
 			config.video.ambientOcclusion = 0.f;
 			config.video.normalMaps = 1.f;
+			config.video.parallax = 1.f;
+			config.video.specular = 1.f;
+			config.video.reflections = 1.f;
 			config.video.water = 1.f;
+			config.video.lava = 1.f;
+			config.video.softParticles = true;
 			break;
 		}
 		case HdUltra: {
@@ -121,9 +145,15 @@ void applyHdPreset(int preset) {
 			config.video.postprocess = true;
 			config.video.bloom = 0.4f;
 			config.video.fxaa = false;
+			config.video.smaa = true;
 			config.video.ambientOcclusion = 0.5f;
 			config.video.normalMaps = 1.f;
+			config.video.parallax = 1.f;
+			config.video.specular = 1.f;
+			config.video.reflections = 1.f;
 			config.video.water = 1.f;
+			config.video.lava = 1.f;
+			config.video.softParticles = true;
 			break;
 		}
 		default: return;
@@ -141,21 +171,24 @@ static int detectHdPreset() {
 	if(config.video.lighting != "pixel" || !config.video.postprocess || config.video.fxaa) {
 		return HdCustom;
 	}
-	if(std::abs(config.video.water - 1.f) > 0.01f) {
+	if(std::abs(config.video.water - 1.f) > 0.01f || std::abs(config.video.lava - 1.f) > 0.01f) {
 		return HdCustom;
 	}
-	if(std::abs(config.video.normalMaps - 1.f) > 0.01f) {
+	if(std::abs(config.video.normalMaps - 1.f) > 0.01f || std::abs(config.video.specular - 1.f) > 0.01f
+	   || !config.video.softParticles) {
 		return HdCustom;
 	}
 	bool bloom = std::abs(config.video.bloom - 0.35f) < 0.01f;
 	bool noAo = config.video.ambientOcclusion <= 0.f;
-	if(config.video.shadows == 0 && bloom && noAo) {
+	bool materials = std::abs(config.video.parallax - 1.f) < 0.01f && std::abs(config.video.reflections - 1.f) < 0.01f;
+	bool flat = config.video.parallax <= 0.f && config.video.reflections <= 0.f;
+	if(config.video.shadows == 0 && bloom && noAo && flat && !config.video.smaa) {
 		return HdLow;
 	}
-	if(config.video.shadows == 2 && config.video.shadowResolution == 512 && bloom && noAo) {
+	if(config.video.shadows == 2 && config.video.shadowResolution == 512 && bloom && noAo && materials && !config.video.smaa) {
 		return HdMedium;
 	}
-	if(config.video.shadows == 4 && config.video.shadowResolution == 1024 && bloom && noAo) {
+	if(config.video.shadows == 4 && config.video.shadowResolution == 1024 && bloom && noAo && materials && config.video.smaa) {
 		return HdHigh;
 	}
 	if(config.video.shadows == 4 && config.video.shadowResolution == 2048
@@ -177,11 +210,14 @@ public:
 		, m_shadows(nullptr)
 		, m_shadowResolution(nullptr)
 		, m_bloom(nullptr)
-		, m_fxaa(nullptr)
 		, m_physics(nullptr)
 		, m_ao(nullptr)
 		, m_normalMaps(nullptr)
 		, m_water(nullptr)
+		, m_parallax(nullptr)
+		, m_reflections(nullptr)
+		, m_softParticles(nullptr)
+		, m_antialiasing(nullptr)
 	{ }
 
 	void init() override {
@@ -269,12 +305,39 @@ public:
 			addCenter(std::move(slider));
 		}
 
-		// Water shader, slider 0..10 = strength 0..1 (0 = the original overlay)
+		// Parallax relief, slider 0..10 = depth 0..2
 		{
 			auto slider = std::make_unique<SliderWidget>(sliderSize(), hFontMenu,
-			                                             hdText("system_menus_options_hd_water", "Eau"));
+			                                             hdText("system_menus_options_hd_parallax", "Relief en profondeur"));
+			slider->valueChanged = [this](int value) {
+				config.video.parallax = float(value) * 0.2f;
+				customChanged();
+			};
+			m_parallax = slider.get();
+			addCenter(std::move(slider));
+		}
+
+		// Specular highlights and screen-space reflections, slider 0..10
+		{
+			auto slider = std::make_unique<SliderWidget>(sliderSize(), hFontMenu,
+			                                             hdText("system_menus_options_hd_reflections", "Reflets des matériaux"));
+			slider->valueChanged = [this](int value) {
+				config.video.specular = float(value) * 0.2f;
+				config.video.reflections = std::min(float(value) * 0.2f, 1.f);
+				config.video.postprocess = true;
+				customChanged();
+			};
+			m_reflections = slider.get();
+			addCenter(std::move(slider));
+		}
+
+		// Water and lava shaders, slider 0..10 = strength 0..1 (0 = the original overlays)
+		{
+			auto slider = std::make_unique<SliderWidget>(sliderSize(), hFontMenu,
+			                                             hdText("system_menus_options_hd_water", "Eau et lave"));
 			slider->valueChanged = [this](int value) {
 				config.video.water = float(value) * 0.1f;
+				config.video.lava = float(value) * 0.1f;
 				config.video.postprocess = true;
 				customChanged();
 			};
@@ -308,23 +371,40 @@ public:
 			addCenter(std::move(slider));
 		}
 
-		// FXAA
+		// Anti-aliasing filter
 		{
-			auto cb = std::make_unique<CheckboxWidget>(checkboxSize(), hFontMenu,
-			                                           hdText("system_menus_options_hd_fxaa", "Anticrénelage FXAA"));
-			cb->stateChanged = [this](bool checked) {
-				config.video.fxaa = checked;
+			auto cycle = std::make_unique<CycleTextWidget>(sliderSize(), hFontMenu,
+			                                               hdText("system_menus_options_hd_antialiasing", "Anticrénelage"));
+			cycle->addEntry(hdText("system_menus_options_hd_antialiasing_off", "Désactivé"));
+			cycle->addEntry("FXAA");
+			cycle->addEntry("SMAA");
+			cycle->valueChanged = [this](int pos, std::string_view /* string */) {
+				config.video.fxaa = (pos == 1);
+				config.video.smaa = (pos == 2);
 				config.video.postprocess = true;
 				customChanged();
 			};
-			m_fxaa = cb.get();
+			m_antialiasing = cycle.get();
+			addCenter(std::move(cycle));
+		}
+
+		// Soft particles
+		{
+			auto cb = std::make_unique<CheckboxWidget>(checkboxSize(), hFontMenu,
+			                                           hdText("system_menus_options_hd_soft_particles", "Particules douces"));
+			cb->stateChanged = [this](bool checked) {
+				config.video.softParticles = checked;
+				config.video.postprocess = true;
+				customChanged();
+			};
+			m_softParticles = cb.get();
 			addCenter(std::move(cb));
 		}
 
 		// Physics (independent of the quality presets)
 		if(physics::isAvailable()) {
 			auto cb = std::make_unique<CheckboxWidget>(checkboxSize(), hFontMenu,
-			                                           hdText("system_menus_options_hd_physics", "Physique : cadavres et objets"));
+			                                           hdText("system_menus_options_hd_physics", "Physique : cadavres, objets, tissus"));
 			cb->stateChanged = [](bool checked) {
 				config.video.physics = checked;
 				applyHdSettings();
@@ -359,11 +439,14 @@ private:
 	CycleTextWidget * m_shadows;
 	CycleTextWidget * m_shadowResolution;
 	SliderWidget * m_bloom;
-	CheckboxWidget * m_fxaa;
 	CheckboxWidget * m_physics;
 	SliderWidget * m_ao;
 	SliderWidget * m_normalMaps;
 	SliderWidget * m_water;
+	SliderWidget * m_parallax;
+	SliderWidget * m_reflections;
+	CheckboxWidget * m_softParticles;
+	CycleTextWidget * m_antialiasing;
 
 	//! An individual setting changed: the modern pipeline is needed, apply and show "custom"
 	void customChanged() {
@@ -397,8 +480,17 @@ private:
 		if(m_ao) {
 			m_ao->setValue(config.video.postprocess ? int(std::lround(config.video.ambientOcclusion * 10.f)) : 0);
 		}
-		if(m_fxaa) {
-			m_fxaa->setChecked(config.video.postprocess && config.video.fxaa);
+		if(m_antialiasing) {
+			m_antialiasing->setValue(!config.video.postprocess ? 0 : config.video.smaa ? 2 : config.video.fxaa ? 1 : 0);
+		}
+		if(m_softParticles) {
+			m_softParticles->setChecked(config.video.postprocess && config.video.softParticles);
+		}
+		if(m_parallax) {
+			m_parallax->setValue(config.video.pipeline != "fixed" ? int(std::lround(config.video.parallax * 5.f)) : 0);
+		}
+		if(m_reflections) {
+			m_reflections->setValue(config.video.pipeline != "fixed" ? int(std::lround(config.video.specular * 5.f)) : 0);
 		}
 		if(m_physics) {
 			m_physics->setChecked(config.video.physics);

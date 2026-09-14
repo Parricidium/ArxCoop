@@ -782,6 +782,54 @@ void damageCharacter(Entity & entity, float dmg, Entity & source, Spell * spell,
 	
 }
 
+/*!
+ * ArxModern: the momentum a killing blow gives to the corpse (see physics::DeathBlow).
+ * Spells push away from their centre, arrows and weapons away from whoever used them.
+ */
+static physics::DeathBlow describeDeathBlow(const Entity & npc, float dmg, const Entity * source,
+                                            const Spell * spell, DamageType type, const Vec3f * pos) {
+	physics::DeathBlow blow;
+	Vec3f centre = npc.pos - Vec3f(0.f, 90.f, 0.f);
+	bool spellLike = spell || (type & (DAMAGE_TYPE_FIRE | DAMAGE_TYPE_MAGICAL | DAMAGE_TYPE_LIGHTNING | DAMAGE_TYPE_COLD));
+	Vec3f from;
+	if(spellLike && pos) {
+		from = *pos;
+	} else if(source && source != &npc) {
+		from = source->pos - Vec3f(0.f, 90.f, 0.f);
+	} else if(pos) {
+		from = *pos;
+	} else {
+		return blow;
+	}
+	Vec3f direction = centre - from;
+	float distance = glm::length(direction);
+	if(distance < 1.f) {
+		direction = Vec3f(0.f, -1.f, 0.f);
+	} else {
+		direction /= distance;
+	}
+	// Mostly sideways, never straight down: the body should topple, not be nailed to the floor
+	direction.y = std::min(direction.y, 0.f) * 0.5f - 0.15f;
+	direction = glm::normalize(direction);
+	float maxLife = (npc.ioflags & IO_NPC) ? std::max(npc._npcdata->lifePool.max, 1.f) : 100.f;
+	float overkill = std::clamp(dmg / maxLife, 0.f, 1.5f);
+	float speed;
+	if(type & DAMAGE_TYPE_FIRE) {
+		speed = 3.5f + 3.f * overkill; // explosions
+	} else if(spellLike) {
+		speed = 2.5f + 2.f * overkill;
+	} else if(type & DAMAGE_TYPE_METAL) {
+		speed = 2.f + 2.f * overkill; // arrows and blades
+	} else {
+		speed = 1.5f + 2.5f * overkill;
+	}
+	blow.direction = direction;
+	blow.at = pos ? *pos : centre;
+	blow.speed = speed;
+	blow.valid = true;
+	return blow;
+}
+
 float damageNpc(Entity & npc, float dmg, Entity * source, Spell * spell, DamageType type, const Vec3f * pos) {
 	
 	arx_assert(npc.ioflags & IO_NPC);
@@ -893,6 +941,7 @@ float damageNpc(Entity & npc, float dmg, Entity * source, Spell * spell, DamageT
 			ARX_NPC_TryToCutSomething(&npc, pos);
 		}
 		long xp = npc._npcdata->xpvalue;
+		physics::setDeathBlow(describeDeathBlow(npc, dmg, source, spell, type, pos)); // ArxModern
 		ARX_DAMAGES_ForceDeath(npc, source);
 		if(source == entities.player()
 		   || (source && (source->ioflags & IO_NPC) && source->_npcdata->summoner == EntityHandle_Player)) {

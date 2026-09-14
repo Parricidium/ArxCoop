@@ -31,6 +31,8 @@
 #include "core/GameTime.h"
 #include "game/GameTypes.h"
 #include "io/log/Logger.h"
+#include "physics/Cloth.h"
+#include "physics/Debris.h"
 #include "physics/LooseObjects.h"
 #include "physics/Ragdoll.h"
 #include "core/TimeTypes.h"
@@ -149,8 +151,8 @@ JPH::BodyID createLevelBody(JPH::PhysicsSystem & system) {
 	if(g_tiles) {
 		for(auto tile : g_tiles->tiles()) {
 			for(const EERIEPOLY & poly : tile.polygons()) {
-				// Water is not walked on; no-collision polygons are decoration
-				if(poly.type & (POLY_NOCOL | POLY_WATER)) {
+				// Water is not walked on; no-collision polygons are decoration; cloths are soft bodies
+				if((poly.type & (POLY_NOCOL | POLY_WATER)) || isClothPolygon(poly)) {
 					continue;
 				}
 				JPH::Float3 v[4];
@@ -297,6 +299,7 @@ void levelLoaded() {
 
 	g_world->levelBody = createLevelBody(g_world->system);
 	createObstacles();
+	createCloths();
 	g_world->system.OptimizeBroadPhase();
 
 	LogInfo << "Jolt: world built in " << toMsi(platform::getTime() - start) << " ms";
@@ -310,6 +313,8 @@ void levelCleared() {
 
 	clearRagdolls();
 	clearLooseObjects();
+	clearDebris();
+	clearCloths();
 	g_world.reset();
 }
 
@@ -344,6 +349,8 @@ void update() {
 
 	updateRagdolls();
 	updateLooseObjects();
+	updateDebris();
+	updateCloths();
 
 	// Hitch diagnostics: a physics frame this long is worth knowing about
 	PlatformDuration elapsed = platform::getTime() - start;
@@ -357,11 +364,13 @@ void update() {
 void onEntityDestroyed(Entity & io) {
 	removeRagdoll(io);
 	removeLooseObject(io);
+	detachDebris(io);
 }
 
 void dumpState() {
 	LogInfo << "physics: " << (g_world ? g_world->system.GetNumActiveBodies(JPH::EBodyType::RigidBody) : 0)
-	        << " active bodies, " << ragdollCount() << " ragdolls, " << looseObjectCount() << " loose objects";
+	        << " active bodies, " << ragdollCount() << " ragdolls, " << looseObjectCount() << " loose objects, "
+	        << debrisCount() << " broken objects, " << clothCount() << " cloths";
 	dumpRagdolls();
 	dumpLooseObjects();
 }

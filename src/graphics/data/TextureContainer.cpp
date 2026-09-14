@@ -60,6 +60,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "io/resource/ResourcePath.h"
 #include "io/resource/PakReader.h"
 #include "io/log/Logger.h"
+#include "util/String.h"
 #include "platform/Time.h"
 #include "io/fs/FilePath.h"
 #include "io/fs/Filesystem.h"
@@ -173,17 +174,68 @@ bool TextureContainer::LoadFile(const res::path & strPathname) {
 	return true;
 }
 
+/*!
+ * ArxModern: what a texture is made of, from its name. The level textures carry a material
+ * tag ([stone], [metal], [fabric], ...), the object textures only hint at it in their names.
+ */
+static MaterialParams classifyMaterial(const res::path & texturePath) {
+
+	std::string name = util::toLowercase(std::string(texturePath.basename()));
+	auto has = [&name](const char * word) { return name.find(word) != std::string::npos; };
+
+	MaterialParams m;
+	if(has("[metal]") || has("[iron]") || has("(metal)") || has("[weapon]") || has("mithril") || has("gold")
+	   || has("metal") || has("iron") || has("steel") || has("sword") || has("dagger") || has("axe")
+	   || has("blade") || has("armor") || has("helmet") || has("shield") || has("chain") || has("plate")
+	   || has("coin") || has("ring") || has("key") || has("lingot") || has("cage") || has("grid")) {
+		m.gloss = 0.85f;
+		m.metal = 1.f;
+		m.parallax = 0.5f;
+	} else if(has("[glass]") || has("glass") || has("window") || has("crystal") || has("gem") || has("diamond")) {
+		m.gloss = 0.8f;
+		m.parallax = 0.f;
+	} else if(has("[ice]") || has("_ice") || has("ice_")) {
+		m.gloss = 0.75f;
+		m.parallax = 0.5f;
+	} else if(has("[marble]") || has("marble")) {
+		m.gloss = 0.65f;
+		m.parallax = 0.4f;
+	} else if(has("wet")) {
+		m.gloss = 0.6f;
+	} else if(has("paving") || has("pav")) {
+		m.gloss = 0.4f;
+	} else if(has("[fabric]") || has("fabric") || has("cloth") || has("carpet") || has("curtain")
+	          || has("[soil]") || has("[dust]") || has("soil") || has("dust") || has("earth") || has("sand")) {
+		m.gloss = 0.03f;
+	} else if(has("leather")) {
+		m.gloss = 0.3f;
+		m.parallax = 0.5f;
+	} else if(has("[wood]") || has("wood") || has("plank")) {
+		m.gloss = 0.25f;
+	} else if(has("npc_") || has("hero") || has("skin") || has("flesh") || has("face") || has("head") || has("body")) {
+		m.gloss = 0.18f;
+		m.parallax = 0.3f;
+	} else if(has("[stone]") || has("stone") || has("rock") || has("wall") || has("ground")) {
+		m.gloss = 0.15f;
+	} else {
+		m.gloss = 0.2f;
+		m.parallax = 0.6f;
+	}
+	return m;
+}
+
 // ArxModern: <name>_n.<ext> if a mod provides one, otherwise generated from the texture itself.
 // Interface textures (NoMipmap) never need one.
 void TextureContainer::loadNormalMap(const res::path & texturePath) {
-	
+
 	delete m_pNormalMap, m_pNormalMap = nullptr;
-	
+	m_material = classifyMaterial(texturePath);
+
 	if((m_dwFlags & NoMipmap) || !GRenderer->hasPixelLighting()) {
 		return;
 	}
-	
-	res::path normalPath = texturePath.parent() / (std::string(texturePath.basename()) + "_n");
+
+res::path normalPath = texturePath.parent() / (std::string(texturePath.basename()) + "_n");
 	static const char * const extensions[] = { ".png", ".tga", ".jpg", ".bmp" };
 	for(const char * ext : extensions) {
 		res::path candidate = normalPath;
@@ -191,6 +243,7 @@ void TextureContainer::loadNormalMap(const res::path & texturePath) {
 		if(g_resources->getFile(candidate)) {
 			m_pNormalMap = GRenderer->createTexture();
 			if(m_pNormalMap && m_pNormalMap->create(candidate, Texture::HasMipmaps)) {
+				m_material.generated = false; // a plain normal map: no height, no per-texel gloss
 				return;
 			}
 			LogWarning << "Could not load normal map " << candidate;
@@ -212,7 +265,7 @@ void TextureContainer::loadNormalMap(const res::path & texturePath) {
 		return;
 	}
 	Image normal;
-	if(!generateNormalMap(diffuse, normal)) {
+	if(!generateNormalMap(diffuse, normal, 1.f, m_material.gloss)) {
 		return;
 	}
 	m_pNormalMap = GRenderer->createTexture();

@@ -1060,6 +1060,9 @@ set(GRAPHICS_OPENGL_SOURCES
 	src/graphics/opengl/GLShadowMaps.cpp
 	src/graphics/opengl/GLPostProcess.cpp
 	src/graphics/opengl/GLWater.cpp
+	src/graphics/opengl/GLLava.cpp
+	src/graphics/opengl/GLReflect.cpp
+src/graphics/opengl/GLLava.cpp
 	src/gui/menu/HdMenuPages.cpp
 	src/graphics/texture/NormalMap.cpp
 	src/graphics/opengl/GLVertexBuffer.cpp
@@ -1171,6 +1174,8 @@ set(PHYSICS_SOURCES
 	src/physics/LooseObjects.cpp
 	src/physics/PhysicsWorld.cpp
 	src/physics/Ragdoll.cpp
+	src/physics/Debris.cpp
+	src/physics/Cloth.cpp
 )
 
 # Basic platform abstraction sources

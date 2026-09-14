@@ -63,6 +63,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "graphics/BaseGraphicsTypes.h"
 #include "graphics/GraphicsTypes.h"
+#include "graphics/texture/Material.h"
 #include "io/resource/ResourcePath.h"
 #include "math/Vector.h"
 #include "platform/Platform.h"
@@ -174,8 +175,9 @@ public:
 	u32 userflags;
 	
 	Texture * m_pTexture; // Diffuse
-	// ArxModern: tangent-space normal map (from <name>_n.* or generated from the texture), may be null
+	// ArxModern: material map (from <name>_n.* or generated from the texture), may be null
 	Texture * m_pNormalMap = nullptr;
+	MaterialParams m_material; // ArxModern: from the material tag of the name
 	
 	/*!
 	 * End of the image in texture coordinates (image size divided by stored size).
