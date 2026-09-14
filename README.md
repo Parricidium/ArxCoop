@@ -25,6 +25,7 @@ Tested on Arx Fatalis 1.21 (GOG) with Arx Libertatis 1.2 installed. The mod ship
 ## Contents
 
 - [Download and install](#download-and-install)
+- [HD edition](#hd-edition)
 - [Playing](#playing)
 - [Features](#features)
 - [Synchronisation status](#synchronisation-status)
@@ -41,7 +42,10 @@ Tested on Arx Fatalis 1.21 (GOG) with Arx Libertatis 1.2 installed. The mod ship
 
 ## Download and install
 
-1. Download the zip of the [latest release](https://github.com/Parricidium/ArxCoop/releases/latest).
+1. Download a zip from the [releases](https://github.com/Parricidium/ArxCoop/releases): **ArxCoop**
+   (the classic mod, original rendering) or **ArxCoop HD** (the same mod plus the modern rendering and
+   the physics, see [HD edition](#hd-edition)). The two are separate builds: everybody in a party must
+   use the same one.
 2. Unzip it **into your Arx Fatalis folder** (the one that contains `data.pak`).
    Nothing is overwritten: `arx.exe` is an extra executable, the original game stays intact.
 3. On first launch Windows may ask for network permission: allow it (private network).
@@ -53,6 +57,32 @@ The mod keeps **everything** (saves, settings, faces) in `userdata\` next to `ar
 protocol number is checked when joining).
 
 **Language**: the mod follows the game language (*Options > Language*): English or French.
+
+## HD edition
+
+`ArxCoop-HD-*.zip` is the co-op mod with a modernised engine (the *ArxModern* work merged in). Everything
+is optional and switched from the new **Options HD** menu (quality presets *Off / Low / Medium / High /
+Ultra* and individual settings, applied live): the *Off* preset gives exactly the original look.
+
+- **Per-pixel dynamic lighting** of the level and the characters, with generated normal maps (relief
+  on stone, wood, cloth; a mod can ship its own `<texture>_n.png`).
+- **Dynamic shadows** of the torches, spells and other lights, cast by the level and the characters.
+- **Post-processing**: bloom, FXAA, experimental ambient occlusion.
+- **Water**: refraction through animated waves, specular reflections of the lights, soft banks.
+- **Physics** ([Jolt](https://github.com/jrouwe/JoltPhysics)): killed NPCs fall as ragdolls (down the
+  stairs, against the walls, and they stay where they lie, saves included); dropped and thrown objects
+  tumble, roll and come to rest; keys and coins lie flat. The host simulates, the clients see the same
+  thing. Player characters are not affected.
+- **Modding**: the shaders are plain files in `Graph\shaders\` (`legacy`, `shadow`, `water`,
+  `post_*`), reloaded in game with **F7**.
+
+Requirements: OpenGL 3.0 (2008 or later hardware); measured cost of the *High* preset: about one
+extra millisecond per frame in 720p. `[video]` keys in `userdata\cfg.ini`: `pipeline`, `lighting`,
+`shadows`, `shadow_resolution`, `postprocess`, `bloom`, `fxaa`, `ambient_occlusion`, `normal_maps`,
+`water`, `physics`.
+
+Not the HD edition: the classic zip has none of this and cannot play with the HD one (different network
+protocol).
 
 ## Playing
 
@@ -226,11 +256,18 @@ session, replication, puppets, faces, admin, third person) plus hooks in the eng
 CMake + Visual Studio 2022, `cmake --build build --config Release`. The non-binary package files
 (LISEZMOI, translation, face templates, menu skin) are in `dist/`.
 
+Branches: `coop` is the classic mod, `coop-hd` the HD edition (`coop` + the `modern` branch, which holds
+the rendering and physics work in `src/graphics/`, `src/physics/` and `data/graph/shaders/`). The HD
+build needs [JoltPhysics](https://github.com/jrouwe/JoltPhysics) cloned into `libs/jolt` next to the
+engine (`BUILD_PHYSICS` CMake option, SSE4.2 only so that the exe runs everywhere); without it the
+physics compiles out and the rest of the HD rendering still builds.
+
 ## Credits and license
 
 - [Arx Libertatis](https://arx-libertatis.org/) and its contributors, based on the Arx Fatalis source
   code released by Arkane Studios.
-- Co-op part: JD, with the assistance of Claude (Anthropic).
+- Co-op part, HD rendering and physics integration: JD, with the assistance of Claude (Anthropic).
+- HD edition: [JoltPhysics](https://github.com/jrouwe/JoltPhysics) by Jorrit Rouwe (MIT license).
 - License **GPLv3+** with the Arx Libertatis additional terms: see [COPYING](COPYING) and [LICENSE](LICENSE).
   Arx Fatalis, its data and trademarks remain the property of their owners.
 
@@ -249,7 +286,10 @@ Testé sur Arx Fatalis 1.21 (GOG) avec Arx Libertatis 1.2 installé. Le mod appo
 
 ## Téléchargement et installation
 
-1. Téléchargez le zip de la [dernière version](https://github.com/Parricidium/ArxCoop/releases/latest).
+1. Téléchargez un zip dans les [versions](https://github.com/Parricidium/ArxCoop/releases) : **ArxCoop**
+   (le mod classique, rendu d'origine) ou **ArxCoop HD** (le même mod plus le rendu moderne et la
+   physique, voir [Édition HD](#édition-hd)). Ce sont deux exécutables différents : dans une partie,
+   tout le monde doit avoir le même.
 2. Dézippez-le **dans le dossier d'Arx Fatalis** (celui qui contient `data.pak`).
    Rien n'est écrasé : `arx.exe` est un exécutable en plus, le jeu d'origine reste intact.
 3. Au premier lancement, Windows demandera peut-être l'autorisation réseau : acceptez (réseau privé).
@@ -261,6 +301,32 @@ jamais dans « Parties enregistrées ». Vos sauvegardes du jeu d'origine ne ris
 (le numéro de protocole est vérifié à la connexion).
 
 **Langue** : le mod suit la langue du jeu (Options > Language) : français ou anglais.
+
+## Édition HD
+
+`ArxCoop-HD-*.zip` est le mod coop avec un moteur modernisé (le travail *ArxModern* fusionné). Tout est
+optionnel et se règle dans le nouveau menu **Options HD** (préréglages *Off / Faible / Moyenne / Élevée /
+Ultra* et réglages individuels, appliqués à chaud) : le préréglage *Off* redonne exactement le rendu
+d'origine.
+
+- **Éclairage dynamique par pixel** du niveau et des personnages, avec normal maps générées (relief de la
+  pierre, du bois, des tissus ; un mod peut fournir ses propres `<texture>_n.png`).
+- **Ombres dynamiques** des torches, sorts et autres lumières, portées par le décor et les personnages.
+- **Post-traitement** : bloom, FXAA, occlusion ambiante expérimentale.
+- **Eau** : réfraction à travers des vagues animées, reflets spéculaires des lumières, berges douces.
+- **Physique** ([Jolt](https://github.com/jrouwe/JoltPhysics)) : les PNJ tués tombent en ragdoll (dans
+  l'escalier, contre le mur, et ils restent là où ils gisent, sauvegardes comprises) ; les objets lâchés
+  ou jetés roulent, rebondissent et se posent ; clés et pièces restent à plat. L'hôte simule, les
+  clients voient la même chose. Les personnages des joueurs ne sont pas concernés.
+- **Modding** : les shaders sont des fichiers dans `Graph\shaders\` (`legacy`, `shadow`, `water`,
+  `post_*`), rechargés en jeu avec **F7**.
+
+Prérequis : OpenGL 3.0 (matériel de 2008 ou plus récent) ; coût mesuré du préréglage *Élevée* : environ
+une milliseconde de plus par image en 720p. Clés `[video]` de `userdata\cfg.ini` : `pipeline`,
+`lighting`, `shadows`, `shadow_resolution`, `postprocess`, `bloom`, `fxaa`, `ambient_occlusion`,
+`normal_maps`, `water`, `physics`.
+
+Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition HD (protocole réseau différent).
 
 ## Jouer
 
@@ -433,10 +499,17 @@ C'est un fork d'Arx Libertatis : mêmes dépendances et même procédure (voir
 dans le moteur. Sous Windows : CMake + Visual Studio 2022, `cmake --build build --config Release`.
 Le contenu non binaire du paquet (LISEZMOI, traduction, modèles de visages, habillage) est dans `dist/`.
 
+Branches : `coop` est le mod classique, `coop-hd` l'édition HD (`coop` + la branche `modern`, qui porte le
+rendu et la physique dans `src/graphics/`, `src/physics/` et `data/graph/shaders/`). Le build HD demande
+[JoltPhysics](https://github.com/jrouwe/JoltPhysics) cloné dans `libs/jolt` à côté du moteur (option
+CMake `BUILD_PHYSICS`, SSE4.2 seulement pour que l'exe tourne partout) ; sans lui la physique n'est pas
+compilée et le reste du rendu HD se construit quand même.
+
 ## Crédits et licence
 
 - [Arx Libertatis](https://arx-libertatis.org/) et ses contributeurs, sur la base du code source
   d'Arx Fatalis publié par Arkane Studios.
-- Partie coopérative : JD, avec l'assistance de Claude (Anthropic).
+- Partie coopérative, rendu HD et intégration de la physique : JD, avec l'assistance de Claude (Anthropic).
+- Édition HD : [JoltPhysics](https://github.com/jrouwe/JoltPhysics) de Jorrit Rouwe (licence MIT).
 - Licence **GPLv3+** avec les termes additionnels d'Arx Libertatis : voir [COPYING](COPYING) et [LICENSE](LICENSE).
   Arx Fatalis, ses données et ses marques restent la propriété de leurs ayants droit.
