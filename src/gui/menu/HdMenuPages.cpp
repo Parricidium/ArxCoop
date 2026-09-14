@@ -25,6 +25,7 @@
 #include "core/Config.h"
 #include "core/Localisation.h"
 #include "graphics/Renderer.h"
+#include "graphics/font/Font.h"
 #include "physics/PhysicsWorld.h"
 #include "gui/MenuWidgets.h"
 #include "gui/Text.h"
