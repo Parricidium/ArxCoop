@@ -1044,6 +1044,7 @@ set(COOP_SOURCES
 	src/coop/Admin.cpp
 	src/coop/Connection.cpp
 	src/coop/Faces.cpp
+	src/coop/PhysicsSync.cpp
 	src/coop/Puppets.cpp
 	src/coop/Qol.cpp
 	src/coop/Replication.cpp

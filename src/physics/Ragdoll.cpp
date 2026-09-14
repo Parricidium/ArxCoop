@@ -78,6 +78,12 @@ bool isMirrorMode() {
 	return g_mirrorMode;
 }
 
+bool ragdollIsSimulated(const Entity & io); // below, per build
+
+bool hasRagdoll(const Entity & io) {
+	return g_mirrored.count(const_cast<Entity *>(&io)) != 0 || ragdollIsSimulated(io);
+}
+
 void mirrorRagdoll(Entity & io, const Vec3f & pos, bool active, const std::vector<BonePose> & bones) {
 	if(!io.obj || !io.obj->m_skeleton || io.obj->m_skeleton->bones.size() != bones.size()) {
 		return;
@@ -592,6 +598,10 @@ void forEachRagdoll(const std::function<void(Entity & io, bool active)> & visit)
 	}
 }
 
+bool ragdollIsSimulated(const Entity & io) {
+	return g_ragdolls.count(const_cast<Entity *>(&io)) != 0;
+}
+
 size_t ragdollCount() {
 	return g_ragdolls.size();
 }
@@ -620,6 +630,7 @@ bool getRagdollPose(const Entity & io, Vec3f & pos, bool & active, std::vector<B
 	return false;
 }
 void forEachRagdoll(const std::function<void(Entity & io, bool active)> & visit) { ARX_UNUSED(visit); }
+bool ragdollIsSimulated(const Entity & io) { ARX_UNUSED(io); return false; }
 size_t ragdollCount() { return 0; }
 void dumpRagdolls() { }
 std::string serializeRagdolls() { return std::string(); }

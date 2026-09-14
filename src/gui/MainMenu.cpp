@@ -1864,8 +1864,9 @@ void MainMenu::init() {
 		m_background = TextureContainer::LoadUI("graph/interface/menus/menu_main_background", TextureContainer::NoColorKey);
 	}
 	
-	Vec2f pos = RATIO_2(Vec2f(370, 100));
-	float yOffset = RATIO_Y(50);
+	// Eight entries (Coopération and Options HD added) instead of the original six: tighter
+	Vec2f pos = RATIO_2(Vec2f(370, 84));
+	float yOffset = RATIO_Y(44);
 	
 	{
 		auto txt = std::make_unique<TextWidget>(hFontMainMenu, getLocalised("system_menus_main_resumegame"));

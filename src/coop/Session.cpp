@@ -620,6 +620,13 @@ void Session::Impl::handleServerMessage(Session & session, MessageType type, Rea
 			break;
 		}
 
+		case MessageType::PhysicsState: {
+			if(session.onPhysicsState) {
+				session.onPhysicsState(payload);
+			}
+			break;
+		}
+
 		case MessageType::Revive: {
 			if(session.onRevive) {
 				session.onRevive(0, payload);

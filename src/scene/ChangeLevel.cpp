@@ -129,6 +129,7 @@ extern bool EXTERNALVIEW;
 extern bool LOAD_N_ERASE;
 
 static bool ARX_CHANGELEVEL_Push_Index(AreaId area);
+static std::string physicsSaveName(AreaId area); // ArxModern
 static bool ARX_CHANGELEVEL_PushLevel(AreaId oldArea, AreaId newArea);
 static bool ARX_CHANGELEVEL_PopLevel(AreaId area, bool reloadflag = false,
                                      std::string_view target = std::string_view(), float angle = 0.f);
@@ -391,6 +392,7 @@ bool ARX_CHANGELEVEL_ExportLevel(std::vector<std::pair<std::string, std::string>
 	}
 	files.emplace_back(levelName.str(), index);
 	files.emplace_back("globals", g_currentSavedGame->load("globals"));
+	files.emplace_back(physicsSaveName(g_currentArea), physics::serializeRagdolls()); // ArxModern: corpses as they lie
 	
 	const ARX_CHANGELEVEL_INDEX * asi = reinterpret_cast<const ARX_CHANGELEVEL_INDEX *>(index.data());
 	const ARX_CHANGELEVEL_IO_INDEX * idx_io = reinterpret_cast<const ARX_CHANGELEVEL_IO_INDEX *>(index.data() + sizeof(ARX_CHANGELEVEL_INDEX));

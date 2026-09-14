@@ -184,6 +184,7 @@ ef update().
 
 	//! Client: called with the host's NPC states.
 	std::function<void(Reader & payload)> onNpcState;
+	std::function<void(Reader & payload)> onPhysicsState;
 
 	//! Revive requests: on the host from a client (u8 target), on a client from the host (you are revived).
 	std::function<void(PlayerId from, Reader & payload)> onRevive;
