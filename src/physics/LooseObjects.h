@@ -21,6 +21,7 @@
 #define ARX_PHYSICS_LOOSEOBJECTS_H
 
 #include <cstddef>
+#include <functional>
 
 #include "math/Angle.h"
 #include "math/Types.h"
@@ -75,6 +76,17 @@ size_t looseObjectCount();
 
 //! Log the loose objects (tests)
 void dumpLooseObjects();
+
+/*
+ * Mirroring (see Ragdoll.h): in mirror mode no object is simulated here, its position and
+ * orientation come from mirrorLooseObject() and the engine's box is kept out of the way.
+ */
+
+//! State of a loose object received from the simulating machine; active = still moving
+void mirrorLooseObject(Entity & io, const Vec3f & pos, const Anglef & angle, bool active);
+
+//! Visit the objects simulated here (active = still moving)
+void forEachLooseObject(const std::function<void(Entity & io, bool active)> & visit);
 
 } // namespace physics
 

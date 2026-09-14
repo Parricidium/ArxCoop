@@ -21,8 +21,14 @@
 #define ARX_PHYSICS_RAGDOLL_H
 
 #include <cstddef>
+#include <functional>
 #include <string>
 #include <string_view>
+#include <vector>
+
+#include <glm/gtc/quaternion.hpp>
+
+#include "math/Types.h"
 
 class Entity;
 struct Skeleton;
@@ -68,6 +74,29 @@ void dumpRagdolls();
 
 //! The ragdolls of the level as a save block file (empty if there are none)
 std::string serializeRagdolls();
+
+/*
+ * Mirroring: on a machine that does not simulate (a co-op client), the ragdoll poses come from
+ * outside and the bones follow them. No Jolt needed for this part.
+ */
+
+struct BonePose {
+	Vec3f pos = Vec3f(0.f);
+	glm::quat rot = glm::quat(1.f, 0.f, 0.f, 0.f);
+};
+
+//! In mirror mode nothing is simulated locally: deaths make no ragdoll, poses come from mirrorRagdoll()
+void setMirrorMode(bool mirrored);
+bool isMirrorMode();
+
+//! Pose of an entity's ragdoll received from the simulating machine (bones in world space)
+void mirrorRagdoll(Entity & io, const Vec3f & pos, bool active, const std::vector<BonePose> & bones);
+
+//! Snapshot of a local ragdoll, for sending; false if the entity has none
+bool getRagdollPose(const Entity & io, Vec3f & pos, bool & active, std::vector<BonePose> & bones);
+
+//! Visit the local ragdolls
+void forEachRagdoll(const std::function<void(Entity & io, bool active)> & visit);
 
 //! Recreate the ragdolls saved by serializeRagdolls(), once the level's entities are restored
 void restoreRagdolls(std::string_view buffer);

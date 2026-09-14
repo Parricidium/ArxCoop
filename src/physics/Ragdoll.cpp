@@ -36,6 +36,63 @@
 #include "math/GtxFunctions.h"
 #include "math/Vector.h"
 
+namespace physics {
+
+namespace {
+
+struct MirroredRagdoll {
+	std::vector<BonePose> bones;
+	bool active = false;
+};
+
+bool g_mirrorMode = false;
+std::unordered_map<Entity *, MirroredRagdoll> g_mirrored;
+
+bool applyMirroredPose(Entity & io, Skeleton & skeleton) {
+	auto it = g_mirrored.find(&io);
+	if(it == g_mirrored.end() || it->second.bones.size() != skeleton.bones.size()) {
+		return false;
+	}
+	size_t i = 0;
+	for(VertexGroupId bone : skeleton.bones.handles()) {
+		const BonePose & pose = it->second.bones[i++];
+		Bone & data = skeleton.bones[bone];
+		data.anim.trans = pose.pos;
+		data.anim.quat = pose.rot;
+	}
+	return true;
+}
+
+} // anonymous namespace
+
+void setMirrorMode(bool mirrored) {
+	if(g_mirrorMode != mirrored) {
+		g_mirrorMode = mirrored;
+		if(!mirrored) {
+			g_mirrored.clear();
+		}
+	}
+}
+
+bool isMirrorMode() {
+	return g_mirrorMode;
+}
+
+void mirrorRagdoll(Entity & io, const Vec3f & pos, bool active, const std::vector<BonePose> & bones) {
+	if(!io.obj || !io.obj->m_skeleton || io.obj->m_skeleton->bones.size() != bones.size()) {
+		return;
+	}
+	MirroredRagdoll & mirrored = g_mirrored[&io];
+	mirrored.bones = bones;
+	mirrored.active = active;
+	if(io.pos != pos) {
+		io.pos = io.lastpos = pos;
+		io.requestRoomUpdate = true;
+	}
+}
+
+} // namespace physics
+
 #ifdef ARX_HAVE_JOLT
 
 #include "physics/PhysicsInternal.h"
@@ -272,7 +329,7 @@ constexpr char SaveMagic[8] = { 'A', 'R', 'X', 'R', 'A', 'G', 'D', '1' };
 
 void onEntityDied(Entity & io, Entity * killer) {
 
-	if(!canRagdoll(io)) {
+	if(g_mirrorMode || !canRagdoll(io)) {
 		return;
 	}
 
@@ -339,7 +396,8 @@ std::string serializeRagdolls() {
 void restoreRagdolls(std::string_view buffer) {
 
 	JPH::PhysicsSystem * world = system();
-	if(!world || buffer.size() < sizeof(SaveMagic) || buffer.compare(0, sizeof(SaveMagic), SaveMagic, sizeof(SaveMagic)) != 0) {
+	if((!world && !g_mirrorMode) || buffer.size() < sizeof(SaveMagic)
+	   || buffer.compare(0, sizeof(SaveMagic), SaveMagic, sizeof(SaveMagic)) != 0) {
 		return;
 	}
 
@@ -363,6 +421,19 @@ void restoreRagdolls(std::string_view buffer) {
 		Entity * io = entities.getById(id);
 		if(!io || !IsDeadNPC(*io) || !canRagdoll(*io) || io->obj->m_skeleton->bones.size() != bones) {
 			continue; // the entity is gone, alive again or has another skeleton: keep its animation
+		}
+
+		if(g_mirrorMode) {
+			// Not simulating here: the saved pose is simply shown
+			std::vector<BonePose> poses(bones);
+			for(size_t i = 0; i < bones; i++) {
+				const float * v = &pose[i * 7];
+				poses[i].pos = Vec3f(v[0], v[1], v[2]);
+				poses[i].rot = glm::normalize(glm::quat(v[6], v[3], v[4], v[5]));
+			}
+			mirrorRagdoll(*io, io->pos, false, poses);
+			restored++;
+			continue;
 		}
 
 		RagdollInstance * instance = createRagdoll(*io);
@@ -393,6 +464,8 @@ void restoreRagdolls(std::string_view buffer) {
 
 void removeRagdoll(Entity & io) {
 
+	g_mirrored.erase(&io);
+
 	auto it = g_ragdolls.find(&io);
 	if(it == g_ragdolls.end()) {
 		return;
@@ -404,6 +477,10 @@ void removeRagdoll(Entity & io) {
 }
 
 bool applyRagdollPose(Entity & io, Skeleton & skeleton) {
+
+	if(applyMirroredPose(io, skeleton)) {
+		return true;
+	}
 
 	auto it = g_ragdolls.find(&io);
 	if(it == g_ragdolls.end()) {
@@ -478,12 +555,41 @@ void updateRagdolls() {
 
 void clearRagdolls() {
 
+	g_mirrored.clear();
 	if(system()) {
 		for(auto & entry : g_ragdolls) {
 			entry.second.ragdoll->RemoveFromPhysicsSystem();
 		}
 	}
 	g_ragdolls.clear();
+}
+
+bool getRagdollPose(const Entity & io, Vec3f & pos, bool & active, std::vector<BonePose> & bones) {
+
+	auto it = g_ragdolls.find(const_cast<Entity *>(&io));
+	JPH::PhysicsSystem * world = system();
+	if(it == g_ragdolls.end() || !world) {
+		return false;
+	}
+	const JPH::Ragdoll & ragdoll = *it->second.ragdoll;
+	const JPH::BodyInterface & bodies = world->GetBodyInterface();
+	pos = io.pos;
+	active = ragdoll.IsActive();
+	bones.resize(ragdoll.GetBodyCount());
+	for(size_t i = 0; i < bones.size(); i++) {
+		JPH::RVec3 position;
+		JPH::Quat rotation;
+		bodies.GetPositionAndRotation(ragdoll.GetBodyID(int(i)), position, rotation);
+		bones[i].pos = fromJolt(JPH::Vec3(position));
+		bones[i].rot = fromJolt(rotation);
+	}
+	return true;
+}
+
+void forEachRagdoll(const std::function<void(Entity & io, bool active)> & visit) {
+	for(auto & entry : g_ragdolls) {
+		visit(*entry.first, entry.second.ragdoll->IsActive());
+	}
 }
 
 size_t ragdollCount() {
@@ -505,10 +611,15 @@ void dumpRagdolls() {
 namespace physics {
 
 void onEntityDied(Entity & io, Entity * killer) { ARX_UNUSED(io), ARX_UNUSED(killer); }
-void removeRagdoll(Entity & io) { ARX_UNUSED(io); }
-bool applyRagdollPose(Entity & io, Skeleton & skeleton) { ARX_UNUSED(io), ARX_UNUSED(skeleton); return false; }
+void removeRagdoll(Entity & io) { g_mirrored.erase(&io); }
+bool applyRagdollPose(Entity & io, Skeleton & skeleton) { return applyMirroredPose(io, skeleton); }
 void updateRagdolls() { }
-void clearRagdolls() { }
+void clearRagdolls() { g_mirrored.clear(); }
+bool getRagdollPose(const Entity & io, Vec3f & pos, bool & active, std::vector<BonePose> & bones) {
+	ARX_UNUSED(io), ARX_UNUSED(pos), ARX_UNUSED(active), ARX_UNUSED(bones);
+	return false;
+}
+void forEachRagdoll(const std::function<void(Entity & io, bool active)> & visit) { ARX_UNUSED(visit); }
 size_t ragdollCount() { return 0; }
 void dumpRagdolls() { }
 std::string serializeRagdolls() { return std::string(); }
