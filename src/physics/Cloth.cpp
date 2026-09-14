@@ -61,11 +61,13 @@ namespace {
 
 constexpr float CellSize = 32.f;          // units, target edge length of the cloth mesh
 constexpr float MinHeight = 40.f;         // units, smaller patches are not worth a cloth
-constexpr float MaxVertical = 0.35f;      // |normal.y| above this = an awning, a bed, a carpet: left alone
+constexpr float MaxVertical = 0.35f;      // |normal.y| above this = an awning, a bed, a carpet: left alone (they sag)
+constexpr float AttachBand = 0.6f;        // fraction of the height (from the top) where the cloth can be attached to the level
 constexpr size_t MaxPolygons = 400;       // per patch
 constexpr size_t MaxVertices = 4000;      // per patch (drawn with 16-bit indices)
 constexpr float WindRange = 3500.f;       // units from the player within which the cloths move
-constexpr float WindStrength = 0.9f;      // m/s^2
+constexpr float WindStrength = 2.2f;      // m/s^2
+constexpr float Flutter = 1.4f;           // m/s^2, the faster flapping across the wind
 
 struct ClothVertex {
 	Vec2f uv;
@@ -77,6 +79,7 @@ struct Cloth {
 	TextureContainer * texture = nullptr;
 	std::vector<ClothVertex> vertices;
 	std::vector<Vec3f> positions; //!< simulated, world units
+	std::vector<Vec3f> rest;      //!< as modelled (diagnostics)
 	std::vector<Vec3f> normals;
 	std::vector<unsigned short> indices;
 	std::unique_ptr<VertexBuffer<SMY_VERTEX>> buffer;
@@ -228,31 +231,71 @@ bool buildCloth(const std::vector<EERIEPOLY *> & polys, JPH::PhysicsSystem & wor
 	for(EERIEPOLY * poly : polys) {
 		subdivide(builder, *poly);
 		if(builder.positions.size() > MaxVertices) {
+			LogInfo << "cloth: patch of " << polys.size() << " " << polys[0]->tex->m_texName << " rejected: too many vertices";
 			return false;
 		}
 	}
 	if(builder.positions.size() < 4 || builder.indices.size() < 3) {
+		LogInfo << "cloth: patch of " << polys.size() << " " << polys[0]->tex->m_texName << " rejected: degenerate";
 		return false;
 	}
 
-	// Pinned along the top edge (y points down) and wherever the cloth meets the rest of the
-	// level (a pole, a wall, a rod)
+	// Pinned along the top edge (y points down) and wherever the upper part of the cloth meets
+	// the rest of the level (a pole, a wall, a rod); the lower part is free to swing even where
+	// the modeller welded it to the wall behind
 	float minY = 1e9f, maxY = -1e9f;
 	for(const Vec3f & p : builder.positions) {
 		minY = std::min(minY, p.y);
 		maxY = std::max(maxY, p.y);
 	}
 	if(maxY - minY < MinHeight) {
+		Vec3f low(1e9f), high(-1e9f);
+		for(const Vec3f & p : builder.positions) {
+			low = glm::min(low, p);
+			high = glm::max(high, p);
+		}
+		LogInfo << "cloth: patch of " << polys.size() << " " << polys[0]->tex->m_texName << " rejected: height " << (maxY - minY)
+		        << " box " << (high.x - low.x) << "x" << (high.z - low.z) << " at " << low.x << " " << low.y << " " << low.z
+		        << " ny " << polys[0]->norm.y << (polys[0]->type & POLY_TRANS ? " trans" : "") << (polys[0]->type & POLY_DOUBLESIDED ? " 2s" : "");
 		return false;
 	}
 	float pinBand = std::max(6.f, (maxY - minY) * 0.06f);
+
+	// A sloped cloth (an awning, a canopy) is a canvas stretched between its attachments:
+	// its whole outline stays put, only the middle can billow
+	float slope = 0.f;
+	for(const EERIEPOLY * poly : polys) {
+		slope += std::abs(poly->norm.y);
+	}
+	slope /= float(polys.size());
+	std::vector<bool> boundary(builder.positions.size(), false);
+	if(slope > MaxVertical * 0.45f) {
+		std::unordered_map<unsigned int, int> edges;
+		auto edgeKey = [](unsigned short a, unsigned short b) {
+			unsigned int low = std::min(a, b), high = std::max(a, b);
+			return (low << 16) | high;
+		};
+		for(size_t i = 0; i + 2 < builder.indices.size(); i += 3) {
+			edges[edgeKey(builder.indices[i], builder.indices[i + 1])]++;
+			edges[edgeKey(builder.indices[i + 1], builder.indices[i + 2])]++;
+			edges[edgeKey(builder.indices[i + 2], builder.indices[i])]++;
+		}
+		for(const auto & entry : edges) {
+			if(entry.second == 1) {
+				boundary[entry.first >> 16] = true;
+				boundary[entry.first & 0xffff] = true;
+			}
+		}
+	}
 
 	JPH::Ref<JPH::SoftBodySharedSettings> shared = new JPH::SoftBodySharedSettings();
 	shared->mVertices.reserve(builder.positions.size());
 	size_t pinned = 0;
 	for(const Vec3f & p : builder.positions) {
 		JPH::Vec3 q = toJolt(p);
-		bool pin = (p.y - minY) <= pinBand || g_levelCorners.count(quantize(p)) != 0;
+		size_t index = size_t(&p - &builder.positions[0]);
+		bool pin = (p.y - minY) <= pinBand || boundary[index]
+		           || ((p.y - minY) <= (maxY - minY) * AttachBand && g_levelCorners.count(quantize(p)) != 0);
 		shared->mVertices.push_back(JPH::SoftBodySharedSettings::Vertex(JPH::Float3(q.GetX(), q.GetY(), q.GetZ()),
 		                                                                JPH::Float3(0.f, 0.f, 0.f), pin ? 0.f : 1.f));
 		if(pin) {
@@ -260,6 +303,8 @@ bool buildCloth(const std::vector<EERIEPOLY *> & polys, JPH::PhysicsSystem & wor
 		}
 	}
 	if(pinned == 0 || pinned == builder.positions.size()) {
+		LogInfo << "cloth: patch of " << polys.size() << " " << polys[0]->tex->m_texName << " rejected: " << pinned
+		        << " of " << builder.positions.size() << " vertices pinned";
 		return false;
 	}
 	for(size_t i = 0; i + 2 < builder.indices.size(); i += 3) {
@@ -289,6 +334,7 @@ bool buildCloth(const std::vector<EERIEPOLY *> & polys, JPH::PhysicsSystem & wor
 	cloth->texture = polys[0]->tex;
 	cloth->vertices = builder.attributes;
 	cloth->positions = builder.positions;
+	cloth->rest = builder.positions;
 	cloth->indices = builder.indices;
 	cloth->phase = float(g_cloths.size()) * 1.7f;
 	Vec3f low(1e9f), high(-1e9f);
@@ -354,10 +400,14 @@ void createCloths() {
 	// The candidate polygons, and which of them share corners
 	std::vector<EERIEPOLY *> candidates;
 	g_levelCorners.clear();
+	std::unordered_map<std::string, int> skipped;
 	for(auto tile : g_tiles->tiles()) {
 		for(EERIEPOLY & poly : tile.polygons()) {
 			if(isClothPolygon(poly)) {
 				candidates.push_back(&poly);
+			} else if(clothTexture(poly.tex)) {
+				skipped[std::string(poly.tex->m_texName.string()) + ((poly.type & POLY_TRANS) ? " (trans)" : "")
+				        + " ny=" + std::to_string(int(std::abs(poly.norm.y) * 100.f))]++;
 			} else if(!(poly.type & (POLY_WATER | POLY_LAVA | POLY_IGNORE | POLY_NODRAW))) {
 				size_t count = (poly.type & POLY_QUAD) ? 4 : 3;
 				for(size_t k = 0; k < count; k++) {
@@ -365,6 +415,9 @@ void createCloths() {
 				}
 			}
 		}
+	}
+	for(const auto & entry : skipped) {
+		LogInfo << "cloth: " << entry.second << " fabric polygons skipped: " << entry.first;
 	}
 	if(candidates.empty()) {
 		return;
@@ -391,10 +444,13 @@ void createCloths() {
 	size_t built = 0;
 	for(auto & entry : patches) {
 		if(entry.second.size() > MaxPolygons) {
+			LogInfo << "cloth: patch of " << entry.second.size() << " " << entry.second[0]->tex->m_texName << " rejected: too many polygons";
 			continue;
 		}
 		if(buildCloth(entry.second, *world)) {
 			built++;
+			LogInfo << "cloth: " << entry.second.size() << " polygons of " << entry.second[0]->tex->m_texName << " at "
+			        << g_cloths.back()->centre.x << " " << g_cloths.back()->centre.y << " " << g_cloths.back()->centre.z;
 		}
 	}
 
@@ -412,18 +468,22 @@ void updateCloths() {
 		return;
 	}
 	float dt = toMsf(g_gameTime.lastFrameDuration()) * 0.001f;
-	float time = float(toMsi(g_gameTime.now())) * 0.001f;
+	GameInstant now = g_gameTime.now();
+	float time = float(toMsi(now)) * 0.001f;
 	JPH::BodyInterface & bodies = world->GetBodyInterface();
 
 	for(std::unique_ptr<Cloth> & cloth : g_cloths) {
 		if(!closerThan(cloth->centre, player.pos, WindRange + cloth->radius)) {
 			continue;
 		}
-		// A light, slowly turning breeze, a little different for each cloth
-		float gust = 0.5f + 0.5f * std::sin(time * 0.6f + cloth->phase) * std::sin(time * 0.23f + cloth->phase * 0.7f);
+		// A slowly turning breeze with gusts, and a faster flutter across it, a little different
+		// for each cloth
+		float gust = 0.35f + 0.65f * std::abs(std::sin(time * 0.6f + cloth->phase) * std::sin(time * 0.23f + cloth->phase * 0.7f));
 		float angle = time * 0.15f + cloth->phase;
 		JPH::Vec3 wind(std::cos(angle), 0.f, std::sin(angle));
-		wind *= WindStrength * gust * dt;
+		JPH::Vec3 across(-wind.GetZ(), 0.f, wind.GetX());
+		wind = wind * (WindStrength * gust) + across * (Flutter * std::sin(time * 2.7f + cloth->phase * 3.f) * gust);
+		wind *= dt;
 		{
 			// (the lock must be released before the body interface is used again below)
 			JPH::BodyLockWrite lock(world->GetBodyLockInterface(), cloth->id);
@@ -441,6 +501,20 @@ void updateCloths() {
 			bodies.ActivateBody(cloth->id);
 		}
 		fetchPositions(*cloth);
+	}
+
+	// ARX_CLOTH_LOG=1: how far each cloth has moved from its modelled shape, every 2 seconds
+	static GameInstant lastLog;
+	if(std::getenv("ARX_CLOTH_LOG") && now - lastLog > 2s) {
+		lastLog = now;
+		for(std::unique_ptr<Cloth> & cloth : g_cloths) {
+			float most = 0.f;
+			for(size_t i = 0; i < cloth->positions.size() && i < cloth->rest.size(); i++) {
+				most = std::max(most, glm::distance(cloth->positions[i], cloth->rest[i]));
+			}
+			LogInfo << "cloth " << cloth->texture->m_texName.basename() << " at " << cloth->centre.x << " " << cloth->centre.y
+			        << " " << cloth->centre.z << ": max displacement " << most << " units";
+		}
 	}
 }
 
