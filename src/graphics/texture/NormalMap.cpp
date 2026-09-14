@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "graphics/image/Image.h"
+#include "platform/Platform.h"
 
 namespace {
 
@@ -36,9 +37,18 @@ struct HeightField {
 
 	HeightField(size_t w, size_t h) : width(w), height(h), data(w * h, 0.f) { }
 
+	//! Wrapping access; offsets never exceed one texture size, so no modulo needed
 	float at(ptrdiff_t x, ptrdiff_t y) const {
-		x = ((x % ptrdiff_t(width)) + ptrdiff_t(width)) % ptrdiff_t(width);
-		y = ((y % ptrdiff_t(height)) + ptrdiff_t(height)) % ptrdiff_t(height);
+		if(x < 0) {
+			x += ptrdiff_t(width);
+		} else if(x >= ptrdiff_t(width)) {
+			x -= ptrdiff_t(width);
+		}
+		if(y < 0) {
+			y += ptrdiff_t(height);
+		} else if(y >= ptrdiff_t(height)) {
+			y -= ptrdiff_t(height);
+		}
 		return data[size_t(y) * width + size_t(x)];
 	}
 
@@ -48,46 +58,57 @@ struct HeightField {
 
 };
 
-//! Separable box blur of the given radius (wrapping), returns a new field
+/*!
+ * Separable box blur of the given radius (wrapping), returns a new field.
+ * Running sums: the cost does not depend on the radius (textures load while playing, when a
+ * new object comes into view - a blur that took tens of milliseconds showed as a hitch).
+ */
 HeightField blur(const HeightField & in, int radius) {
 
 	if(radius <= 0) {
 		return in;
 	}
 
-	HeightField tmp(in.width, in.height);
 	float norm = 1.f / float(2 * radius + 1);
+
+	// Rows
+	HeightField tmp(in.width, in.height);
 	for(size_t y = 0; y < in.height; y++) {
+		float sum = 0.f;
+		for(int k = -radius; k <= radius; k++) {
+			sum += in.at(k, ptrdiff_t(y));
+		}
 		for(size_t x = 0; x < in.width; x++) {
-			float sum = 0.f;
-			for(int k = -radius; k <= radius; k++) {
-				sum += in.at(ptrdiff_t(x) + k, ptrdiff_t(y));
-			}
 			tmp.ref(x, y) = sum * norm;
+			sum += in.at(ptrdiff_t(x) + radius + 1, ptrdiff_t(y)) - in.at(ptrdiff_t(x) - radius, ptrdiff_t(y));
 		}
 	}
 
+	// Columns
 	HeightField out(in.width, in.height);
-	for(size_t y = 0; y < in.height; y++) {
-		for(size_t x = 0; x < in.width; x++) {
-			float sum = 0.f;
-			for(int k = -radius; k <= radius; k++) {
-				sum += tmp.at(ptrdiff_t(x), ptrdiff_t(y) + k);
-			}
+	for(size_t x = 0; x < in.width; x++) {
+		float sum = 0.f;
+		for(int k = -radius; k <= radius; k++) {
+			sum += tmp.at(ptrdiff_t(x), k);
+		}
+		for(size_t y = 0; y < in.height; y++) {
 			out.ref(x, y) = sum * norm;
+			sum += tmp.at(ptrdiff_t(x), ptrdiff_t(y) + radius + 1) - tmp.at(ptrdiff_t(x), ptrdiff_t(y) - radius);
 		}
 	}
 
 	return out;
 }
 
-//! Sobel gradient of a height field at (x, y), wrapping
-void gradient(const HeightField & h, size_t x, size_t y, float & gx, float & gy) {
-	ptrdiff_t px = ptrdiff_t(x), py = ptrdiff_t(y);
-	gx = (h.at(px + 1, py - 1) + 2.f * h.at(px + 1, py) + h.at(px + 1, py + 1))
-	   - (h.at(px - 1, py - 1) + 2.f * h.at(px - 1, py) + h.at(px - 1, py + 1));
-	gy = (h.at(px - 1, py + 1) + 2.f * h.at(px, py + 1) + h.at(px + 1, py + 1))
-	   - (h.at(px - 1, py - 1) + 2.f * h.at(px, py - 1) + h.at(px + 1, py - 1));
+//! Sobel gradient of a height field at (x, y) given the wrapped neighbour rows and columns
+void gradient(const HeightField & h, size_t xm, size_t x, size_t xp, size_t ym, size_t y, size_t yp,
+              float & gx, float & gy) {
+	const float * rm = &h.data[ym * h.width];
+	const float * r0 = &h.data[y * h.width];
+	const float * rp = &h.data[yp * h.width];
+	ARX_UNUSED(x);
+	gx = (rm[xp] + 2.f * r0[xp] + rp[xp]) - (rm[xm] + 2.f * r0[xm] + rp[xm]);
+	gy = (rp[xm] + 2.f * rp[x] + rp[xp]) - (rm[xm] + 2.f * rm[x] + rm[xp]);
 	gx *= 0.125f;
 	gy *= 0.125f;
 }
@@ -147,10 +168,14 @@ bool generateNormalMap(const Image & diffuse, Image & out, float strength) {
 	out.create(width, height, Image::Format_R8G8B8);
 	unsigned char * dst = out.getData();
 	for(size_t y = 0; y < height; y++) {
+		size_t ym = (y == 0) ? height - 1 : y - 1;
+		size_t yp = (y + 1 == height) ? 0 : y + 1;
 		for(size_t x = 0; x < width; x++) {
+			size_t xm = (x == 0) ? width - 1 : x - 1;
+			size_t xp = (x + 1 == width) ? 0 : x + 1;
 			float fx, fy, cx, cy;
-			gradient(fine, x, y, fx, fy);
-			gradient(coarse, x, y, cx, cy);
+			gradient(fine, xm, x, xp, ym, y, yp, fx, fy);
+			gradient(coarse, xm, x, xp, ym, y, yp, cx, cy);
 			float gx = fx * fineScale + cx * coarseScale;
 			float gy = fy * fineScale + cy * coarseScale;
 			// Tangent-space normal: bright = raised, so the normal tilts away from the slope

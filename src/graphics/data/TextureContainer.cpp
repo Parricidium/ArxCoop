@@ -60,6 +60,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "io/resource/ResourcePath.h"
 #include "io/resource/PakReader.h"
 #include "io/log/Logger.h"
+#include "platform/Time.h"
 #include "io/fs/FilePath.h"
 #include "io/fs/Filesystem.h"
 
@@ -205,6 +206,7 @@ void TextureContainer::loadNormalMap(const res::path & texturePath) {
 		return;
 	}
 	
+	PlatformInstant start = platform::getTime();
 	Image diffuse;
 	if(!diffuse.load(texturePath)) {
 		return;
@@ -216,6 +218,10 @@ void TextureContainer::loadNormalMap(const res::path & texturePath) {
 	m_pNormalMap = GRenderer->createTexture();
 	if(!m_pNormalMap || !m_pNormalMap->create(normal, Texture::HasMipmaps)) {
 		delete m_pNormalMap, m_pNormalMap = nullptr;
+	}
+	if(toMsi(platform::getTime() - start) >= 20) {
+		LogInfo << "Normal map for " << texturePath << " (" << diffuse.getWidth() << "x" << diffuse.getHeight()
+		        << ") took " << toMsi(platform::getTime() - start) << " ms";
 	}
 	
 }
