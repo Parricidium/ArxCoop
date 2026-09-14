@@ -63,7 +63,9 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "core/Application.h"
 #include "core/ArxGame.h"
 #include "core/Config.h"
+#include "core/FrameProfile.h"
 #include "core/GameTime.h"
+#include "platform/Time.h"
 #include "core/Core.h"
 
 #include "game/Camera.h"
@@ -1776,7 +1778,7 @@ static void DrawShadowCasters(const RendererLight & light) {
 
 void ARX_SCENE_Update() {
 	
-	CreateScreenFrustrum();
+	{ FRAME_SECTION("scene.frustum"); CreateScreenFrustrum(); }
 	
 	if(!g_rooms) {
 		return;
@@ -1789,32 +1791,41 @@ void ARX_SCENE_Update() {
 	const Vec3f camPos = g_camera->m_pos;
 	const float camDepth = g_camera->cdepth;
 
-	TreatBackgroundDynlights();
-	PrecalcDynamicLighting(camPos, camDepth);
-	UploadPixelLights(camPos, camDepth);
+	{ FRAME_SECTION("scene.bgDynlights"); TreatBackgroundDynlights(); }
+	{ FRAME_SECTION("scene.precalcDynLighting"); PrecalcDynamicLighting(camPos, camDepth); }
+	{ FRAME_SECTION("scene.pixelLights"); UploadPixelLights(camPos, camDepth); }
 	
-	g_tiles->resetActiveTiles();
+	{ FRAME_SECTION("scene.resetTiles"); g_tiles->resetActiveTiles(); }
 	
-	ARX_PORTALS_InitDrawnRooms();
+	{ FRAME_SECTION("scene.initRooms"); ARX_PORTALS_InitDrawnRooms(); }
 	
 	if(!USE_PLAYERCOLLISIONS) {
+		FRAME_SECTION("scene.allRooms");
 		for(RoomHandle room : g_rooms->rooms.handles()) {
 			g_rooms->visibleRooms.push_back(room);
 			g_rooms->frustums[room].push_back(g_screenFrustum);
 		}
-	} else if(RoomHandle room = ARX_PORTALS_GetRoomNumForPosition(camPos, RoomPositionForCamera)) {
-		ARX_PORTALS_Frustrum_ComputeRoom(room, g_screenFrustum, camPos, camDepth);
+	} else {
+		RoomHandle room;
+		{ FRAME_SECTION("scene.roomLookup"); room = ARX_PORTALS_GetRoomNumForPosition(camPos, RoomPositionForCamera); }
+		if(room) {
+			FRAME_SECTION("scene.portals");
+			ARX_PORTALS_Frustrum_ComputeRoom(room, g_screenFrustum, camPos, camDepth);
+		}
 	}
 	
-	for(RoomHandle room : g_rooms->visibleRooms) {
-		ARX_PORTALS_Frustrum_RenderRoomTCullSoft(room, camPos);
+	{
+		FRAME_SECTION("scene.rooms");
+		for(RoomHandle room : g_rooms->visibleRooms) {
+			ARX_PORTALS_Frustrum_RenderRoomTCullSoft(room, camPos);
+		}
 	}
 	
-	ARX_THROWN_OBJECT_Manage(g_gameTime.lastFrameDuration());
+	{ FRAME_SECTION("scene.thrown"); ARX_THROWN_OBJECT_Manage(g_gameTime.lastFrameDuration()); }
 	
-	updateDraggedEntity();
+	{ FRAME_SECTION("scene.dragged"); updateDraggedEntity(); }
 	
-	UpdateInter();
+	{ FRAME_SECTION("scene.UpdateInter"); UpdateInter(); }
 }
 
 void ARX_SCENE_Render() {
@@ -1832,7 +1843,9 @@ void ARX_SCENE_Render() {
 		GRenderer->GetTextureStage(0)->setMipMapLODBias(-0.6f);
 		RenderInter();
 		entitiesBatched = true;
+		PlatformInstant shadowStart = platform::getTime();
 		GRenderer->renderShadowMaps(DrawShadowCasters);
+		g_frameProfile.shadows = toMsi(platform::getTime() - shadowStart);
 	}
 	
 	if(g_rooms) {

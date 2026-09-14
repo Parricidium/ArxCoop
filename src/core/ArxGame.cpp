@@ -73,6 +73,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "core/Config.h"
 #include "core/Core.h"
 #include "core/FpsCounter.h"
+#include "core/FrameProfile.h"
 #include "core/GameTime.h"
 #include "core/Localisation.h"
 #include "core/SaveGame.h"
@@ -631,6 +632,11 @@ static void coopJoin(const std::string & target) {
 	skipLogo();
 }
 ARX_PROGRAM_OPTION_ARG("coop-join", "", "Join a co-op game at ADDRESS[:PORT]", &coopJoin, "ADDRESS")
+
+FrameProfile g_frameProfile;
+FrameProfile g_lastFrameProfile;
+FrameSections g_frameSections;
+FrameSections g_lastFrameSections;
 
 static void coopTest() {
 	coop::g_puppetsTestMode = true;
@@ -1264,7 +1270,15 @@ void ArxGame::doFrame() {
 
 	updateInput();
 
-	g_coop.update();
+	g_lastFrameProfile = g_frameProfile;
+	g_frameProfile = FrameProfile();
+	g_lastFrameSections = g_frameSections;
+	g_frameSections = FrameSections();
+	{
+		PlatformInstant start = platform::getTime();
+		g_coop.update();
+		g_frameProfile.network = toMsi(platform::getTime() - start);
+	}
 	coop::puppetsTestUpdate();
 
 	if(m_wasResized) {
@@ -1813,17 +1827,17 @@ void ArxGame::updateLevel() {
 		
 	}
 	
-	ARX_PLAYER_Manage_Movement();
+	{ FRAME_SECTION("ARX_PLAYER_Manage_Movement"); ARX_PLAYER_Manage_Movement(); }
 
-	ARX_PLAYER_Manage_Visual();
+	{ FRAME_SECTION("ARX_PLAYER_Manage_Visual"); ARX_PLAYER_Manage_Visual(); }
 
-	coop::puppetsSendLocalState();
-	coop::puppetsUpdate();
-	coop::localTorchDisplayUpdate();
-	coop::qolUpdate();
-	coop::npcSyncUpdate();
-	coop::physicsSyncUpdate();
-	coop::replicationUpdate();
+	{ FRAME_SECTION("coop.puppetsSendLocalState"); coop::puppetsSendLocalState(); }
+	{ FRAME_SECTION("coop.puppetsUpdate"); coop::puppetsUpdate(); }
+	{ FRAME_SECTION("coop.localTorchDisplayUpdate"); coop::localTorchDisplayUpdate(); }
+	{ FRAME_SECTION("coop.qolUpdate"); coop::qolUpdate(); }
+	{ FRAME_SECTION("coop.npcSyncUpdate"); coop::npcSyncUpdate(); }
+	{ FRAME_SECTION("coop.physicsSyncUpdate"); coop::physicsSyncUpdate(); }
+	{ FRAME_SECTION("coop.replicationUpdate"); coop::replicationUpdate(); }
 
 	g_miniMap.setActiveBackground(g_tiles);
 	g_miniMap.validatePlayerPos(g_currentArea, BLOCK_PLAYER_CONTROLS, g_playerBook.currentPage());
@@ -1852,21 +1866,21 @@ void ArxGame::updateLevel() {
 			ManageCombatModeAnimationsEND();
 	}
 
-	updateFirstPersonCamera();
+	{ FRAME_SECTION("updateFirstPersonCamera"); updateFirstPersonCamera(); }
 	
-	ARX_SCRIPT_Timer_Check();
+	{ FRAME_SECTION("ARX_SCRIPT_Timer_Check"); ARX_SCRIPT_Timer_Check(); }
 
-	speechControlledCinematic();
+	{ FRAME_SECTION("speechControlledCinematic"); speechControlledCinematic(); }
 
-	handlePlayerDeath();
+	{ FRAME_SECTION("handlePlayerDeath"); handlePlayerDeath(); }
 	
-	UpdateCameras();
+	{ FRAME_SECTION("UpdateCameras"); UpdateCameras(); }
 
-	ARX_PLAYER_FrameCheck(g_platformTime.lastFrameDuration());
+	{ FRAME_SECTION("ARX_PLAYER_FrameCheck"); ARX_PLAYER_FrameCheck(g_platformTime.lastFrameDuration()); }
 
-	updateActiveCamera();
+	{ FRAME_SECTION("updateActiveCamera"); updateActiveCamera(); }
 
-	ARX_GLOBALMODS_Apply();
+	{ FRAME_SECTION("ARX_GLOBALMODS_Apply"); ARX_GLOBALMODS_Apply(); }
 	
 	// Set Listener Position
 	{
@@ -1883,19 +1897,19 @@ void ArxGame::updateLevel() {
 		ARX_INTERACTIVE_Show_Hide_1st(entities.player(), true);
 	}
 	
-	PrepareIOTreatZone();
-	ARX_PHYSICS_Apply();
-	physics::update(); // ArxModern: ragdolls and loose objects, before the entities are animated
+	{ FRAME_SECTION("PrepareIOTreatZone"); PrepareIOTreatZone(); }
+	{ FRAME_SECTION("ARX_PHYSICS_Apply"); ARX_PHYSICS_Apply(); }
+	{ FRAME_SECTION("physics.update"); physics::update(); }
 	
-	PrecalcIOLighting(g_camera->m_pos, g_camera->cdepth * 0.6f);
+	{ FRAME_SECTION("PrecalcIOLighting"); PrecalcIOLighting(g_camera->m_pos, g_camera->cdepth * 0.6f); }
 	
-	ARX_SCENE_Update();
+	{ FRAME_SECTION("ARX_SCENE_Update"); ARX_SCENE_Update(); }
 
 	g_particleManager.Update(g_gameTime.lastFrameDuration());
 
-	ARX_FOGS_Render();
+	{ FRAME_SECTION("ARX_FOGS_Render"); ARX_FOGS_Render(); }
 
-	TreatBackgroundActions();
+	{ FRAME_SECTION("TreatBackgroundActions"); TreatBackgroundActions(); }
 
 	// Checks Magic Flares Drawing
 	if(!player.m_paralysed) {
@@ -1923,15 +1937,15 @@ void ArxGame::updateLevel() {
 		}
 	}
 
-	ARX_SPELLS_Precast_Check();
+	{ FRAME_SECTION("ARX_SPELLS_Precast_Check"); ARX_SPELLS_Precast_Check(); }
 	
 	if(ARXmenu.mode() == Mode_InGame) {
 		ARX_SPELLS_ManageMagic();
 	}
 	
-	ARX_SPELLS_UpdateSymbolDraw();
+	{ FRAME_SECTION("ARX_SPELLS_UpdateSymbolDraw"); ARX_SPELLS_UpdateSymbolDraw(); }
 
-	ManageTorch();
+	{ FRAME_SECTION("ManageTorch"); ManageTorch(); }
 	
 	{
 		
@@ -1947,7 +1961,7 @@ void ArxGame::updateLevel() {
 		
 	}
 	
-	ARX_INTERACTIVE_DestroyIOdelayedExecute();
+	{ FRAME_SECTION("ARX_INTERACTIVE_DestroyIOdelayedExecute"); ARX_INTERACTIVE_DestroyIOdelayedExecute(); }
 }
 
 void ArxGame::renderLevel() {
@@ -2019,7 +2033,11 @@ void ArxGame::renderLevel() {
 	ARX_PLAYER_Manage_Death();
 
 	// ArxModern: compose the post-processed scene into the window before the interface
-	GRenderer->endScene();
+	{
+		PlatformInstant start = platform::getTime();
+		GRenderer->endScene();
+		g_frameProfile.post = toMsi(platform::getTime() - start);
+	}
 	
 	// INTERFACE
 	g_renderBatcher.clear();
@@ -2141,8 +2159,12 @@ void ArxGame::render() {
 		cinematicRender();
 	} else {
 		benchmark::begin(cinematicBorder.CINEMA_DECAL != 0.f ? benchmark::Cutscene : benchmark::Scene);
+		PlatformInstant start = platform::getTime();
 		updateLevel();
+		PlatformInstant middle = platform::getTime();
+		g_frameProfile.update = toMsi(middle - start);
 		renderLevel();
+		g_frameProfile.render = toMsi(platform::getTime() - middle) - g_frameProfile.shadows - g_frameProfile.post;
 		#ifdef ARX_DEBUG
 		if(g_debugToggles[9]) {
 			renderLevel();
@@ -2453,7 +2475,11 @@ void ArxGame::onRendererInit(Renderer & renderer) {
 	arx_assert(m_MainWindow);
 	
 	renderer.Clear(Renderer::ColorBuffer);
-	m_MainWindow->showFrame();
+	{
+		PlatformInstant start = platform::getTime();
+		m_MainWindow->showFrame();
+		g_frameProfile.swap = toMsi(platform::getTime() - start);
+	}
 	
 	// Restore All Textures RenderState
 	renderer.RestoreAllTextures();
