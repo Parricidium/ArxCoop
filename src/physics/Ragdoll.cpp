@@ -391,6 +391,8 @@ void onEntityDied(Entity & io, Entity * killer) {
 		return;
 	}
 
+	PlatformInstant start = platform::getTime();
+
 	// Current pose of the skeleton in world space
 	Skeleton & skeleton = *io.obj->m_skeleton;
 	animateSkeleton(&io, io.animlayer.data(), skeleton);
@@ -399,6 +401,8 @@ void onEntityDied(Entity & io, Entity * killer) {
 	if(!instance) {
 		return;
 	}
+	LogInfo << "physics: ragdoll for " << io.idString() << " (" << instance->bones << " bones) built in "
+	        << toMsi(platform::getTime() - start) << " ms";
 	JPH::Ragdoll & ragdoll = *instance->ragdoll;
 
 	// Move the bodies to the pose the entity died in
