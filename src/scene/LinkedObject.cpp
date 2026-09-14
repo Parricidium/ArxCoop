@@ -225,7 +225,7 @@ void IO_UnlinkAllLinkedObjects(Entity * io) {
 		
 		vector.y = std::sin(glm::radians(linked->angle.getPitch()));
 		
-		EERIE_PHYSICS_BOX_Launch(linked->obj, pos, linked->angle, vector);
+		EERIE_PHYSICS_BOX_Launch(linked->obj, pos, linked->angle, vector, linked);
 		
 	}
 	

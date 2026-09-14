@@ -69,6 +69,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "io/log/Logger.h"
 
+#include "physics/PhysicsWorld.h"
+
 #include "scene/ChangeLevel.h"
 #include "scene/GameSound.h"
 #include "scene/Interactive.h"
@@ -178,6 +180,8 @@ Entity::Entity(const res::path & classPath, EntityInstance instance)
 }
 
 Entity::~Entity() {
+	
+	physics::onEntityDestroyed(*this);
 	
 	cleanReferences();
 	

@@ -47,6 +47,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "graphics/data/TextureContainer.h"
 
+#include "graphics/texture/NormalMap.h"
+
 #include <stddef.h>
 #include <cstdlib>
 #include <string>
@@ -104,6 +106,7 @@ TextureContainer::TextureContainer(res::path strName, TCFlags flags)
 TextureContainer::~TextureContainer() {
 	
 	delete m_pTexture;
+	delete m_pNormalMap;
 	delete TextureHalo;
 		
 	// Remove the texture container from the global list
@@ -164,7 +167,57 @@ bool TextureContainer::LoadFile(const res::path & strPathname) {
 	uv = Vec2f(m_size) / storedSize;
 	hd = Vec2f(.5f, .5f) / storedSize;
 	
+	loadNormalMap(tempPath);
+	
 	return true;
+}
+
+// ArxModern: <name>_n.<ext> if a mod provides one, otherwise generated from the texture itself.
+// Interface textures (NoMipmap) never need one.
+void TextureContainer::loadNormalMap(const res::path & texturePath) {
+	
+	delete m_pNormalMap, m_pNormalMap = nullptr;
+	
+	if((m_dwFlags & NoMipmap) || !GRenderer->hasPixelLighting()) {
+		return;
+	}
+	
+	res::path normalPath = texturePath.parent() / (std::string(texturePath.basename()) + "_n");
+	static const char * const extensions[] = { ".png", ".tga", ".jpg", ".bmp" };
+	for(const char * ext : extensions) {
+		res::path candidate = normalPath;
+		candidate.append(ext);
+		if(g_resources->getFile(candidate)) {
+			m_pNormalMap = GRenderer->createTexture();
+			if(m_pNormalMap && m_pNormalMap->create(candidate, Texture::HasMipmaps)) {
+				return;
+			}
+			LogWarning << "Could not load normal map " << candidate;
+			delete m_pNormalMap, m_pNormalMap = nullptr;
+			break;
+		}
+	}
+	
+	// The hero's head textures (4 variants) get a custom face pasted in at runtime by the coop
+	// mod: a relief generated from the original face would not match it. No generated normal
+	// map for them (a <name>_n file is still honoured above).
+	if(texturePath.basename().find("hero_head") != std::string_view::npos) {
+		return;
+	}
+	
+	Image diffuse;
+	if(!diffuse.load(texturePath)) {
+		return;
+	}
+	Image normal;
+	if(!generateNormalMap(diffuse, normal)) {
+		return;
+	}
+	m_pNormalMap = GRenderer->createTexture();
+	if(!m_pNormalMap || !m_pNormalMap->create(normal, Texture::HasMipmaps)) {
+		delete m_pNormalMap, m_pNormalMap = nullptr;
+	}
+	
 }
 
 TextureContainer * TextureContainer::Load(const res::path & name, TCFlags flags) {

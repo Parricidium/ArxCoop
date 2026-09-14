@@ -45,6 +45,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 // Copyright (c) 1999-2000 ARKANE Studios SA. All rights reserved
 
 #include "physics/Physics.h"
+#include "physics/LooseObjects.h"
 
 #include <stddef.h>
 #include <algorithm>
@@ -256,7 +257,7 @@ void EERIE_PHYSICS_BOX_Create(EERIE_3DOBJ * obj) {
 
 // Used to launch an object into the physical world...
 void EERIE_PHYSICS_BOX_Launch(EERIE_3DOBJ * obj, const Vec3f & pos,
-                              const Anglef & angle, const Vec3f & vect) {
+                              const Anglef & angle, const Vec3f & vect, Entity * io) {
 	
 	arx_assert(obj);
 	arx_assert(obj->pbox);
@@ -282,6 +283,8 @@ void EERIE_PHYSICS_BOX_Launch(EERIE_3DOBJ * obj, const Vec3f & pos,
 	obj->pbox->active = 1;
 	obj->pbox->stopcount = 0;
 	obj->pbox->storedtiming = 0;
+	
+	physics::launchObject(obj, pos, angle, vect, io); // ArxModern: rigid body instead of the box, when available
 	
 }
 

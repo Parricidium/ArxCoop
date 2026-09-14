@@ -70,10 +70,15 @@ constexpr const std::string_view
 	realtimeOverride,
 	bufferUpload,
 	extensionOverride,
+	pipeline = "auto",
+	lighting = "pixel",
+	postDebug,
 	thumbnailSize = BOOST_PP_STRINGIZE(THUMBNAIL_DEFAULT_WIDTH) "x"
 	                BOOST_PP_STRINGIZE(THUMBNAIL_DEFAULT_HEIGHT);
 
 constexpr const int
+	shadows = 4,
+	shadowResolution = 1024,
 	refreshRate = 0,
 	levelOfDetail = 2,
 	vsync = -1,
@@ -93,6 +98,8 @@ constexpr const int
 	quickLevelTransition = JumpToChangeLevel;
 
 constexpr const bool
+	postprocess = true,
+	fxaa = false,
 	fullscreen = true,
 	viewBobbing = true,
 	screenShake = true,
@@ -113,7 +120,8 @@ constexpr const bool
 	rawMouseInput = true,
 	borderTurning = true,
 	useAltRuneRecognition = true,
-	improvedBowAim = true;
+	improvedBowAim = true,
+	physics = true;
 
 #ifdef ARX_DEBUG
 const bool allowConsole = true;
@@ -122,6 +130,10 @@ const bool allowConsole = false;
 #endif
 
 constexpr const float
+	bloom = 0.35f,
+	ambientOcclusion = 0.f,
+	normalMaps = 1.f,
+	water = 1.f,
 	fogDistance = 10.f,
 	gamma = 5.f,
 	fov = 75.f,
@@ -224,7 +236,19 @@ constexpr const std::string_view
 	alphaCutoutAntialiasing = "alpha_cutout_antialiasing",
 	bufferSize = "buffer_size",
 	bufferUpload = "buffer_upload",
-	extensionOverride = "extension_override";
+	extensionOverride = "extension_override",
+	pipeline = "pipeline",
+	lighting = "lighting",
+	shadows = "shadows",
+	shadowResolution = "shadow_resolution",
+	postprocess = "postprocess",
+	bloom = "bloom",
+	fxaa = "fxaa",
+	ambientOcclusion = "ambient_occlusion",
+	normalMaps = "normal_maps",
+	physics = "physics",
+	water = "water",
+	postDebug = "post_debug";
 
 // Interface options
 constexpr const std::string_view
@@ -484,6 +508,18 @@ bool Config::save() {
 	writer.writeKey(Key::bufferSize, video.bufferSize);
 	writer.writeKey(Key::bufferUpload, video.bufferUpload);
 	writer.writeKey(Key::extensionOverride, video.extensionOverride);
+	writer.writeKey(Key::pipeline, video.pipeline);
+	writer.writeKey(Key::lighting, video.lighting);
+	writer.writeKey(Key::shadows, video.shadows);
+	writer.writeKey(Key::shadowResolution, video.shadowResolution);
+	writer.writeKey(Key::postprocess, video.postprocess);
+	writer.writeKey(Key::bloom, video.bloom);
+	writer.writeKey(Key::fxaa, video.fxaa);
+	writer.writeKey(Key::ambientOcclusion, video.ambientOcclusion);
+	writer.writeKey(Key::normalMaps, video.normalMaps);
+	writer.writeKey(Key::physics, video.physics);
+	writer.writeKey(Key::water, video.water);
+	writer.writeKey(Key::postDebug, video.postDebug);
 	
 	// interface
 	writer.beginSection(Section::Interface);
@@ -618,6 +654,18 @@ bool Config::init(const fs::path & file) {
 	video.bufferSize = std::max(reader.getKey(Section::Video, Key::bufferSize, Default::bufferSize), 0);
 	video.bufferUpload = reader.getKey(Section::Video, Key::bufferUpload, Default::bufferUpload);
 	video.extensionOverride = reader.getKey(Section::Video, Key::extensionOverride, Default::extensionOverride);
+	video.pipeline = reader.getKey(Section::Video, Key::pipeline, Default::pipeline);
+	video.lighting = reader.getKey(Section::Video, Key::lighting, Default::lighting);
+	video.shadows = reader.getKey(Section::Video, Key::shadows, Default::shadows);
+	video.shadowResolution = reader.getKey(Section::Video, Key::shadowResolution, Default::shadowResolution);
+	video.postprocess = reader.getKey(Section::Video, Key::postprocess, Default::postprocess);
+	video.bloom = reader.getKey(Section::Video, Key::bloom, Default::bloom);
+	video.fxaa = reader.getKey(Section::Video, Key::fxaa, Default::fxaa);
+	video.ambientOcclusion = reader.getKey(Section::Video, Key::ambientOcclusion, Default::ambientOcclusion);
+	video.normalMaps = reader.getKey(Section::Video, Key::normalMaps, Default::normalMaps);
+	video.physics = reader.getKey(Section::Video, Key::physics, Default::physics);
+	video.water = reader.getKey(Section::Video, Key::water, Default::water);
+	video.postDebug = reader.getKey(Section::Video, Key::postDebug, Default::postDebug);
 	
 	// Get interface settings
 	bool oldCrosshair = reader.getKey(Section::Video, Key::showCrosshair, Default::showCrosshair);

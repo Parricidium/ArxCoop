@@ -485,6 +485,7 @@ static std::unique_ptr<EERIE_3DOBJ> CreateIntermediaryMesh(const EERIE_3DOBJ * o
 	work->vertexWorldPositions.resize(work->vertexlist.size());
 	work->vertexClipPositions.resize(work->vertexlist.size());
 	work->vertexColors.resize(work->vertexlist.size());
+	work->vertexWorldNormals.resize(work->vertexlist.size());
 	
 	return work;
 }

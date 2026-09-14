@@ -74,6 +74,15 @@ struct TexturedVertex {
 	
 	Vec2f uv = Vec2f(0.f);
 	
+	// ArxModern: per-pixel lighting of entities. With diffuse > 0 the shader adds the scene
+	// lights at worldPos with this normal to the vertex color (which then only holds the ambient).
+	Vec3f worldPos = Vec3f(0.f);
+	Vec3f normal = Vec3f(0.f);
+	float diffuse = 0.f;
+	// Index of the entity (or of the entity it hangs from) this vertex belongs to, -1 if none:
+	// an entity never shadows a light it carries itself (RendererLight::owner).
+	float caster = -1.f;
+	
 	constexpr TexturedVertex() arx_noexcept_default
 	
 	constexpr TexturedVertex(const Vec3f & _p, float _w, ColorRGBA _color, Vec2f _uv) noexcept
@@ -100,6 +109,7 @@ struct SMY_VERTEX {
 	Vec3f p = Vec3f(0.f);
 	ColorRGBA color;
 	Vec2f uv = Vec2f(0.f);
+	Vec3f normal = Vec3f(0.f); // ArxModern: per-vertex normal for per-pixel lighting
 	
 	constexpr SMY_VERTEX() arx_noexcept_default
 	

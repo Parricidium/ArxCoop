@@ -70,6 +70,7 @@ OpenGLRenderer::OpenGLRenderer()
 	, m_hasDrawElementsBaseVertex(false)
 	, m_hasClearDepthf(false)
 	, m_hasVertexFogCoordinate(false)
+	, m_hasShaderSupport(false)
 	, m_hasSampleShading(false)
 	, m_hasFogx(false)
 	, m_hasFogDistanceMode(false)
@@ -328,6 +329,9 @@ void OpenGLRenderer::initialize() {
 		m_hasFogDistanceMode = gl.has("GL_NV_fog_distance");
 	}
 	
+	// ArxModern: GLSL 1.30, generic vertex attributes and glBindFragDataLocation need OpenGL 3.0
+	m_hasShaderSupport = !gl.isES() && gl.is(3, 0);
+	
 }
 
 void OpenGLRenderer::beforeResize(bool wasOrIsFullscreen) {
@@ -450,6 +454,10 @@ void OpenGLRenderer::reinit() {
 	m_currentTransform = GL_UnsetTransform;
 	switchVertexArray(GL_NoArray, 0, 1);
 	
+	// ArxModern: programmable pipeline
+	setShaderPipeline(config.video.pipeline != "fixed", config.video.pipeline == "shader");
+	LogInfo << "Pipeline: " << (m_shaders ? "shader" : "fixed-function");
+	
 	onRendererInit();
 	
 }
@@ -459,6 +467,10 @@ void OpenGLRenderer::shutdown() {
 	arx_assert(isInitialized());
 	
 	onRendererShutdown();
+
+	m_water.reset();
+	m_post.reset();
+	m_shaders.reset();
 	
 	m_TextureStages.clear();
 	
@@ -526,6 +538,10 @@ void OpenGLRenderer::SetViewMatrix(const glm::mat4x4 & matView) {
 	}
 	
 	m_view = matView;
+	
+	if(m_shaders) {
+		m_shaders->setMatrices(m_view, m_projection);
+	}
 }
 
 void OpenGLRenderer::SetProjectionMatrix(const glm::mat4x4 & matProj) {
@@ -539,6 +555,10 @@ void OpenGLRenderer::SetProjectionMatrix(const glm::mat4x4 & matProj) {
 	}
 	
 	m_projection = matProj;
+	
+	if(m_shaders) {
+		m_shaders->setMatrices(m_view, m_projection);
+	}
 }
 
 void OpenGLRenderer::ReleaseAllTextures() {
@@ -583,6 +603,10 @@ void OpenGLRenderer::SetViewport(const Rect & _viewport) {
 	
 	if(m_currentTransform == GL_NoTransform) {
 		m_currentTransform = GL_UnsetTransform;
+	}
+	
+	if(m_shaders) {
+		m_shaders->setViewportSize(float(viewport.width()), float(viewport.height()));
 	}
 }
 
@@ -670,11 +694,217 @@ void OpenGLRenderer::SetFogColor(Color color) {
 	Color4f colorf(color);
 	GLfloat fogColor[4] = { colorf.r, colorf.g, colorf.b, colorf.a };
 	glFogfv(GL_FOG_COLOR, fogColor);
+	
+	if(m_shaders) {
+		m_shaders->setFogColor(color);
+	}
 }
 
 void OpenGLRenderer::SetFogParams(float fogStart, float fogEnd) {
 	glFogf(GL_FOG_START, fogStart);
 	glFogf(GL_FOG_END, fogEnd);
+	
+	if(m_shaders) {
+		m_shaders->setFogParams(fogStart, fogEnd);
+	}
+}
+
+// ArxModern
+
+bool OpenGLRenderer::setShaderPipeline(bool enable, bool verbose) {
+	
+	if(enable == useShaders()) {
+		return enable;
+	}
+	
+	// Forget cached array state while the old mode is still active
+	switchVertexArray(GL_NoArray, 0, 1);
+	m_currentTransform = GL_UnsetTransform;
+	
+	if(!enable) {
+		m_water.reset();
+		m_post.reset();
+		m_shaders.reset();
+		setVertexArrayAttribMode(false);
+		for(GLuint attrib = 0; attrib < GLShaderPipeline::AttribCount; attrib++) {
+			glDisableVertexAttribArray(attrib);
+		}
+		glEnableClientState(GL_VERTEX_ARRAY);
+		glEnableClientState(GL_COLOR_ARRAY);
+		glClientActiveTexture(GL_TEXTURE0);
+		glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+		return false;
+	}
+	
+	if(!m_hasShaderSupport) {
+		if(verbose) {
+			LogWarning << "Shader pipeline requested but OpenGL 3.0 is not available";
+		}
+		return false;
+	}
+	
+	m_shaders = std::make_unique<GLShaderPipeline>(this);
+	if(!m_shaders->init()) {
+		LogWarning << "Could not initialize the shader pipeline, falling back to fixed-function rendering";
+		m_shaders.reset();
+		return false;
+	}
+	
+	// Generic attributes replace the conventional client arrays, which must not
+	// stay enabled with null pointers: the driver may still fetch them.
+	glDisableClientState(GL_VERTEX_ARRAY);
+	glDisableClientState(GL_COLOR_ARRAY);
+	glClientActiveTexture(GL_TEXTURE0);
+	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+	glEnableVertexAttribArray(GLShaderPipeline::AttribPosition);
+	glEnableVertexAttribArray(GLShaderPipeline::AttribColor);
+	glEnableVertexAttribArray(GLShaderPipeline::AttribTexCoord0);
+	setVertexArrayAttribMode(true);
+	m_shaders->setViewportSize(float(viewport.width()), float(viewport.height()));
+	m_shaders->setMatrices(m_view, m_projection);
+	
+	applyGraphicsConfig();
+	
+	return true;
+}
+
+void OpenGLRenderer::applyGraphicsConfig() {
+	
+	bool wantShaders = config.video.pipeline != "fixed";
+	if(wantShaders != useShaders()) {
+		setShaderPipeline(wantShaders, true); // calls back into applyGraphicsConfig() when enabling
+		return;
+	}
+	if(!m_shaders) {
+		return;
+	}
+	
+	m_shaders->initShadows(size_t(std::max(config.video.shadows, 0)), config.video.shadowResolution);
+	
+	if(config.video.postprocess) {
+		if(!m_post) {
+			m_post = std::make_unique<GLPostProcess>(m_shaders.get());
+			if(!m_post->init()) {
+				m_post.reset();
+			}
+		}
+		m_shaders->setNormalMapStrength(config.video.normalMaps);
+		if(m_post) {
+			m_post->settings().bloom = config.video.bloom;
+			m_post->settings().fxaa = config.video.fxaa;
+			m_post->settings().ao = config.video.ambientOcclusion;
+			m_post->settings().debugView = (config.video.postDebug == "ao") ? 1 : (config.video.postDebug == "bloom") ? 2 : 0;
+		}
+	} else {
+		m_water.reset();
+		m_post.reset();
+	}
+
+	if(config.video.water > 0.f && m_post) {
+		if(!m_water) {
+			m_water = std::make_unique<GLWater>(m_shaders.get(), m_post.get());
+			if(!m_water->init()) {
+				m_water.reset();
+			}
+		}
+		if(m_water) {
+			m_water->setPost(m_post.get());
+			m_water->setStrength(config.video.water);
+		}
+	} else {
+		m_water.reset();
+	}
+
+}
+
+bool OpenGLRenderer::beginWater(float time, const Vec3f & cameraPos) {
+	return m_water && m_water->begin(time, cameraPos);
+}
+
+void OpenGLRenderer::endWater() {
+	if(m_water) {
+		m_water->end();
+	}
+}
+
+void OpenGLRenderer::applyShaders() {
+	if(m_shaders) {
+		m_shaders->setPretransformed(m_currentTransform == GL_NoTransform);
+		m_shaders->apply();
+	}
+}
+
+void OpenGLRenderer::setPixelLights(const RendererLight * lights, size_t dynamicCount, size_t count) {
+	if(m_shaders) {
+		m_shaders->setLights(lights, dynamicCount, count);
+	}
+}
+
+void OpenGLRenderer::setPixelLighting(bool enable) {
+	if(m_shaders) {
+		m_shaders->setPixelLighting(enable);
+	}
+}
+
+void OpenGLRenderer::setNormalMap(Texture * normalMap) {
+	if(m_shaders) {
+		m_shaders->setNormalMap(static_cast<GLTexture *>(normalMap));
+	}
+}
+
+void OpenGLRenderer::beginScene() {
+	if(m_post) {
+		Vec2i size = mainApp->getWindow()->getSize();
+		m_post->begin(size.x, size.y, m_MSAALevel);
+	}
+}
+
+void OpenGLRenderer::endScene() {
+	if(m_post) {
+		m_post->end();
+	}
+}
+
+void OpenGLRenderer::forgetTextureBindings() {
+	for(size_t i = 0; i < m_TextureStages.size(); i++) {
+		GetTextureStage(i)->forgetBinding();
+	}
+}
+
+void OpenGLRenderer::renderShadowMaps(ShadowCasterDrawFunc drawCasters) {
+	if(m_shaders) {
+		// The shadow pass changes the GL viewport and scissor, restore ours afterwards
+		Rect savedViewport = viewport;
+		Rect savedScissor = m_scissor;
+		m_shaders->renderShadowMaps(drawCasters);
+		viewport = Rect(0, 0, 0, 0);
+		SetViewport(savedViewport);
+		m_scissor = Rect(0, 0, 0, 0);
+		SetScissor(savedScissor);
+	}
+}
+
+void OpenGLRenderer::reloadShaders() {
+	if(m_shaders) {
+		if(m_shaders->reload()) {
+			LogInfo << "Shaders reloaded";
+		} else {
+			LogWarning << "Shader reload failed, keeping the previous program";
+		}
+	}
+	if(m_post) {
+		GLPostProcess::Settings settings = m_post->settings();
+		if(m_post->init()) {
+			m_post->settings() = settings;
+		} else {
+			LogWarning << "Post-processing shader reload failed, post-processing disabled";
+			m_water.reset();
+			m_post.reset();
+		}
+	}
+	if(m_water && !m_water->init()) {
+		m_water.reset();
+	}
 }
 
 void OpenGLRenderer::SetAntialiasing(bool enable) {

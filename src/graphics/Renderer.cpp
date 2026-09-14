@@ -38,6 +38,9 @@ const TextureStage * Renderer::GetTextureStage(size_t textureStage) const {
 
 void Renderer::ResetTexture(unsigned int textureStage) {
 	GetTextureStage(textureStage)->resetTexture();
+	if(textureStage == 0) {
+		setNormalMap(nullptr);
+	}
 }
 
 Texture * Renderer::GetTexture(unsigned int textureStage) const {
@@ -46,6 +49,9 @@ Texture * Renderer::GetTexture(unsigned int textureStage) const {
 
 void Renderer::SetTexture(unsigned int textureStage, Texture * pTexture) {
 	GetTextureStage(textureStage)->setTexture(pTexture);
+	if(textureStage == 0) {
+		setNormalMap(nullptr);
+	}
 }
 
 void Renderer::SetTexture(unsigned int textureStage, TextureContainer * pTextureContainer) {
@@ -54,6 +60,9 @@ void Renderer::SetTexture(unsigned int textureStage, TextureContainer * pTexture
 		GetTextureStage(textureStage)->setTexture(pTextureContainer->m_pTexture);
 	} else {
 		GetTextureStage(textureStage)->resetTexture();
+	}
+	if(textureStage == 0) {
+		setNormalMap(pTextureContainer ? pTextureContainer->m_pNormalMap : nullptr);
 	}
 }
 
