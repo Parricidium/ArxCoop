@@ -98,6 +98,7 @@ static void ARX_NPC_SpawnMember(Entity * ioo, VertexSelectionId num) {
 	nouvo->vertexWorldPositions.resize(nvertex);
 	nouvo->vertexClipPositions.resize(nvertex);
 	nouvo->vertexColors.resize(nvertex);
+	nouvo->vertexWorldNormals.resize(nvertex);
 	
 	VertexId inpos = VertexId(0);
 	
@@ -238,7 +239,7 @@ static void ARX_NPC_SpawnMember(Entity * ioo, VertexSelectionId num) {
 	io->soundtime = 0;
 	io->soundcount = 0;
 	
-	EERIE_PHYSICS_BOX_Launch(io->obj, io->pos, io->angle, vector);
+	EERIE_PHYSICS_BOX_Launch(io->obj, io->pos, io->angle, vector, io);
 	
 }
 

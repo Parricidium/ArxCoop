@@ -25,6 +25,9 @@
 #include <boost/intrusive/list.hpp>
 
 #include "graphics/Renderer.h"
+#include "graphics/opengl/GLPostProcess.h"
+#include "graphics/opengl/GLWater.h"
+#include "graphics/opengl/GLShaderPipeline.h"
 #include "graphics/opengl/GLTexture.h"
 #include "graphics/opengl/OpenGLUtil.h"
 #include "math/Rectangle.h"
@@ -94,7 +97,24 @@ public:
 	}
 	
 	template <class Vertex>
-	void beforeDraw() { flushState(); selectTrasform<Vertex>(); }
+	void beforeDraw() { flushState(); selectTrasform<Vertex>(); applyShaders(); }
+	
+	// ArxModern: true when the programmable pipeline replaces the fixed-function one
+	[[nodiscard]] bool useShaders() const override { return m_shaders != nullptr; }
+	[[nodiscard]] bool hasShaderSupport() const { return m_hasShaderSupport; }
+	void reloadShaders() override;
+	bool setShaderPipeline(bool enable, bool verbose = false) override;
+	[[nodiscard]] bool hasPixelLighting() const override { return m_shaders != nullptr; }
+	void setPixelLights(const RendererLight * lights, size_t dynamicCount, size_t count) override;
+	void setPixelLighting(bool enable) override;
+	void renderShadowMaps(ShadowCasterDrawFunc drawCasters) override;
+	void applyGraphicsConfig() override;
+	void setNormalMap(Texture * normalMap) override;
+	void beginScene() override;
+	void endScene() override;
+	bool beginWater(float time, const Vec3f & cameraPos) override;
+	void endWater() override;
+	void forgetTextureBindings();
 	
 	bool hasTextureNPOT() const { return m_hasTextureNPOT; }
 	bool hasSizedTextureFormats() const { return m_hasSizedTextureFormats; }
@@ -164,6 +184,12 @@ private:
 	bool m_hasSampleShading;
 	bool m_hasFogx;
 	bool m_hasFogDistanceMode;
+	bool m_hasShaderSupport;
+	
+	std::unique_ptr<GLShaderPipeline> m_shaders;
+	std::unique_ptr<GLPostProcess> m_post;
+	std::unique_ptr<GLWater> m_water;
+	void applyShaders();
 	
 	enum GLTransformMode {
 		GL_UnsetTransform,

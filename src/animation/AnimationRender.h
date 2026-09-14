@@ -64,6 +64,9 @@ void Cedric_ApplyLightingFirstPartRefactor(Entity & io);
 void PopAllTriangleListOpaque(RenderState baseState = render3D(), bool clear = true);
 void PopAllTriangleListTransparency();
 
+//! ArxModern: draw the filled opaque entity batches into the current shadow map
+void DrawEntityShadowCasters();
+
 void drawQuadRTP(const RenderMaterial & mat, TexturedQuad quat);
 void drawTriangle(const RenderMaterial & mat, const TexturedVertexUntransformed * vertices);
 

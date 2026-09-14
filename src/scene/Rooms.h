@@ -90,6 +90,11 @@ struct Room {
 	std::unique_ptr<VertexBuffer<SMY_VERTEX>> pVertexBuffer;
 	std::vector<TextureContainer *> ppTextureContainer;
 	
+	// ArxModern: shadow casters (see SMY_ARXMAT::shadowIndexOffset) and room bounds
+	std::vector<unsigned short> shadowIndexBuffer;
+	Vec3f bboxMin = Vec3f(0.f);
+	Vec3f bboxMax = Vec3f(0.f);
+	
 };
 
 struct RoomData {

@@ -89,6 +89,11 @@ struct SMY_ARXMAT {
 	util::HandleArray<BatchBucket, u32, 5> indexOffsets;
 	util::HandleArray<BatchBucket, u32, 5> indexCounts;
 	
+	// ArxModern: all opaque polygons of this material in the room (shadow casters),
+	// into Room::shadowIndexBuffer - static, independent of the camera
+	u32 shadowIndexOffset = 0;
+	u32 shadowIndexCount = 0;
+	
 };
 
 /*!
@@ -158,6 +163,7 @@ private:
 public:
 
 	bool LoadFile(const res::path & strPathname);
+	void loadNormalMap(const res::path & texturePath); // ArxModern
 	
 	const res::path m_texName; // Name of texture
 	
@@ -168,6 +174,8 @@ public:
 	u32 userflags;
 	
 	Texture * m_pTexture; // Diffuse
+	// ArxModern: tangent-space normal map (from <name>_n.* or generated from the texture), may be null
+	Texture * m_pNormalMap = nullptr;
 	
 	/*!
 	 * End of the image in texture coordinates (image size divided by stored size).

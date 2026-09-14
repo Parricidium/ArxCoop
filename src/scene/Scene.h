@@ -64,6 +64,12 @@ enum RoomPositionMode {
 
 RoomHandle ARX_PORTALS_GetRoomNumForPosition(const Vec3f & pos, RoomPositionMode mode = RoomPositionDefault);
 
+//! ArxModern: true while the renderer lights the level and entities per pixel this frame
+bool ARX_SCENE_PixelLighting();
+
+//! ArxModern: write the lights sent to the renderer this frame to the log (F6)
+void ARX_SCENE_DumpPixelLights();
+
 void ARX_SCENE_Update();
 void ARX_SCENE_Render();
 bool ARX_SCENE_PORTAL_ClipIO(Entity * io, const Vec3f & position);

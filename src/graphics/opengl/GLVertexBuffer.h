@@ -47,6 +47,13 @@ enum GLArrayClientState {
 void bindBuffer(GLuint buffer);
 void unbindBuffer(GLuint buffer);
 void setVertexArrayTexCoord(int index, const void * coord, size_t stride);
+// ArxModern: select generic vertex attributes (shader pipeline) instead of client states
+void setVertexArrayAttribMode(bool attribs);
+// ArxModern: lighting attributes (shader pipeline only); pass nullptr to disable them.
+// normalSize is 3 (xyz) or 4 (xyz + diffuse); worldPos may be null when the position attribute is in world space.
+// caster (entity index of the vertex, for the shadow pass) may be null for level geometry.
+void setVertexArrayLighting(const void * normal, int normalSize, const void * worldPos, size_t stride,
+                            const void * caster = nullptr);
 bool switchVertexArray(GLArrayClientState type, const void * ref, int texcount);
 void clearVertexArray(const void * ref);
 
@@ -56,6 +63,14 @@ inline void setVertexArray(OpenGLRenderer * renderer, const TexturedVertex * ver
 	ARX_UNUSED(vertices);
 
 	if(!switchVertexArray(GL_TexturedVertex, ref, 1)) {
+		return;
+	}
+	
+	if(renderer->useShaders()) {
+		glVertexAttribPointer(GLShaderPipeline::AttribPosition, 4, GL_FLOAT, GL_FALSE, sizeof(*vertices), &vertices->p);
+		glVertexAttribPointer(GLShaderPipeline::AttribColor, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(*vertices), &vertices->color);
+		setVertexArrayTexCoord(0, &vertices->uv, sizeof(*vertices));
+		setVertexArrayLighting(&vertices->normal, 4, &vertices->worldPos, sizeof(*vertices), &vertices->caster);
 		return;
 	}
 	
@@ -80,6 +95,14 @@ inline void setVertexArray(OpenGLRenderer * renderer, const SMY_VERTEX * vertice
 		return;
 	}
 	
+	if(renderer->useShaders()) {
+		glVertexAttribPointer(GLShaderPipeline::AttribPosition, 3, GL_FLOAT, GL_FALSE, sizeof(*vertices), &vertices->p.x);
+		glVertexAttribPointer(GLShaderPipeline::AttribColor, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(*vertices), &vertices->color);
+		setVertexArrayTexCoord(0, &vertices->uv, sizeof(*vertices));
+		setVertexArrayLighting(&vertices->normal, 3, nullptr, sizeof(*vertices));
+		return;
+	}
+	
 	glVertexPointer(3, GL_FLOAT, sizeof(*vertices), &vertices->p.x);
 	
 	if(renderer->hasVertexFogCoordinate()) {
@@ -95,6 +118,15 @@ template <>
 inline void setVertexArray(OpenGLRenderer * renderer, const SMY_VERTEX3 * vertices, const void * ref) {
 	
 	if(!switchVertexArray(GL_SMY_VERTEX3, ref, 3)) {
+		return;
+	}
+	
+	if(renderer->useShaders()) {
+		glVertexAttribPointer(GLShaderPipeline::AttribPosition, 3, GL_FLOAT, GL_FALSE, sizeof(*vertices), &vertices->p.x);
+		glVertexAttribPointer(GLShaderPipeline::AttribColor, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(*vertices), &vertices->color);
+		setVertexArrayTexCoord(0, &vertices->uv[0], sizeof(*vertices));
+		setVertexArrayTexCoord(1, &vertices->uv[1], sizeof(*vertices));
+		setVertexArrayTexCoord(2, &vertices->uv[2], sizeof(*vertices));
 		return;
 	}
 	

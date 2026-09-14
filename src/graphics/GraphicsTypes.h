@@ -193,6 +193,7 @@ struct EERIE_3DOBJ {
 	util::HandleVector<VertexId, EERIE_VERTEX> vertexWorldPositions;
 	util::HandleVector<VertexId, Vec4f> vertexClipPositions;
 	util::HandleVector<VertexId, ColorRGBA> vertexColors;
+	util::HandleVector<VertexId, Vec3f> vertexWorldNormals; // ArxModern: for per-pixel lighting
 	
 	std::vector<EERIE_FACE> facelist;
 	util::HandleVector<VertexGroupId, VertexGroup> grouplist;
