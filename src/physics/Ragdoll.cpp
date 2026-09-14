@@ -61,6 +61,7 @@ constexpr PlatformDuration MaxMirrorStep = std::chrono::milliseconds(300);
 
 bool g_mirrorMode = false;
 std::unordered_map<Entity *, MirroredRagdoll> g_mirrored;
+DeathBlow g_deathBlow; //!< the blow about to kill an NPC, consumed by the ragdoll creation
 
 float mirrorFactor(PlatformInstant start, PlatformDuration duration, bool active) {
 	if(!active || duration <= PlatformDuration(0)) {
@@ -95,6 +96,10 @@ bool applyMirroredPose(Entity & io, Skeleton & skeleton) {
 }
 
 } // anonymous namespace
+
+void setDeathBlow(const DeathBlow & blow) {
+	g_deathBlow = blow;
+}
 
 void setMirrorMode(bool mirrored) {
 	if(g_mirrorMode != mirrored) {
@@ -161,6 +166,7 @@ void mirrorRagdoll(Entity & io, const Vec3f & pos, bool active, const std::vecto
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/Constraints/SwingTwistConstraint.h>
+#include <Jolt/Physics/Body/BodyLock.h>
 #include <Jolt/Physics/Ragdoll/Ragdoll.h>
 #include <Jolt/Skeleton/Skeleton.h>
 
@@ -387,6 +393,10 @@ constexpr char SaveMagic[8] = { 'A', 'R', 'X', 'R', 'A', 'G', 'D', '1' };
 
 void onEntityDied(Entity & io, Entity * killer) {
 
+	// The pending blow is for this death only, ragdoll or not
+	DeathBlow blow = g_deathBlow;
+	g_deathBlow = DeathBlow();
+
 	if(g_mirrorMode || !canRagdoll(io)) {
 		return;
 	}
@@ -413,13 +423,38 @@ void onEntityDied(Entity & io, Entity * killer) {
 		                              toJolt(data.anim.quat).Normalized(), JPH::EActivation::Activate);
 	}
 
-	// A push away from whoever dealt the blow
-	if(killer && killer != &io) {
+	// The momentum of the blow that killed it; failing that, a push away from the killer
+	if(!blow.valid && killer && killer != &io) {
 		Vec3f dir = io.pos - killer->pos;
 		dir.y = 0.f;
 		if(arx::length2(dir) > 1.f) {
-			dir = glm::normalize(dir);
-			ragdoll.SetLinearVelocity(toJoltDirection(dir) * 1.5f + JPH::Vec3(0.f, -0.5f, 0.f));
+			blow.direction = glm::normalize(dir);
+			blow.at = io.pos - Vec3f(0.f, 80.f, 0.f);
+			blow.speed = 1.5f;
+			blow.valid = true;
+		}
+	}
+	if(blow.valid && blow.speed > 0.f && arx::length2(blow.direction) > 0.5f) {
+		JPH::Vec3 velocity = toJoltDirection(blow.direction) * blow.speed + JPH::Vec3(0.f, -0.5f, 0.f);
+		ragdoll.SetLinearVelocity(velocity);
+		// Part of it as an impulse at the point of impact: the body spins away from it
+		int nearest = -1;
+		float nearestDistance = 0.f;
+		for(VertexGroupId bone : skeleton.bones.handles()) {
+			float distance = arx::distance2(skeleton.bones[bone].anim.trans, blow.at);
+			if(nearest < 0 || distance < nearestDistance) {
+				nearest = int(size_t(bone));
+				nearestDistance = distance;
+			}
+		}
+		if(nearest >= 0) {
+			JPH::BodyID id = ragdoll.GetBodyID(nearest);
+			JPH::BodyLockWrite lock(system()->GetBodyLockInterface(), id);
+			if(lock.Succeeded()) {
+				JPH::Body & body = lock.GetBody();
+				float mass = 1.f / std::max(body.GetMotionProperties()->GetInverseMass(), 1e-3f);
+				body.AddImpulse(velocity * (mass * 0.6f), JPH::RVec3(toJolt(blow.at)));
+			}
 		}
 	}
 }

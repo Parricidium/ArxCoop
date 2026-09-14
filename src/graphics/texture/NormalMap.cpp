@@ -115,7 +115,7 @@ void gradient(const HeightField & h, size_t xm, size_t x, size_t xp, size_t ym, 
 
 } // anonymous namespace
 
-bool generateNormalMap(const Image & diffuse, Image & out, float strength) {
+bool generateNormalMap(const Image & diffuse, Image & out, float strength, float gloss) {
 
 	if(!diffuse.isValid() || diffuse.getWidth() < 2 || diffuse.getHeight() < 2) {
 		return false;
@@ -165,7 +165,16 @@ bool generateNormalMap(const Image & diffuse, Image & out, float strength) {
 	float fineScale = 6.f * strength;
 	float coarseScale = 14.f * strength;
 
-	out.create(width, height, Image::Format_R8G8B8);
+	// Height for the parallax mapping: mostly the shapes, a little grain, stretched to [0, 1]
+	float minHeight = 1.f, maxHeight = 0.f;
+	for(size_t i = 0; i < width * height; i++) {
+		float h = 0.75f * coarse.data[i] + 0.25f * fine.data[i];
+		minHeight = std::min(minHeight, h);
+		maxHeight = std::max(maxHeight, h);
+	}
+	float heightScale = (maxHeight > minHeight + 0.01f) ? 1.f / (maxHeight - minHeight) : 0.f;
+
+	out.create(width, height, Image::Format_R8G8B8A8);
 	unsigned char * dst = out.getData();
 	for(size_t y = 0; y < height; y++) {
 		size_t ym = (y == 0) ? height - 1 : y - 1;
@@ -182,10 +191,15 @@ bool generateNormalMap(const Image & diffuse, Image & out, float strength) {
 			float nx = -gx, ny = -gy, nz = 1.f;
 			float len = std::sqrt(nx * nx + ny * ny + nz * nz);
 			nx /= len, ny /= len, nz /= len;
-			unsigned char * p = dst + (y * width + x) * 3;
+			ARX_UNUSED(nz);
+			size_t i = y * width + x;
+			float h = (0.75f * coarse.data[i] + 0.25f * fine.data[i] - minHeight) * heightScale;
+			float g = gloss * (0.35f + 0.65f * std::sqrt(base.data[i]));
+			unsigned char * p = dst + i * 4;
 			p[0] = (unsigned char)std::clamp(int(std::lround((nx * 0.5f + 0.5f) * 255.f)), 0, 255);
 			p[1] = (unsigned char)std::clamp(int(std::lround((ny * 0.5f + 0.5f) * 255.f)), 0, 255);
-			p[2] = (unsigned char)std::clamp(int(std::lround((nz * 0.5f + 0.5f) * 255.f)), 0, 255);
+			p[2] = (unsigned char)std::clamp(int(std::lround(h * 255.f)), 0, 255);
+			p[3] = (unsigned char)std::clamp(int(std::lround(g * 255.f)), 0, 255);
 		}
 	}
 

@@ -50,6 +50,19 @@ namespace physics {
 //! Called when an NPC dies (from ARX_DAMAGES_ForceDeath): start a ragdoll if possible
 void onEntityDied(Entity & io, Entity * killer);
 
+/*!
+ * The blow that is about to kill an NPC (set by the damage code right before the death):
+ * the ragdoll starts with that momentum, so that a fireball throws the body away and an
+ * arrow pushes it over, instead of a plain collapse.
+ */
+struct DeathBlow {
+	Vec3f direction = Vec3f(0.f); //!< unit vector the blow pushes along
+	Vec3f at = Vec3f(0.f);        //!< where the body was hit (world), for the spin
+	float speed = 0.f;            //!< m/s given to the body
+	bool valid = false;
+};
+void setDeathBlow(const DeathBlow & blow);
+
 //! Drop the ragdoll of an entity (being destroyed)
 void removeRagdoll(Entity & io);
 

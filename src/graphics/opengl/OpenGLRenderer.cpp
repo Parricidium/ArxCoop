@@ -468,6 +468,8 @@ void OpenGLRenderer::shutdown() {
 	
 	onRendererShutdown();
 
+	m_reflect.reset();
+	m_lava.reset();
 	m_water.reset();
 	m_post.reset();
 	m_shaders.reset();
@@ -722,6 +724,8 @@ bool OpenGLRenderer::setShaderPipeline(bool enable, bool verbose) {
 	m_currentTransform = GL_UnsetTransform;
 	
 	if(!enable) {
+		m_reflect.reset();
+		m_lava.reset();
 		m_water.reset();
 		m_post.reset();
 		m_shaders.reset();
@@ -789,15 +793,48 @@ void OpenGLRenderer::applyGraphicsConfig() {
 			}
 		}
 		m_shaders->setNormalMapStrength(config.video.normalMaps);
+		m_shaders->setMaterialStrength(config.video.parallax, config.video.specular);
 		if(m_post) {
 			m_post->settings().bloom = config.video.bloom;
-			m_post->settings().fxaa = config.video.fxaa;
+			m_post->settings().fxaa = config.video.fxaa || config.video.smaa; // SMAA pass not written yet: FXAA stands in
 			m_post->settings().ao = config.video.ambientOcclusion;
 			m_post->settings().debugView = (config.video.postDebug == "ao") ? 1 : (config.video.postDebug == "bloom") ? 2 : 0;
 		}
 	} else {
+		m_reflect.reset();
+		m_lava.reset();
 		m_water.reset();
 		m_post.reset();
+	}
+
+	if(config.video.reflections > 0.f && m_post) {
+		if(!m_reflect) {
+			m_reflect = std::make_unique<GLReflect>(m_shaders.get(), m_post.get());
+			if(!m_reflect->init()) {
+				m_reflect.reset();
+			}
+		}
+		if(m_reflect) {
+			m_reflect->setPost(m_post.get());
+			m_reflect->setStrength(config.video.reflections);
+		}
+	} else {
+		m_reflect.reset();
+	}
+
+	if(config.video.lava > 0.f && m_post) {
+		if(!m_lava) {
+			m_lava = std::make_unique<GLLava>(m_shaders.get(), m_post.get());
+			if(!m_lava->init()) {
+				m_lava.reset();
+			}
+		}
+		if(m_lava) {
+			m_lava->setPost(m_post.get());
+			m_lava->setStrength(config.video.lava);
+		}
+	} else {
+		m_lava.reset();
 	}
 
 	if(config.video.water > 0.f && m_post) {
@@ -827,6 +864,38 @@ void OpenGLRenderer::endWater() {
 	}
 }
 
+bool OpenGLRenderer::beginLava(float time, const Vec3f & cameraPos) {
+	return m_lava && m_lava->begin(time, cameraPos);
+}
+
+void OpenGLRenderer::setLavaHaze(bool haze, float raise) {
+	if(m_lava) {
+		m_lava->setHaze(haze, raise);
+	}
+}
+
+void OpenGLRenderer::endLava() {
+	if(m_lava) {
+		m_lava->end();
+	}
+}
+
+bool OpenGLRenderer::beginReflections() {
+	return m_reflect && m_reflect->begin();
+}
+
+void OpenGLRenderer::setReflectionMaterial(Texture * normalMap, const MaterialParams & material) {
+	if(m_reflect) {
+		m_reflect->setMaterial(static_cast<GLTexture *>(normalMap), material);
+	}
+}
+
+void OpenGLRenderer::endReflections() {
+	if(m_reflect) {
+		m_reflect->end();
+	}
+}
+
 void OpenGLRenderer::applyShaders() {
 	if(m_shaders) {
 		m_shaders->setPretransformed(m_currentTransform == GL_NoTransform);
@@ -846,9 +915,15 @@ void OpenGLRenderer::setPixelLighting(bool enable) {
 	}
 }
 
-void OpenGLRenderer::setNormalMap(Texture * normalMap) {
+void OpenGLRenderer::setNormalMap(Texture * normalMap, const MaterialParams & material) {
 	if(m_shaders) {
-		m_shaders->setNormalMap(static_cast<GLTexture *>(normalMap));
+		m_shaders->setNormalMap(static_cast<GLTexture *>(normalMap), material);
+	}
+}
+
+void OpenGLRenderer::beginSoftParticles() {
+	if(m_shaders && m_post && config.video.softParticles && m_post->isInScene() && m_post->captureScene(true)) {
+		m_shaders->setSoftDepth(m_post->depthTexture(), m_post->width(), m_post->height());
 	}
 }
 
@@ -860,6 +935,9 @@ void OpenGLRenderer::beginScene() {
 }
 
 void OpenGLRenderer::endScene() {
+	if(m_shaders) {
+		m_shaders->setSoftDepth(0, 1, 1);
+	}
 	if(m_post) {
 		m_post->end();
 	}
@@ -898,12 +976,20 @@ void OpenGLRenderer::reloadShaders() {
 			m_post->settings() = settings;
 		} else {
 			LogWarning << "Post-processing shader reload failed, post-processing disabled";
+			m_reflect.reset();
+			m_lava.reset();
 			m_water.reset();
 			m_post.reset();
 		}
 	}
+	if(m_reflect && !m_reflect->init()) {
+		m_reflect.reset();
+	}
 	if(m_water && !m_water->init()) {
 		m_water.reset();
+	}
+	if(m_lava && !m_lava->init()) {
+		m_lava.reset();
 	}
 }
 

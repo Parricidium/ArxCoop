@@ -72,6 +72,9 @@ void ARX_SCENE_DumpPixelLights();
 
 void ARX_SCENE_Update();
 void ARX_SCENE_Render();
+
+//! ArxModern: forget the per-level caches of the water/lava passes (level load)
+void ResetFluidCaches();
 bool ARX_SCENE_PORTAL_ClipIO(Entity * io, const Vec3f & position);
 void RoomDrawRelease();
 

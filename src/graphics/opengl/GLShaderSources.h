@@ -4,6 +4,152 @@
 
 namespace shadersources {
 
+constexpr const char * lava_frag = R"glsl(#version 130
+
+// ArxModern lava.
+//
+// The engine draws lava as a flat polygon with its own texture (already in the scene) and
+// used to modulate three scrolling copies of the "enviro" highlight texture on top of it.
+// This pass replaces that overlay: the molten veins glow and pulse, the crust between them
+// darkens, the surface slowly heaves (the base texture is read back through a wobble), and
+// a second draw of the polygons raised above the pool (u_haze != 0) distorts what is seen
+// through the hot air.
+//
+// Inputs from the engine: u_scene / u_depth = the scene as rendered so far (resolved copies),
+// u_enviro = the original highlight texture (unit 0) with its three scrolling uv sets.
+
+uniform sampler2D u_enviro;
+uniform sampler2D u_scene;
+uniform sampler2D u_depth;
+uniform vec2 u_invSize;
+uniform vec4 u_projection; // (proj[0][0], proj[1][1], Q, Q * near): view z = Q * near / (Q - z_ndc)
+uniform vec3 u_cameraPos;
+uniform float u_time;
+uniform float u_strength; // 0..1, overall intensity of the effect
+uniform int u_fogEnabled;
+uniform vec2 u_fogRange;
+uniform int u_haze;       // 1 = the raised cap (heat haze), 0 = the surface
+
+in vec3 v_worldPos;
+in float v_viewDepth;
+in float v_interior;
+in vec2 v_uv0;
+in vec2 v_uv1;
+in vec2 v_uv2;
+
+out vec4 fragColor;
+
+// Tunables (a mod can edit this file: F7 reloads it)
+const vec3 GlowColor = vec3(1.0, 0.45, 0.08);   // colour of the molten veins
+const vec3 HotColor = vec3(1.0, 0.85, 0.5);     // colour of the hottest spots
+const float Glow = 1.1;                         // emissive strength
+const float Pulse = 0.25;                       // slow breathing of the glow
+const float Crust = 0.5;                        // how dark the cooled crust gets
+const float Wobble = 0.0025;                    // screen-space heave of the surface texture
+const float Haze = 0.012;                       // screen-space distortion of the heat haze
+const float HazeSpeed = 1.7;
+
+float linearDepth(float zBuffer) {
+	float zNdc = zBuffer * 2.0 - 1.0;
+	return u_projection.w / (u_projection.z - zNdc);
+}
+
+float sceneDepth(vec2 uv) {
+	return linearDepth(texture(u_depth, uv).r);
+}
+
+// Screen colour at uv + offset, unless something nearer than this fragment stands there
+vec3 sceneBehind(vec2 uv, vec2 offset, float surfaceZ) {
+	vec2 uv2 = clamp(uv + offset, u_invSize, 1.0 - u_invSize);
+	if(sceneDepth(uv2) < surfaceZ - 1.0) {
+		uv2 = uv;
+	}
+	return texture(u_scene, uv2).rgb;
+}
+
+void main() {
+
+	vec2 uv = gl_FragCoord.xy * u_invSize;
+	float surfaceZ = linearDepth(gl_FragCoord.z);
+	float fade = clamp(v_interior, 0.0, 1.0) * u_strength;
+
+	// The three scrolling layers of the original effect, as a "heat" field
+	vec3 l0 = texture(u_enviro, v_uv0).rgb;
+	vec3 l1 = texture(u_enviro, v_uv1).rgb;
+	vec3 l2 = texture(u_enviro, v_uv2).rgb;
+	// The product of the layers is about 0.2 on average: the veins are its high end, the
+	// cooled crust its low end
+	float product = l0.r * l1.g * l2.b;
+	float heat = smoothstep(0.17, 0.42, product);
+	float crust = smoothstep(0.16, 0.05, product);
+	float fine = l1.r * l2.g * 2.0;
+
+	if(u_haze != 0) {
+		// Heat haze: the scene seen through the rising hot air, wavering
+		vec2 wave = vec2(sin(v_worldPos.x * 0.05 + u_time * HazeSpeed * 1.3 + fine * 6.0),
+		                 cos(v_worldPos.z * 0.045 + u_time * HazeSpeed + heat * 5.0));
+		vec2 offset = wave * Haze * fade * (0.4 + 0.6 * heat);
+		// Perspective: distort less far away
+		offset *= clamp(400.0 / max(surfaceZ, 1.0), 0.2, 1.0);
+		fragColor = vec4(sceneBehind(uv, offset, surfaceZ), 1.0);
+		return;
+	}
+
+	// The surface: the base texture through a slow heave
+	vec2 wobble = vec2(sin(u_time * 0.7 + v_worldPos.z * 0.02), cos(u_time * 0.5 + v_worldPos.x * 0.02)) * Wobble * fade;
+	vec3 base = sceneBehind(uv, wobble, surfaceZ);
+
+	// Glowing veins where the layers coincide, pulsing; darker crust where they do not
+	float pulse = 1.0 + Pulse * sin(u_time * 1.1 + product * 12.0);
+	float hot = heat * heat;
+	vec3 color = base * (1.0 - Crust * crust) * (1.0 + Glow * heat * pulse);
+	color += mix(GlowColor, HotColor, hot) * (hot * Glow * 0.5 * pulse);
+
+	// Fog dims the glow as it does the scene
+	if(u_fogEnabled != 0) {
+		float fog = clamp((u_fogRange.y - v_viewDepth) / (u_fogRange.y - u_fogRange.x), 0.0, 1.0);
+		color = mix(base, color, fog);
+	}
+
+	fragColor = vec4(mix(base, color, u_strength), 1.0);
+}
+)glsl";
+
+constexpr const char * lava_vert = R"glsl(#version 130
+
+// ArxModern lava: the lava polygons of the level (world space), drawn after the scene with
+// the scene colour and depth available to the fragment shader. Drawn twice: the surface, and
+// a "cap" raised by u_raise above the pool through which the heat haze is seen.
+
+uniform mat4 u_viewProj;
+uniform mat4 u_view;
+uniform float u_raise;
+
+in vec4 a_position;
+in vec4 a_color; // r = 1 inside the pool, 0 at its edge (see RenderLava)
+in vec2 a_texcoord0;
+in vec2 a_texcoord1;
+in vec2 a_texcoord2;
+
+out vec3 v_worldPos;
+out float v_viewDepth;
+out float v_interior;
+out vec2 v_uv0;
+out vec2 v_uv1;
+out vec2 v_uv2;
+
+void main() {
+	vec3 pos = a_position.xyz - vec3(0.0, u_raise, 0.0);
+	v_worldPos = pos;
+	v_viewDepth = abs((u_view * vec4(pos, 1.0)).z);
+	v_interior = a_color.r;
+	v_uv0 = a_texcoord0;
+	v_uv1 = a_texcoord1;
+	v_uv2 = a_texcoord2;
+	gl_Position = u_viewProj * vec4(pos, 1.0);
+}
+)glsl";
+
 constexpr const char * legacy_frag = R"glsl(#version 130
 
 // ArxModern "legacy" fragment shader: reproduces the fixed-function texture combiners
@@ -25,6 +171,12 @@ constexpr const char * legacy_frag = R"glsl(#version 130
 //   (ApplyTileLights).
 // - Entities (v_diffuse > 0): the vertex color carries the ambient term and all lights are
 //   added, scaled by the diffuse factor (ApplyLight).
+//
+// Materials: the texture of stage 0 comes with a material map on unit 3 (u_normalMap). When
+// generated by the engine (u_material.w != 0) it holds the tangent-space normal in rg, the
+// height in b (parallax occlusion mapping) and the glossiness in a (Blinn-Phong specular of
+// the lights); a <name>_n.* file supplied by a mod holds a plain rgb normal map.
+// u_material = (parallax depth scale, gloss scale, metalness, generated flag).
 
 #define MAX_LIGHTS 128
 
@@ -44,6 +196,7 @@ uniform int u_lightCount;
 uniform int u_dynamicLightCount;
 uniform vec4 u_lightPos[MAX_LIGHTS];
 uniform vec4 u_lightColor[MAX_LIGHTS];
+uniform vec3 u_cameraPos;
 
 // Shadows: the first u_shadowCount dynamic lights have a cube map holding the distance
 // from the light (normalised by fallend) of the nearest occluder in each direction.
@@ -53,10 +206,21 @@ uniform samplerCube u_shadow1;
 uniform samplerCube u_shadow2;
 uniform samplerCube u_shadow3;
 
-// Normal map of the current material (tangent space, texture unit 3), see u_normalMapped
+// Material map of the current material (texture unit 3), see u_normalMapped
 uniform sampler2D u_normalMap;
 uniform int u_normalMapped;
 uniform float u_normalStrength;
+uniform vec4 u_material;
+uniform float u_specular; // global specular strength, 0 = off
+
+// Soft particles: blended, depth-tested draws without depth write fade out where they get
+// close to the opaque scene (u_depth = the scene depth on unit 8, captured before them).
+// u_softMode: 0 = off, 1 = scale rgb (additive blends), 2 = scale alpha, 3 = towards white
+// (multiplicative blends).
+uniform int u_softMode;
+uniform sampler2D u_depth;
+uniform vec4 u_projection; // (proj[0][0], proj[1][1], Q, Q * near): view z = Q * near / (Q - z_ndc)
+uniform vec2 u_invSize;
 
 in vec4 v_color;
 in vec2 v_texcoord0;
@@ -68,6 +232,16 @@ in vec3 v_normal;
 in float v_diffuse;
 
 out vec4 fragColor;
+
+// Tunables (a mod can edit this file: F7 reloads it)
+const float ParallaxDepth = 0.018;    // uv units of relief at u_material.x == 1 (level geometry)
+const float ParallaxRange = 900.0;    // world units beyond which the relief fades out
+const float ParallaxEntity = 0.4;     // fraction of it on entities (their textures are atlases)
+const int ParallaxSteps = 12;         // linear search steps of the parallax occlusion mapping
+const float SoftDistance = 24.0;      // world units over which a particle fades against geometry
+const float SpecularStrength = 0.9;   // overall specular scale
+const float MinShininess = 12.0;      // Blinn-Phong exponent at gloss 0
+const float MaxShininess = 220.0;     // ... and at gloss 1
 
 vec3 combineColor(int op, vec3 tex, vec3 prev) {
 	if(op == 1) {
@@ -128,13 +302,10 @@ float shadowFactor(int i, vec3 fromLight, float dist, float fallend, float cosan
 	return lit * (1.0 / 8.0);
 }
 
-// Perturb the interpolated normal with the material's normal map. The tangent frame is
-// built from the screen-space derivatives of the world position and texture coordinates
-// (cotangent frame, C. Schüler), so no per-vertex tangents are needed.
-vec3 perturbedNormal(vec3 normal) {
-	if(u_normalMapped == 0) {
-		return normal;
-	}
+// Tangent frame of the surface from the screen-space derivatives of the world position and
+// texture coordinates (cotangent frame, C. Schüler), so no per-vertex tangents are needed.
+// Returns false for a degenerate uv mapping.
+bool tangentFrame(vec3 normal, out mat3 tbn) {
 	vec3 dp1 = dFdx(v_worldPos);
 	vec3 dp2 = dFdy(v_worldPos);
 	vec2 duv1 = dFdx(v_texcoord0);
@@ -145,17 +316,59 @@ vec3 perturbedNormal(vec3 normal) {
 	vec3 bitangent = dp2perp * duv1.y + dp1perp * duv2.y;
 	float invmax = inversesqrt(max(dot(tangent, tangent), dot(bitangent, bitangent)));
 	if(invmax > 1e6) {
-		return normal; // degenerate uv mapping
+		return false;
 	}
-	mat3 tbn = mat3(tangent * invmax, bitangent * invmax, normal);
-	vec3 n = texture(u_normalMap, v_texcoord0).xyz * 2.0 - 1.0;
-	n.xy *= u_normalStrength;
-	return normalize(tbn * n);
+	tbn = mat3(tangent * invmax, bitangent * invmax, normal);
+	return true;
+}
+
+// Parallax occlusion mapping: where the view ray enters the relief stored in the height
+// channel of the material map. viewTS = direction towards the camera in tangent space.
+vec2 parallaxUv(vec2 uv, vec3 viewTS, float depth) {
+	if(depth <= 0.0 || viewTS.z <= 0.05) {
+		return uv;
+	}
+	// Fewer layers head-on, more at grazing angles (where the offset is large)
+	float layers = mix(float(ParallaxSteps), float(ParallaxSteps) * 2.0, 1.0 - viewTS.z);
+	float layerDepth = 1.0 / layers;
+	// Offset per layer: the ray goes down into the surface, away from the camera
+	vec2 delta = -viewTS.xy / viewTS.z * depth * layerDepth;
+	// Explicit gradients: derivatives are undefined inside the loop
+	vec2 ddx = dFdx(uv);
+	vec2 ddy = dFdy(uv);
+	float currentDepth = 0.0;
+	vec2 currentUv = uv;
+	float surface = 1.0 - textureGrad(u_normalMap, currentUv, ddx, ddy).b;
+	float previousSurface = surface;
+	for(int i = 0; i < 2 * ParallaxSteps; i++) {
+		if(currentDepth >= surface || float(i) >= layers) {
+			break;
+		}
+		currentUv += delta;
+		currentDepth += layerDepth;
+		previousSurface = surface;
+		surface = 1.0 - textureGrad(u_normalMap, currentUv, ddx, ddy).b;
+	}
+	// Interpolate between the last two layers where the ray crossed the surface
+	float after = surface - currentDepth;
+	float before = previousSurface - (currentDepth - layerDepth);
+	float weight = after / (after - before + 1e-5);
+	return mix(currentUv, currentUv - delta, clamp(weight, 0.0, 1.0));
+}
+
+// Linear view depth of the scene behind this fragment (soft particles)
+float sceneDepthAt(vec2 uv) {
+	float zNdc = texture(u_depth, uv).r * 2.0 - 1.0;
+	return u_projection.w / (u_projection.z - zNdc);
 }
 
 void main() {
 
 	vec4 color = v_color;
+	vec2 uv0 = v_texcoord0;
+	// Gradients of the stage 0 coordinates, taken before any branch (parallax moves uv0)
+	vec2 ddx0 = dFdx(v_texcoord0);
+	vec2 ddy0 = dFdy(v_texcoord0);
 
 	int lightCount = 0;
 	float lightScale = 0.0;
@@ -166,8 +379,41 @@ void main() {
 		lightCount = u_lightCount;
 		lightScale = v_diffuse;
 	}
+
+	vec3 specular = vec3(0.0);
 	if(lightCount > 0) {
-		vec3 normal = perturbedNormal(normalize(v_normal));
+		vec3 normal = normalize(v_normal);
+		vec3 toCamera = u_cameraPos - v_worldPos;
+		vec3 view = normalize(toCamera);
+		float gloss = 0.0;
+		mat3 tbn;
+		if(u_normalMapped != 0 && tangentFrame(normal, tbn)) {
+			if(u_material.w != 0.0) {
+				// Generated map: relief in the height channel, gloss in the alpha channel
+				float depth = ParallaxDepth * u_material.x * ((u_pixelLighting != 0) ? 1.0 : ParallaxEntity);
+				// Only worth it up close, and toned down at grazing angles (the tangent frames of
+				// neighbouring polygons differ, a large offset would show their seams)
+				depth *= clamp(1.0 - length(toCamera) / ParallaxRange, 0.0, 1.0);
+				vec3 viewTS = normalize(vec3(dot(toCamera, tbn[0]), dot(toCamera, tbn[1]), dot(toCamera, tbn[2])));
+				depth *= smoothstep(0.0, 0.5, viewTS.z);
+				uv0 = parallaxUv(uv0, viewTS, depth);
+				vec4 material = textureGrad(u_normalMap, uv0, ddx0, ddy0);
+				vec3 n = vec3(material.rg * 2.0 - 1.0, 0.0);
+				n.z = sqrt(max(1.0 - dot(n.xy, n.xy), 0.0));
+				n.xy *= u_normalStrength;
+				normal = normalize(tbn * n);
+				gloss = material.a * u_material.y;
+			} else {
+				vec3 n = texture(u_normalMap, uv0).xyz * 2.0 - 1.0;
+				n.xy *= u_normalStrength;
+				normal = normalize(tbn * n);
+				gloss = u_material.y;
+			}
+		}
+		float shininess = mix(MinShininess, MaxShininess, gloss);
+		// Fresnel: brighter highlights at grazing angles
+		float facing = max(dot(normal, view), 0.0);
+		float fresnel = pow(1.0 - facing, 5.0);
 		vec3 light = vec3(0.0);
 		for(int i = 0; i < lightCount; i++) {
 			vec3 toLight = u_lightPos[i].xyz - v_worldPos;
@@ -176,7 +422,8 @@ void main() {
 			if(dist >= fallend) {
 				continue;
 			}
-			float cosangle = dot(normal, toLight / dist);
+			toLight /= dist;
+			float cosangle = dot(normal, toLight);
 			if(cosangle <= 0.0) {
 				continue;
 			}
@@ -191,12 +438,20 @@ void main() {
 				}
 			}
 			light += u_lightColor[i].rgb * (cosangle * attenuation);
+			if(gloss > 0.0 && u_specular > 0.0) {
+				vec3 halfway = normalize(toLight + view);
+				float s = pow(max(dot(normal, halfway), 0.0), shininess) * (shininess + 8.0) * 0.02;
+				specular += u_lightColor[i].rgb * (s * attenuation);
+			}
 		}
 		color.rgb = min(color.rgb + light * lightScale, 1.0);
+		specular *= gloss * SpecularStrength * u_specular * lightScale * 2.0 * (1.0 + 2.0 * fresnel);
 	}
 
+	vec3 albedo = vec3(1.0);
 	if(u_stage0.x != 0 || u_stage0.y != 0) {
-		vec4 tex = texture(u_texture0, v_texcoord0);
+		vec4 tex = textureGrad(u_texture0, uv0, ddx0, ddy0);
+		albedo = tex.rgb;
 		color.rgb = combineColor(u_stage0.x, tex.rgb, color.rgb);
 		color.a = combineAlpha(u_stage0.y, tex.a, color.a);
 	}
@@ -213,11 +468,26 @@ void main() {
 		color.a = combineAlpha(u_stage2.y, tex.a, color.a);
 	}
 
+	// Highlights: white on dielectrics, tinted by the surface on metals
+	color.rgb += specular * mix(vec3(1.0), albedo, u_material.z);
+
 	if(u_fogEnabled != 0) {
 		// Linear fog, evaluated per fragment (the fixed-function result differs by a few
 		// 8-bit steps in the distance, see README)
 		float fog = clamp((u_fogRange.y - v_fogDistance) / (u_fogRange.y - u_fogRange.x), 0.0, 1.0);
 		color.rgb = mix(u_fogColor, color.rgb, fog);
+	}
+
+	if(u_softMode != 0) {
+		float sceneZ = sceneDepthAt(gl_FragCoord.xy * u_invSize);
+		float fade = clamp((sceneZ - v_fogDistance) / SoftDistance, 0.0, 1.0);
+		if(u_softMode == 1) {
+			color.rgb *= fade;
+		} else if(u_softMode == 2) {
+			color.a *= fade;
+		} else {
+			color.rgb = mix(vec3(1.0), color.rgb, fade);
+		}
 	}
 
 	fragColor = color;
@@ -602,6 +872,215 @@ void main() {
 
 	float ao = 1.0 - occlusion / float(SAMPLES);
 	fragColor = vec4(ao, ao, ao, 1.0);
+}
+)glsl";
+
+constexpr const char * reflect_frag = R"glsl(#version 130
+
+// ArxModern screen-space reflections.
+//
+// The glossy level polygons (metal walls, marble and wet floors, ice, glass) are drawn again
+// after the opaque scene: from each pixel a ray is reflected off the surface and marched
+// through the scene depth buffer; where it hits, the scene colour there is what the surface
+// reflects. What is off screen or hidden cannot be reflected: the effect fades out there.
+// Blended over the scene with the reflection's own weight (Fresnel and glossiness).
+//
+// Inputs: u_scene / u_depth = the scene as rendered so far, u_texture0 = the material's
+// texture (unit 0), u_normalMap = its material map (unit 3, see legacy.frag), u_material =
+// (parallax, gloss scale, metalness, generated flag).
+
+uniform sampler2D u_texture0;
+uniform sampler2D u_normalMap;
+uniform sampler2D u_scene;
+uniform sampler2D u_depth;
+uniform mat4 u_proj;
+uniform mat4 u_view;
+uniform vec4 u_projection; // (proj[0][0], proj[1][1], Q, Q * near): view z = Q * near / (Q - z_ndc)
+uniform vec2 u_invSize;
+uniform vec4 u_material;
+uniform int u_normalMapped;
+uniform float u_strength;  // 0..1, overall intensity
+uniform int u_fogEnabled;
+uniform vec2 u_fogRange;
+
+in vec3 v_worldPos;
+in vec3 v_viewPos;
+in vec3 v_normal;
+in vec2 v_uv;
+in vec4 v_color;
+
+out vec4 fragColor;
+
+// Tunables (a mod can edit this file: F7 reloads it)
+const int Steps = 24;              // ray march steps
+const float FirstStep = 6.0;       // world units
+const float StepGrowth = 1.28;     // each step is this much longer than the previous
+const float Thickness = 0.12;      // depth tolerance behind the surface hit, fraction of the distance
+const float MinThickness = 12.0;   // ... at least this many units
+const float MaxReflection = 0.85;  // weight of a perfect mirror at a grazing angle
+const float MinReflection = 0.3;   // ... and head-on
+const float RoughnessBend = 0.35;  // how much the material map bends the reflected ray
+
+float linearDepth(float zBuffer) {
+	float zNdc = zBuffer * 2.0 - 1.0;
+	return u_projection.w / (u_projection.z - zNdc);
+}
+
+float sceneDepth(vec2 uv) {
+	return linearDepth(texture(u_depth, uv).r);
+}
+
+// Screen position of a view-space point; w <= 0 when behind the camera
+vec3 project(vec3 p) {
+	vec4 clip = u_proj * vec4(p, 1.0);
+	return vec3(clip.xy / clip.w * 0.5 + 0.5, clip.w);
+}
+
+// Cotangent frame from derivatives (see legacy.frag)
+bool tangentFrame(vec3 normal, out mat3 tbn) {
+	vec3 dp1 = dFdx(v_worldPos);
+	vec3 dp2 = dFdy(v_worldPos);
+	vec2 duv1 = dFdx(v_uv);
+	vec2 duv2 = dFdy(v_uv);
+	vec3 dp2perp = cross(dp2, normal);
+	vec3 dp1perp = cross(normal, dp1);
+	vec3 tangent = dp2perp * duv1.x + dp1perp * duv2.x;
+	vec3 bitangent = dp2perp * duv1.y + dp1perp * duv2.y;
+	float invmax = inversesqrt(max(dot(tangent, tangent), dot(bitangent, bitangent)));
+	if(invmax > 1e6) {
+		return false;
+	}
+	tbn = mat3(tangent * invmax, bitangent * invmax, normal);
+	return true;
+}
+
+void main() {
+
+	// Glossiness of this texel
+	float gloss = u_material.y;
+	vec3 normalWorld = normalize(v_normal);
+	mat3 tbn;
+	bool framed = (u_normalMapped != 0) && tangentFrame(normalWorld, tbn);
+	if(framed) {
+		vec4 material = texture(u_normalMap, v_uv);
+		vec3 n;
+		if(u_material.w != 0.0) {
+			gloss *= material.a;
+			n = vec3(material.rg * 2.0 - 1.0, 0.0);
+			n.z = sqrt(max(1.0 - dot(n.xy, n.xy), 0.0));
+		} else {
+			n = material.xyz * 2.0 - 1.0;
+		}
+		// A rough surface reflects along a slightly bent normal (blurs the reflection)
+		n.xy *= RoughnessBend * (1.0 - gloss);
+		normalWorld = normalize(tbn * n);
+	}
+	if(gloss <= 0.02) {
+		discard;
+	}
+
+	// Reflected ray in view space (camera at the origin, looking down +z)
+	vec3 normal = normalize(mat3(u_view) * normalWorld);
+	if(dot(normal, -v_viewPos) < 0.0) {
+		normal = -normal; // the polygon is seen from behind
+	}
+	vec3 view = normalize(-v_viewPos);
+	vec3 dir = reflect(-view, normal);
+
+	// Fresnel, lifted head-on so that a glossy floor visibly mirrors (a wet look rather
+	// than physically exact)
+	float facing = max(dot(normal, view), 0.0);
+	float fresnel = pow(1.0 - facing, 4.0);
+	float weight = mix(mix(MinReflection, 1.0, fresnel), 1.0, u_material.z * 0.5) * gloss * MaxReflection * u_strength;
+	// Rays towards the camera see what is behind it: nothing to show
+	weight *= smoothstep(-0.15, 0.25, dir.z);
+	if(weight <= 0.005) {
+		discard;
+	}
+
+	// March
+	vec3 p = v_viewPos;
+	float step = FirstStep;
+	float tPrev = 0.0, t = 0.0;
+	bool hit = false;
+	vec2 hitUv = vec2(0.0);
+	for(int i = 0; i < Steps; i++) {
+		tPrev = t;
+		t += step;
+		step *= StepGrowth;
+		vec3 q = p + dir * t;
+		vec3 s = project(q);
+		if(s.z <= 0.0 || s.x < 0.0 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0) {
+			break;
+		}
+		float sceneZ = sceneDepth(s.xy);
+		float behind = q.z - sceneZ;
+		if(behind > 0.0 && behind < max(sceneZ * Thickness, MinThickness)) {
+			// Refine between the previous and this step
+			float a = tPrev, b = t;
+			for(int k = 0; k < 5; k++) {
+				float m = 0.5 * (a + b);
+				vec3 qm = p + dir * m;
+				vec3 sm = project(qm);
+				if(qm.z > sceneDepth(sm.xy)) {
+					b = m;
+				} else {
+					a = m;
+				}
+			}
+			hitUv = project(p + dir * b).xy;
+			hit = true;
+			break;
+		}
+	}
+	if(!hit) {
+		discard;
+	}
+
+	// Fade at the screen edges (the reflection would pop when the source leaves the view)
+	vec2 edge = smoothstep(vec2(0.0), vec2(0.12), hitUv) * smoothstep(vec2(0.0), vec2(0.12), 1.0 - hitUv);
+	weight *= edge.x * edge.y;
+
+	vec3 reflected = texture(u_scene, hitUv).rgb;
+	// Metals tint their reflections
+	vec3 albedo = texture(u_texture0, v_uv).rgb;
+	reflected *= mix(vec3(1.0), albedo * 1.5, u_material.z);
+
+	if(u_fogEnabled != 0) {
+		float fog = clamp((u_fogRange.y - v_viewPos.z) / (u_fogRange.y - u_fogRange.x), 0.0, 1.0);
+		weight *= fog;
+	}
+
+	fragColor = vec4(reflected, weight);
+}
+)glsl";
+
+constexpr const char * reflect_vert = R"glsl(#version 130
+
+// ArxModern screen-space reflections: the glossy level polygons (world space, SMY_VERTEX)
+// drawn again after the opaque scene, with the scene colour and depth available.
+
+uniform mat4 u_viewProj;
+uniform mat4 u_view;
+
+in vec4 a_position;
+in vec4 a_color;
+in vec2 a_texcoord0;
+in vec4 a_normal;
+
+out vec3 v_worldPos;
+out vec3 v_viewPos;
+out vec3 v_normal;
+out vec2 v_uv;
+out vec4 v_color;
+
+void main() {
+	v_worldPos = a_position.xyz;
+	v_viewPos = (u_view * vec4(a_position.xyz, 1.0)).xyz;
+	v_normal = a_normal.xyz;
+	v_uv = a_texcoord0;
+	v_color = a_color;
+	gl_Position = u_viewProj * vec4(a_position.xyz, 1.0);
 }
 )glsl";
 

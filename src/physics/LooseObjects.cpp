@@ -19,6 +19,9 @@
 
 #include "physics/LooseObjects.h"
 
+#include "physics/Cloth.h"
+#include "physics/Debris.h"
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -270,11 +273,15 @@ JPH::RefConst<JPH::Shape> meshShape(const EERIE_3DOBJ & obj, float scale) {
 
 bool isFixedObstacle(const Entity & io) {
 	return (io.ioflags & IO_FIX) && !(io.ioflags & IO_NO_COLLISIONS) && io.obj && !io.obj->facelist.empty()
-	       && io.show == SHOW_FLAG_IN_SCENE;
+	       && io.show == SHOW_FLAG_IN_SCENE && !isShattered(io);
 }
 
 bool isNpcObstacle(const Entity & io) {
-	return (io.ioflags & IO_NPC) && &io != entities.player() && io.show == SHOW_FLAG_IN_SCENE
+	// The player only pushes cloths (the engine handles their collisions with everything else)
+	if(&io == entities.player()) {
+		return clothCount() > 0 && io.physics.cyl.radius > 0.f;
+	}
+	return (io.ioflags & IO_NPC) && io.show == SHOW_FLAG_IN_SCENE
 	       && !IsDeadNPC(io) && !(io.ioflags & IO_NO_COLLISIONS) && io.physics.cyl.radius > 0.f
 	       && closerThan(io.pos, player.pos, NpcObstacleRange);
 }
@@ -529,7 +536,7 @@ void syncObstacles() {
 	JPH::BodyInterface & bodies = world->GetBodyInterface();
 
 	// NPCs only matter while something is moving around them
-	bool wantNpcs = !g_loose.empty() || ragdollCount() > 0;
+	bool wantNpcs = !g_loose.empty() || ragdollCount() > 0 || debrisCount() > 0 || clothCount() > 0;
 
 	for(auto & entry : g_obstacles) {
 		entry.second.seen = false;
