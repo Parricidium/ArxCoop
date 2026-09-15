@@ -392,7 +392,9 @@ bool ARX_CHANGELEVEL_ExportLevel(std::vector<std::pair<std::string, std::string>
 	}
 	files.emplace_back(levelName.str(), index);
 	files.emplace_back("globals", g_currentSavedGame->load("globals"));
-	files.emplace_back(physicsSaveName(g_currentArea), physics::serializeRagdolls()); // ArxModern: corpses as they lie
+	// ArxModern: corpses as they lie; an empty file is sent too so that the client forgets a
+	// previous state of this level (its save block clears the entry, see SaveBlock::save)
+	files.emplace_back(physicsSaveName(g_currentArea), physics::serializeRagdolls());
 	
 	const ARX_CHANGELEVEL_INDEX * asi = reinterpret_cast<const ARX_CHANGELEVEL_INDEX *>(index.data());
 	const ARX_CHANGELEVEL_IO_INDEX * idx_io = reinterpret_cast<const ARX_CHANGELEVEL_IO_INDEX *>(index.data() + sizeof(ARX_CHANGELEVEL_INDEX));

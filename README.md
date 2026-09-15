@@ -232,8 +232,9 @@ Opened in game (the world keeps running), key configurable in *Options > Control
   (20 m, to get out of a jam), *save now*.
 - **Client**: *teleport me to this player* (if you are stuck in the level).
 
-Console (`²` key on French keyboards, the key left of `1`): `tp p2` teleports player 2 next to you,
-`tp Name`, `tp all`.
+Console (`²` key on French keyboards, the key left of `1`, on by default in the HD edition): `tp p2`
+teleports player 2 next to you, `tp Name`, `tp all`; `or p2 100` (or `gold p2 100`) gives player 2
+100 gold. With a shop open, **Shift+click** on one of your items sells it.
 
 ## Keys
 
@@ -489,7 +490,9 @@ Ouvert en jeu (le monde continue de tourner), touche modifiable dans *Options > 
   autour de moi (20 m, pour se sortir d'un blocage), *sauvegarder maintenant*.
 - **Client** : *me téléporter vers ce joueur* (si vous êtes coincé dans le niveau).
 
-Console (touche `²`) : `tp p2` téléporte le joueur 2 à côté de vous, `tp Pseudo`, `tp all`.
+Console (touche `²`, activée d'office dans l'édition HD) : `tp p2` téléporte le joueur 2 à côté de
+vous, `tp Pseudo`, `tp all` ; `or p2 100` donne 100 pièces d'or au joueur 2. Boutique ouverte,
+**Maj + clic** sur un objet de votre inventaire le vend directement.
 
 ## Touches
 

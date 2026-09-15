@@ -74,6 +74,10 @@ void handlePlayerMarker(PlayerId id, Reader & reader);
 void handleLatencies(Reader & reader);
 void handleGiveItem(PlayerId from, Reader & reader);
 
+//! Give some of our gold to another player (false: not enough, or no such player)
+bool giveGoldToPlayer(PlayerId to, long amount);
+void handleGiveGold(PlayerId from, Reader & reader);
+
 //! Downed local player: seconds left before the real death (0 when not downed / no limit).
 float bleedOutSecondsLeft();
 //! The bleed-out timer ran out: the normal death may proceed.

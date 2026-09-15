@@ -112,6 +112,10 @@ EDITION HD (zip ArxCoop-HD-* uniquement)
 - L'hote simule la physique, les clients voient la meme chose. Un joueur avec le zip classique
   ne peut pas rejoindre une partie HD (protocole reseau different) : tout le monde prend le meme zip.
 
+VENTE RAPIDE
+- Boutique ouverte : MAJ + clic gauche sur un objet de votre inventaire le vend directement
+  (au lieu de le glisser dans le coffre du marchand).
+
 VISAGES PERSONNALISES (nouveau)
 - "Visage" : "Personnage" = la tete choisie a la creation du perso (comme avant),
   ou une image a vous. Les autres joueurs la voient sur votre personnage (et vous dans le livre).
@@ -147,6 +151,7 @@ CONSOLE (touche ² a gauche du 1, ou la touche configuree pour la console)
 - tp p2       : teleporte le joueur 2 (ordre du salon, p1 = l'hote) a cote de moi (utilisable par tous)
 - tp Pseudo   : idem par pseudo ;  tp all : tout le monde vient a moi
   (le joueur doit etre dans le meme niveau)
+- or p2 100   : donne 100 pieces d'or au joueur 2 (or <pseudo> <montant> marche aussi)
 - spawn item quest_item/gem_dealer_badge/gem_dealer_badge player : fait apparaitre un objet a mes
   pieds (ici la patente de marchand de gemmes) ; le chemin est celui du dossier de l'objet dans les
   donnees du jeu (graph/obj3d/interactive/items/...).
