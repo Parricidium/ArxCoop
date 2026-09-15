@@ -27,7 +27,8 @@ out vec4 fragColor;
 
 // Tunables (a mod can edit this file: F7 reloads it)
 const int Steps = 12;               // samples along each ray
-const float MaxRange = 2200.0;      // world units of haze in front of the camera
+const float MaxRange = 3000.0;      // world units of haze in front of the camera
+const float RangeFade = 0.5;        // fraction of the range from which the haze thins out
 const float Extinction = 0.00015;   // per world unit at density 1: how much the haze dims what is behind
 const float Scatter = 0.0011;       // per world unit at density 1: how much light it throws back
 const float Ambient = 0.012;        // faint glow of the haze where no light reaches
@@ -77,7 +78,8 @@ float phase(float cosTheta) {
 // would show as a hard-edged ball of haze in the air
 float falloff(float dist, float fallstart, float fallend) {
 	float width = max(fallend - fallstart, fallend * MinFalloff);
-	return clamp((fallend - dist) / width, 0.0, 1.0);
+	float f = clamp((fallend - dist) / width, 0.0, 1.0);
+	return f * f * (3.0 - 2.0 * f); // eased: a linear edge integrates into a visible rim
 }
 
 // Interleaved gradient noise: offsets the samples per pixel so that the steps do not band
@@ -131,8 +133,11 @@ void main() {
 	vec3 inscatter = vec3(0.0);
 	for(int s = 0; s < Steps; s++) {
 		vec3 p = u_cameraPos + dirWorld * t;
-		float rho = density(p);
 		float stepLength = dt * dirLength;
+		// The haze thins out towards the end of its range instead of stopping dead: a light
+		// standing just beyond the range showed as a hard disc of glow (the rays ending inside
+		// its sphere got it, the others did not)
+		float rho = density(p) * (1.0 - smoothstep(MaxRange * RangeFade, MaxRange, t * dirLength));
 		vec3 light = vec3(Ambient);
 		for(int k = 0; k < lightCount; k++) {
 			int i = lights[k];
