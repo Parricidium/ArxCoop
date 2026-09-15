@@ -35,7 +35,8 @@ const float Anisotropy = 0.35;      // Henyey-Greenstein g: > 0 scatters forward
 const float NoiseScale = 0.0035;    // world units -> noise; smaller = larger wisps
 const float NoiseAmount = 0.75;     // 0 = uniform haze, 1 = strongly wispy
 const float Drift = 0.05;           // wisps drifting speed
-const int MaxLightsPerRay = 6;      // the nearest lights only
+const int MaxLightsPerRay = 8;      // the strongest lights on the ray only
+const float MinFalloff = 0.35;      // fraction of a light's range over which it fades at least
 
 float linearDepth(vec2 uv) {
 	float zNdc = texture(u_depth, uv).r * 2.0 - 1.0;
@@ -71,6 +72,14 @@ float phase(float cosTheta) {
 	return (1.0 - g * g) / (4.0 * 3.14159265 * d * sqrt(d));
 }
 
+// The engine's falloff (constant to fallstart, linear to zero at fallend), but never steeper
+// than over a third of the range: some level lights have fallstart right at fallend, which
+// would show as a hard-edged ball of haze in the air
+float falloff(float dist, float fallstart, float fallend) {
+	float width = max(fallend - fallstart, fallend * MinFalloff);
+	return clamp((fallend - dist) / width, 0.0, 1.0);
+}
+
 // Interleaved gradient noise: offsets the samples per pixel so that the steps do not band
 float dither(vec2 p) {
 	return fract(52.9829189 * fract(0.06711056 * p.x + 0.00583715 * p.y));
@@ -86,15 +95,33 @@ void main() {
 	vec3 dir = dirWorld / dirLength;
 	float range = min(linearDepth(v_uv), MaxRange / dirLength);
 
-	// The lights that can touch this ray at all: distance from the light to the ray segment
+	// The lights that matter most for this ray: those whose sphere the ray crosses, ranked by
+	// their brightness where the ray passes closest. Keeping the first ones found instead
+	// showed the spheres of dim distant lights as circles (a bright light lost its slot inside
+	// them) and halos that switched off with the view direction.
 	int lights[MaxLightsPerRay];
+	float weights[MaxLightsPerRay];
 	int lightCount = 0;
-	for(int i = 0; i < u_lightCount && lightCount < MaxLightsPerRay; i++) {
+	for(int i = 0; i < u_lightCount; i++) {
 		vec3 toLight = u_lightPos[i].xyz - u_cameraPos;
 		float along = clamp(dot(toLight, dir), 0.0, range * dirLength);
 		float away = length(toLight - dir * along);
-		if(away < u_lightColor[i].w) {
-			lights[lightCount++] = i;
+		float fallend = u_lightColor[i].w;
+		if(away >= fallend) {
+			continue;
+		}
+		float weight = falloff(away, u_lightPos[i].w, fallend) * dot(u_lightColor[i].rgb, vec3(0.299, 0.587, 0.114));
+		// Insert in decreasing weight, dropping the weakest beyond MaxLightsPerRay
+		int slot = min(lightCount, MaxLightsPerRay - 1);
+		if(lightCount < MaxLightsPerRay || weight > weights[slot]) {
+			while(slot > 0 && weights[slot - 1] < weight) {
+				lights[slot] = lights[slot - 1];
+				weights[slot] = weights[slot - 1];
+				slot--;
+			}
+			lights[slot] = i;
+			weights[slot] = weight;
+			lightCount = min(lightCount + 1, MaxLightsPerRay);
 		}
 	}
 
@@ -116,7 +143,7 @@ void main() {
 				continue;
 			}
 			float fallstart = u_lightPos[i].w;
-			float attenuation = (dist <= fallstart) ? 1.0 : (fallend - dist) / (fallend - fallstart);
+			float attenuation = falloff(dist, fallstart, fallend);
 			// Closer to the source than fallstart the light gets stronger still (a flame is small)
 			attenuation *= 1.0 + 2.0 * clamp(1.0 - dist / fallstart, 0.0, 1.0);
 #ifdef ARX_RT
