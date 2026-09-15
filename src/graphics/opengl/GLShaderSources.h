@@ -1007,6 +1007,14 @@ uniform int u_lightCount;   // every light of the scene (the static sconces too)
 uniform vec4 u_lightPos[MAX_LIGHTS];   // xyz, fallstart
 uniform vec4 u_lightColor[MAX_LIGHTS]; // rgb, fallend
 uniform int u_shadows;      // 1: trace the shafts' shadows (ARX_RT only)
+// The shadow cube maps of the first lights (the characters and objects standing in the light -
+// and the level too without the ray tracing): distance of the nearest occluder from the light,
+// normalised by its range, as in legacy.frag. u_lightShadow[i] = which cube map, or -1
+uniform int u_lightShadow[MAX_LIGHTS];
+uniform samplerCube u_shadow0;
+uniform samplerCube u_shadow1;
+uniform samplerCube u_shadow2;
+uniform samplerCube u_shadow3;
 
 in vec2 v_uv;
 out vec4 fragColor;
@@ -1067,6 +1075,22 @@ float falloff(float dist, float fallstart, float fallend) {
 	float width = max(fallend - fallstart, fallend * MinFalloff);
 	float f = clamp((fallend - dist) / width, 0.0, 1.0);
 	return f * f * (3.0 - 2.0 * f); // eased: a linear edge integrates into a visible rim
+}
+
+float shadowDistance(int map, vec3 dir) {
+	if(map == 0) {
+		return texture(u_shadow0, dir).r;
+	} else if(map == 1) {
+		return texture(u_shadow1, dir).r;
+	} else if(map == 2) {
+		return texture(u_shadow2, dir).r;
+	}
+	return texture(u_shadow3, dir).r;
+}
+
+// Whether the point sees the light according to its cube map (what stands in the beam)
+bool mapLit(int map, vec3 fromLight, float dist, float fallend) {
+	return dist / fallend - 0.01 <= shadowDistance(map, fromLight);
 }
 
 // Interleaved gradient noise: offsets the samples per pixel so that the steps do not band
@@ -1151,6 +1175,10 @@ void main() {
 				continue;
 			}
 #endif
+			int map = u_lightShadow[i];
+			if(map >= 0 && !mapLit(map, -toLight, dist, fallend)) {
+				continue;
+			}
 			light += u_lightColor[i].rgb * (attenuation * phase(dot(toLight / dist, -dir)));
 		}
 		float extinction = exp(-rho * Extinction * stepLength);
