@@ -106,8 +106,14 @@ EDITION HD (zip ArxCoop-HD-* uniquement)
   Reglages dans userdata\cfg.ini, section [video] : pipeline, lighting, shadows, shadow_resolution,
   postprocess, bloom, fxaa, smaa, ambient_occlusion, normal_maps, parallax, specular, reflections,
   soft_particles, water, lava, physics.
-- Prerequis : carte graphique OpenGL 3.0 (2008 ou plus recent). Cout mesure du prereglage
-  "Elevee" : environ 1 ms de plus par image en 720p.
+- Ray tracing (Options HD > "Ray tracing", desactive par defaut, demande OpenGL 4.3 = carte de 2012
+  ou plus recente, pas besoin de RTX) : "Reflets" = les sols et murs brillants refletent ce qui est
+  vraiment la, meme hors ecran ou derriere vous ; "Reflets + ombres" = chaque torche, bougie et sort
+  projette des ombres douces a travers le niveau, par pixel. Purement local : un joueur avec et un
+  sans jouent ensemble. Cout : environ +1,5 ms par image en 720p, +5 ms en 1440p (reflets + ombres).
+  Cle cfg.ini : raytracing=0/1/2.
+- Prerequis : carte graphique OpenGL 3.0 (2008 ou plus recent ; 4.3 pour le ray tracing). Cout mesure
+  du prereglage "Elevee" : environ 1 ms de plus par image en 720p.
 - Touche F7 : recharge les shaders (fichiers Graph\shaders\*.vert / *.frag, modifiables).
 - L'hote simule la physique, les clients voient la meme chose. Un joueur avec le zip classique
   ne peut pas rejoindre une partie HD (protocole reseau different) : tout le monde prend le meme zip.

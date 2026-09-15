@@ -83,13 +83,23 @@ Ultra* and individual settings, applied live): the *Off* preset gives exactly th
   curtains and tapestries of the levels hang as cloth and move in a light breeze and when someone walks
   into them. The host simulates the corpses and objects, the clients see the same thing (cloths are
   simulated on each machine). Player characters are not affected.
+- **Ray tracing** (*Options HD > Ray tracing*, needs OpenGL 4.3, i.e. 2012 or later hardware — no
+  RTX card needed, it runs on the shader cores): the level geometry is put in a bounding volume
+  hierarchy that the shaders trace rays through. *Reflections*: the glossy floors and walls reflect
+  what is really there, including what is off screen or behind you (the screen-space reflections faded
+  at the edges and could not show that). *Reflections + shadows*: every torch, candle and spell casts
+  soft shadows through the level, computed per pixel by tracing rays to the flame (the shadow maps then
+  only handle the characters and objects). Off by default; purely local — players with and without
+  ray tracing play together. Measured cost of *Reflections + shadows*: about +1.5 ms per frame at
+  720p, +5 ms at 1440p.
 - **Modding**: the shaders are plain files in `Graph\shaders\` (`legacy`, `shadow`, `water`, `lava`,
-  `reflect`, `post_*`), reloaded in game with **F7**.
+  `reflect`, `reflect_rt`, `rt_common.glsl`, `post_*`), reloaded in game with **F7**.
 
-Requirements: OpenGL 3.0 (2008 or later hardware); measured cost of the *High* preset: about one
-extra millisecond per frame in 720p. `[video]` keys in `userdata\cfg.ini`: `pipeline`, `lighting`,
-`shadows`, `shadow_resolution`, `postprocess`, `bloom`, `fxaa`, `smaa`, `ambient_occlusion`, `normal_maps`,
-`parallax`, `specular`, `reflections`, `soft_particles`, `water`, `lava`, `physics`.
+Requirements: OpenGL 3.0 (2008 or later hardware; 4.3 for the ray tracing); measured cost of the
+*High* preset: about one extra millisecond per frame in 720p. `[video]` keys in `userdata\cfg.ini`:
+`pipeline`, `lighting`, `shadows`, `shadow_resolution`, `postprocess`, `bloom`, `fxaa`, `smaa`,
+`ambient_occlusion`, `normal_maps`, `parallax`, `specular`, `reflections`, `soft_particles`, `water`,
+`lava`, `physics`, `raytracing` (0 / 1 / 2).
 
 Not the HD edition: the classic zip has none of this and cannot play with the HD one (different network
 protocol).
@@ -343,13 +353,23 @@ d'origine.
   bougent sous une brise légère ou quand on les traverse. L'hôte simule cadavres et objets, les clients
   voient la même chose (les tissus sont simulés sur chaque machine). Les personnages des joueurs ne sont
   pas concernés.
+- **Ray tracing** (*Options HD > Ray tracing*, demande OpenGL 4.3, soit du matériel de 2012 ou plus
+  récent — pas besoin de carte RTX, ça tourne sur les unités de calcul classiques) : la géométrie du
+  niveau est rangée dans une hiérarchie que les shaders parcourent avec des rayons. *Reflets* : les sols
+  et murs brillants reflètent ce qui est vraiment là, y compris hors écran ou derrière vous (les reflets
+  écran s'effaçaient aux bords et ne pouvaient pas le montrer). *Reflets + ombres* : chaque torche,
+  bougie et sort projette des ombres douces à travers le niveau, calculées par pixel en lançant des
+  rayons vers la flamme (les shadow maps ne servent plus qu'aux personnages et objets). Désactivé par
+  défaut ; purement local — les joueurs avec et sans ray tracing jouent ensemble. Coût mesuré de
+  *Reflets + ombres* : environ +1,5 ms par image en 720p, +5 ms en 1440p.
 - **Modding** : les shaders sont des fichiers dans `Graph\shaders\` (`legacy`, `shadow`, `water`,
-  `lava`, `reflect`, `post_*`), rechargés en jeu avec **F7**.
+  `lava`, `reflect`, `reflect_rt`, `rt_common.glsl`, `post_*`), rechargés en jeu avec **F7**.
 
-Prérequis : OpenGL 3.0 (matériel de 2008 ou plus récent) ; coût mesuré du préréglage *Élevée* : environ
-une milliseconde de plus par image en 720p. Clés `[video]` de `userdata\cfg.ini` : `pipeline`,
-`lighting`, `shadows`, `shadow_resolution`, `postprocess`, `bloom`, `fxaa`, `smaa`, `ambient_occlusion`,
-`normal_maps`, `parallax`, `specular`, `reflections`, `soft_particles`, `water`, `lava`, `physics`.
+Prérequis : OpenGL 3.0 (matériel de 2008 ou plus récent ; 4.3 pour le ray tracing) ; coût mesuré du
+préréglage *Élevée* : environ une milliseconde de plus par image en 720p. Clés `[video]` de
+`userdata\cfg.ini` : `pipeline`, `lighting`, `shadows`, `shadow_resolution`, `postprocess`, `bloom`,
+`fxaa`, `smaa`, `ambient_occlusion`, `normal_maps`, `parallax`, `specular`, `reflections`,
+`soft_particles`, `water`, `lava`, `physics`, `raytracing` (0 / 1 / 2).
 
 Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition HD (protocole réseau différent).
 
