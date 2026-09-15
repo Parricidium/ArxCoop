@@ -153,8 +153,10 @@ bool isShattered(const Entity & io) {
 
 void onBreakAnimation(Entity & io, const res::path & animation) {
 
+	// (also on a machine that mirrors the physics of another - a co-op client: the pieces are
+	// cosmetic and everyone breaks them on their own, like the cloths)
 	JPH::PhysicsSystem * world = system();
-	if(!world || isMirrorMode() || !(io.ioflags & IO_FIX) || !io.obj || !io.obj->m_skeleton) {
+	if(!world || !(io.ioflags & IO_FIX) || !io.obj || !io.obj->m_skeleton) {
 		return;
 	}
 	std::string name = util::toLowercase(std::string(animation.basename()));
