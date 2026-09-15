@@ -40,6 +40,7 @@ public:
 		float bloom = 0.f;     //!< bloom intensity, 0 = off
 		float bloomThreshold = 0.6f;
 		bool fxaa = false;
+		bool smaa = false;     //!< SMAA 1x (takes precedence over fxaa)
 		float ao = 0.f;        //!< ambient occlusion strength, 0 = off
 		float aoRadius = 60.f; //!< world units
 		int debugView = 0;     //!< 1 = ambient occlusion buffer, 2 = bloom buffer
@@ -82,6 +83,20 @@ private:
 	GLuint m_blurProgram;
 	GLuint m_ssaoProgram;
 	GLuint m_finalProgram;
+	GLuint m_smaaEdgeProgram;
+	GLuint m_smaaWeightProgram;
+	GLuint m_smaaBlendProgram;
+	GLint m_uSmaaEdgeMetrics;
+	GLint m_uSmaaWeightMetrics;
+	GLint m_uSmaaBlendMetrics;
+	GLuint m_areaTexture;   //!< SMAA lookup textures (constant)
+	GLuint m_searchTexture;
+	GLuint m_compositeFramebuffer; //!< the composed image when SMAA runs after it
+	GLuint m_compositeTexture;
+	GLuint m_edgesFramebuffer;
+	GLuint m_edgesTexture;
+	GLuint m_blendFramebuffer;
+	GLuint m_blendTexture;
 	GLint m_uSsaoProjection;
 	GLint m_uSsaoInvSize;
 	GLint m_uSsaoRadius;
@@ -115,6 +130,7 @@ private:
 	bool m_inScene;
 
 	bool createBuffers(int width, int height, int samples);
+	bool initSmaa();
 	void destroyBuffers();
 	void drawFullscreen();
 

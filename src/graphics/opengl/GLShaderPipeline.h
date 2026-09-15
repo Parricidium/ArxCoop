@@ -109,6 +109,12 @@ public:
 	GLuint buildProgram(std::string_view name, std::string_view vertFallback, std::string_view fragFallback) {
 		return build(name, vertFallback, fragFallback);
 	}
+	/*!
+	 * Same, with a prelude prepended to both stages (the stage files then carry no #version):
+	 * \c prelude + \c common (a shared source, itself overridable as graph/shaders/<commonName>) + the stage.
+	 */
+	GLuint buildProgram(std::string_view name, std::string_view vertFallback, std::string_view fragFallback,
+	                    std::string_view prelude, std::string_view commonName, std::string_view commonFallback);
 	
 	//! Re-bind the main program and forget cached GL state after raw GL use (post-processing)
 	void restoreAfterExternalDraw();
@@ -222,7 +228,8 @@ private:
 	size_t m_dynamicLightCount;
 	bool m_lightsDirty;
 
-	GLuint build(std::string_view name, std::string_view vertFallback, std::string_view fragFallback);
+	GLuint build(std::string_view name, std::string_view vertFallback, std::string_view fragFallback,
+	             std::string_view prefixVert = std::string_view(), std::string_view prefixFrag = std::string_view());
 	void applyShadowPass();
 	GLuint compile(GLenum type, std::string_view name, std::string_view source);
 	std::string loadSource(std::string_view name, std::string_view fallback);

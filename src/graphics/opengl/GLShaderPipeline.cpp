@@ -161,13 +161,23 @@ GLuint GLShaderPipeline::compile(GLenum type, std::string_view name, std::string
 	return shader;
 }
 
-GLuint GLShaderPipeline::build(std::string_view name, std::string_view vertFallback, std::string_view fragFallback) {
+GLuint GLShaderPipeline::buildProgram(std::string_view name, std::string_view vertFallback,
+                                      std::string_view fragFallback, std::string_view prelude,
+                                      std::string_view commonName, std::string_view commonFallback) {
+	std::string common = loadSource(commonName, commonFallback);
+	std::string prefixVert = std::string(prelude) + "#define SMAA_INCLUDE_PS 0\n" + common + "\n#line 1\n";
+	std::string prefixFrag = std::string(prelude) + "#define SMAA_INCLUDE_VS 0\n" + common + "\n#line 1\n";
+	return build(name, vertFallback, fragFallback, prefixVert, prefixFrag);
+}
+
+GLuint GLShaderPipeline::build(std::string_view name, std::string_view vertFallback, std::string_view fragFallback,
+                               std::string_view prefixVert, std::string_view prefixFrag) {
 
 	std::string vertName = std::string(name) + ".vert";
 	std::string fragName = std::string(name) + ".frag";
 
-	std::string vertSource = loadSource(vertName, vertFallback);
-	std::string fragSource = loadSource(fragName, fragFallback);
+	std::string vertSource = std::string(prefixVert) + loadSource(vertName, vertFallback);
+	std::string fragSource = std::string(prefixFrag) + loadSource(fragName, fragFallback);
 
 	GLuint vert = compile(GL_VERTEX_SHADER, vertName, vertSource);
 	if(!vert) {
