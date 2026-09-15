@@ -2313,6 +2313,11 @@ void ArxGame::render() {
 			for(Entity & entity : entities) {
 				LogInfo << "listtest: " << entity.idString() << " at " << entity.pos.x << ' ' << entity.pos.y << ' ' << entity.pos.z;
 			}
+			for(size_t i = 0; i < g_staticLights.size(); i++) {
+				const EERIE_LIGHT & light = g_staticLights[i];
+				LogInfo << "listtest: staticlight_" << i << " at " << light.pos.x << ' ' << light.pos.y << ' ' << light.pos.z
+				        << " fallend " << light.fallend << " extras " << light.extras << (light.m_ignitionStatus ? " lit" : " off");
+			}
 		}
 		g_listTestFrames--;
 	}
