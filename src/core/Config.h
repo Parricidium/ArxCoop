@@ -154,6 +154,7 @@ public:
 		// ArxModern: number of dynamic lights casting shadows (0 = off) and cube map face size
 		int shadows;
 		int shadowResolution;
+		int raytracing; // ArxModern RT: 0 = off, 1 = traced reflections, 2 = + shadow rays at the reflected points (OpenGL 4.3)
 		// ArxModern: off-screen scene + full-screen passes (bloom intensity 0 = off, FXAA)
 		bool postprocess;
 		float bloom;

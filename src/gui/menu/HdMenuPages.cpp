@@ -217,6 +217,7 @@ public:
 		, m_parallax(nullptr)
 		, m_reflections(nullptr)
 		, m_softParticles(nullptr)
+		, m_raytracing(nullptr)
 		, m_antialiasing(nullptr)
 	{ }
 
@@ -388,6 +389,27 @@ public:
 			addCenter(std::move(cycle));
 		}
 
+		// Ray tracing (independent of the quality presets, needs OpenGL 4.3)
+		if(GRenderer->hasRayTracing()) {
+			auto cycle = std::make_unique<CycleTextWidget>(sliderSize(), hFontMenu,
+			                                               hdText("system_menus_options_hd_raytracing", "Ray tracing"));
+			cycle->addEntry(hdText("system_menus_options_hd_raytracing_off", "Désactivé"));
+			cycle->addEntry(hdText("system_menus_options_hd_raytracing_reflections", "Reflets"));
+			cycle->addEntry(hdText("system_menus_options_hd_raytracing_shadows", "Reflets + ombres"));
+			cycle->valueChanged = [](int pos, std::string_view /* string */) {
+				config.video.raytracing = pos;
+				if(pos > 0) {
+					config.video.postprocess = true;
+					if(config.video.reflections <= 0.f) {
+						config.video.reflections = 1.f;
+					}
+				}
+				applyHdSettings();
+			};
+			m_raytracing = cycle.get();
+			addCenter(std::move(cycle));
+		}
+
 		// Soft particles
 		{
 			auto cb = std::make_unique<CheckboxWidget>(checkboxSize(), hFontMenu,
@@ -447,6 +469,7 @@ private:
 	SliderWidget * m_reflections;
 	CheckboxWidget * m_softParticles;
 	CycleTextWidget * m_antialiasing;
+	CycleTextWidget * m_raytracing;
 
 	//! An individual setting changed: the modern pipeline is needed, apply and show "custom"
 	void customChanged() {
@@ -482,6 +505,9 @@ private:
 		}
 		if(m_antialiasing) {
 			m_antialiasing->setValue(!config.video.postprocess ? 0 : config.video.smaa ? 2 : config.video.fxaa ? 1 : 0);
+		}
+		if(m_raytracing) {
+			m_raytracing->setValue(std::clamp(config.video.raytracing, 0, 2));
 		}
 		if(m_softParticles) {
 			m_softParticles->setChecked(config.video.postprocess && config.video.softParticles);

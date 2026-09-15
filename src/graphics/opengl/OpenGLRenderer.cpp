@@ -39,6 +39,7 @@
 #include "core/Config.h"
 #include "gui/Credits.h"
 #include "graphics/opengl/GLDebug.h"
+#include "graphics/opengl/GLRayScene.h"
 #include "graphics/opengl/GLTexture.h"
 #include "graphics/opengl/GLTextureStage.h"
 #include "graphics/opengl/GLVertexBuffer.h"
@@ -783,6 +784,8 @@ void OpenGLRenderer::applyGraphicsConfig() {
 		return;
 	}
 	
+	m_shaders->setRayTracing(config.video.raytracing);
+	m_shaders->setRayTracingDebug((config.video.postDebug == "rtshadow") ? 1 : (config.video.postDebug == "rtblocker") ? 2 : 0);
 	m_shaders->initShadows(size_t(std::max(config.video.shadows, 0)), config.video.shadowResolution);
 	
 	if(config.video.postprocess) {
@@ -809,11 +812,15 @@ void OpenGLRenderer::applyGraphicsConfig() {
 	}
 
 	if(config.video.reflections > 0.f && m_post) {
+		bool created = false;
 		if(!m_reflect) {
 			m_reflect = std::make_unique<GLReflect>(m_shaders.get(), m_post.get());
-			if(!m_reflect->init()) {
-				m_reflect.reset();
-			}
+			created = true;
+		}
+		bool wasTraced = m_reflect->traced();
+		m_reflect->setTraced(config.video.raytracing > 0, config.video.raytracing > 1, config.video.postDebug == "rt");
+		if((created || m_reflect->traced() != wasTraced) && !m_reflect->init()) {
+			m_reflect.reset();
 		}
 		if(m_reflect) {
 			m_reflect->setPost(m_post.get());
@@ -897,6 +904,18 @@ void OpenGLRenderer::endReflections() {
 	}
 }
 
+bool OpenGLRenderer::reflectionsDrawAllMaterials() const {
+	return m_reflect && m_reflect->drawsAllMaterials();
+}
+
+bool OpenGLRenderer::tracedShadows() const {
+	return m_shaders && m_shaders->tracedShadows();
+}
+
+bool OpenGLRenderer::hasRayTracing() const {
+	return m_hasShaderSupport && GLRayScene::supported();
+}
+
 void OpenGLRenderer::applyShaders() {
 	if(m_shaders) {
 		m_shaders->setPretransformed(m_currentTransform == GL_NoTransform);
@@ -929,6 +948,9 @@ void OpenGLRenderer::beginSoftParticles() {
 }
 
 void OpenGLRenderer::beginScene() {
+	if(m_shaders) {
+		m_shaders->prepareRayScene();
+	}
 	if(m_post) {
 		Vec2i size = mainApp->getWindow()->getSize();
 		m_post->begin(size.x, size.y, m_MSAALevel);
