@@ -345,7 +345,8 @@ d'origine.
   sur les sols et murs brillants (marbre, métal, glace, pierre mouillée).
 - **Post-traitement** : bloom, anticrénelage FXAA ou **SMAA**, occlusion ambiante expérimentale,
   **particules douces** (feu, fumée et magie ne coupent plus les murs et les sols).
-- **Eau** : réfraction à travers des vagues animées, reflets spéculaires des lumières, berges douces.
+- **Eau** : réfraction à travers des vagues animées, la scène qui se reflète dans la surface (plus fort
+  en angle rasant), traînées spéculaires des lumières, berges douces.
   **Lave** : veines incandescentes qui pulsent sur une croûte plus sombre, brume de chaleur au-dessus.
 - **Physique** ([Jolt](https://github.com/jrouwe/JoltPhysics)) : les PNJ tués tombent en ragdoll,
   projetés par le coup fatal (une boule de feu envoie le corps valser, une flèche le renverse), dans
