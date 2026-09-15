@@ -88,8 +88,10 @@ Ultra* and individual settings, applied live): the *Off* preset gives exactly th
   be dangerous and the torches to matter. Independent of the quality presets.
 - **Volumetric haze** (*Options HD > Volumetric haze: Off / Light / Dense*): a thin, drifting haze
   fills the air; every torch, sconce and spell throws a glow and light shafts into it, and what lies
-  far behind it dims a little. With the ray tracing on the shafts are shadowed by the level (a light
-  round a corner does not glow through the wall). Independent of the quality presets.
+  far behind it dims a little. Characters and objects standing in a light cut its beam (volumetric
+  shadows, for the lights that have a shadow map); with the ray tracing on the shafts are also
+  shadowed by the level (a light round a corner does not glow through the wall). Independent of the
+  quality presets.
 - **Ray tracing** (*Options HD > Ray tracing*, needs OpenGL 4.3, i.e. 2012 or later hardware — no
   RTX card needed, it runs on the shader cores): the level geometry is put in a bounding volume
   hierarchy that the shaders trace rays through. *Reflections*: the glossy floors and walls reflect
@@ -367,9 +369,10 @@ d'origine.
   préréglages.
 - **Brume volumétrique** (*Options HD > Brume volumétrique : Désactivée / Légère / Dense*) : une brume
   légère qui dérive dans l'air ; chaque torche, applique et sort y jette un halo et des rais de
-  lumière, et ce qui est loin derrière s'estompe un peu. Avec le ray tracing les rais sont ombrés par
-  le niveau (une lumière derrière un angle ne rayonne pas à travers le mur). Indépendant des
-  préréglages.
+  lumière, et ce qui est loin derrière s'estompe un peu. Les personnages et objets qui se tiennent dans
+  une lumière découpent son faisceau (ombres volumétriques, pour les lumières qui ont une shadow map) ;
+  avec le ray tracing les rais sont aussi ombrés par le niveau (une lumière derrière un angle ne rayonne
+  pas à travers le mur). Indépendant des préréglages.
 - **Ray tracing** (*Options HD > Ray tracing*, demande OpenGL 4.3, soit du matériel de 2012 ou plus
   récent — pas besoin de carte RTX, ça tourne sur les unités de calcul classiques) : la géométrie du
   niveau est rangée dans une hiérarchie que les shaders parcourent avec des rayons. *Reflets* : les sols
