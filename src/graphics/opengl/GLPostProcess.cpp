@@ -570,12 +570,24 @@ void GLPostProcess::end() {
 		glUniform1f(m_uVolumeDensity, m_settings.volumetric);
 		glUniform1f(m_uVolumeTime, float(toMsi(g_gameTime.now())) * 0.001f);
 		glUniform1i(m_uVolumeShadows, (m_traced && m_settings.volumetricShadows) ? 1 : 0);
+		// Only the lights whose room is in view (RendererLight::inView)
 		const std::vector<glm::vec4> & lightPos = m_pipeline->lightPositions();
-		GLsizei lights = GLsizei(std::min(lightPos.size(), size_t(128)));
+		const std::vector<glm::vec4> & lightColor = m_pipeline->lightColors();
+		const std::vector<bool> & inView = m_pipeline->lightsInView();
+		static std::vector<glm::vec4> hazePos, hazeColor;
+		hazePos.clear();
+		hazeColor.clear();
+		for(size_t i = 0; i < lightPos.size() && hazePos.size() < 128; i++) {
+			if(i >= inView.size() || inView[i]) {
+				hazePos.push_back(lightPos[i]);
+				hazeColor.push_back(lightColor[i]);
+			}
+		}
+		GLsizei lights = GLsizei(hazePos.size());
 		glUniform1i(m_uVolumeLightCount, lights);
 		if(lights > 0) {
-			glUniform4fv(m_uVolumeLightPos, lights, glm::value_ptr(lightPos[0]));
-			glUniform4fv(m_uVolumeLightColor, lights, glm::value_ptr(m_pipeline->lightColors()[0]));
+			glUniform4fv(m_uVolumeLightPos, lights, glm::value_ptr(hazePos[0]));
+			glUniform4fv(m_uVolumeLightColor, lights, glm::value_ptr(hazeColor[0]));
 		}
 		glBindTexture(GL_TEXTURE_2D, m_depthTexture);
 		drawFullscreen();
