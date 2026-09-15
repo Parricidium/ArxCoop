@@ -171,7 +171,9 @@ void subdivide(PatchBuilder & builder, const EERIEPOLY & poly) {
 	const TexturedVertex & v1 = poly.v[1];
 	const TexturedVertex & v2 = poly.v[2];
 	const TexturedVertex & v3 = quad ? poly.v[3] : poly.v[2];
-	ColorRGBA c0 = poly.color[0], c1 = poly.color[1], c2 = poly.color[2], c3 = quad ? poly.color[3] : poly.color[2];
+	// The baked static light is in the vertex colours (poly.color[] is the per-frame result of
+	// the tile lights, never computed for polygons the room draw skips: black)
+	ColorRGBA c0 = v0.color, c1 = v1.color, c2 = v2.color, c3 = v3.color;
 	float lu = std::max(glm::distance(v0.p, v1.p), glm::distance(v2.p, v3.p));
 	float lv = std::max(glm::distance(v0.p, v2.p), glm::distance(v1.p, v3.p));
 	int nu = std::clamp(int(std::ceil(lu / CellSize)), 1, 12);
