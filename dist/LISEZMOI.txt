@@ -96,7 +96,7 @@ EDITION HD (zip ArxCoop-HD-* uniquement)
 - Meme mod, meme reseau, mais avec un moteur modernise : eclairage dynamique par pixel, ombres des
   torches et des sorts, relief des textures (normal maps + parallax), reflets speculaires des
   materiaux (metal, marbre, sols mouilles) et reflets du decor sur les sols brillants, bloom,
-  particules douces, eau avec vagues et refraction, lave incandescente avec brume de chaleur,
+  particules douces, eau avec vagues, refraction et reflets du decor, lave incandescente avec brume de chaleur,
   et une physique (Jolt) : les PNJ tues tombent en ragdoll (projetes par le coup fatal) et restent
   ou ils gisent, les objets laches ou jetes roulent et se posent, les objets cassables du jeu
   (vitrines, cryptes de verre, grilles) eclatent en morceaux, les bannieres et rideaux bougent.
