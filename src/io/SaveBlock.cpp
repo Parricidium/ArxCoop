@@ -520,7 +520,7 @@ bool SaveBlock::save(std::string && name, const char * data, size_t size) {
 		// into a zero-length buffer (heap corruption, then a crash somewhere else)
 		file->comp = File::None;
 		file->storedSize = 0;
-		for(const Chunk & chunk : file->chunks) {
+		for(const File::Chunk & chunk : file->chunks) {
 			m_usedSize -= chunk.size;
 		}
 		file->chunks.clear();
