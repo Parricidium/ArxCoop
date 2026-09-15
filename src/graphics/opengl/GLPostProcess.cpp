@@ -180,9 +180,11 @@ bool GLPostProcess::initSmaa() {
 	m_uSmaaBlendMetrics = glGetUniformLocation(m_smaaBlendProgram, "u_rtMetrics");
 
 	// The lookup textures: the area texture is filtered bilinearly, the search texture is not
+	// (the renderer keeps GL_UNPACK_ALIGNMENT at 1 for the whole game: leave it alone, the
+	// engine's own textures are tightly packed and a 4-byte alignment made the driver read past
+	// the end of RGB images whose width is not a multiple of 4 - the cinematic tiles crashed)
 	glGenTextures(1, &m_areaTexture);
 	glBindTexture(GL_TEXTURE_2D, m_areaTexture);
-	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RG8, AREATEX_WIDTH, AREATEX_HEIGHT, 0, GL_RG, GL_UNSIGNED_BYTE, areaTexBytes);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -195,7 +197,6 @@ bool GLPostProcess::initSmaa() {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 	glBindTexture(GL_TEXTURE_2D, 0);
 
 	return true;
