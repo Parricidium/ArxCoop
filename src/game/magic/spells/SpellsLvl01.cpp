@@ -134,6 +134,7 @@ void MagicMissileSpell::Launch() {
 	
 	Vec3f startPos = m_hand_pos;
 	float pitch, yaw;
+	bool otherPlayer = false;
 	if(m_caster == EntityHandle_Player) {
 		pitch = player.angle.getPitch();
 		yaw = player.angle.getYaw();
@@ -142,7 +143,7 @@ void MagicMissileSpell::Launch() {
 		}
 	} else {
 		pitch = 0.f;
-		coop::puppetAimPitch(*entities[m_caster], pitch); // another player: where they look
+		otherPlayer = coop::puppetAimPitch(*entities[m_caster], pitch); // another player: where they look
 		yaw = entities[m_caster]->angle.getYaw();
 		if(!m_hand_group) {
 			startPos = entities[m_caster]->pos;
@@ -151,7 +152,9 @@ void MagicMissileSpell::Launch() {
 	
 	startPos += angleToVector(Anglef(pitch, yaw, 0.f)) * 60.f;
 	
-	if(m_caster != EntityHandle_Player) {
+	// An NPC aims at its target; another player aims where they look (their "target" is
+	// their own puppet here, which would bend the missiles down)
+	if(m_caster != EntityHandle_Player && !otherPlayer) {
 		Entity * io = entities[m_caster];
 		if(Entity * entityTarget = entities.get(io->targetinfo)) {
 			const Vec3f & p1 = m_caster_pos;

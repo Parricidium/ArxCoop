@@ -112,9 +112,9 @@ EDITION HD (zip ArxCoop-HD-* uniquement)
 - L'hote simule la physique, les clients voient la meme chose. Un joueur avec le zip classique
   ne peut pas rejoindre une partie HD (protocole reseau different) : tout le monde prend le meme zip.
 
-VENTE RAPIDE
-- Boutique ouverte : MAJ + clic gauche sur un objet de votre inventaire le vend directement
-  (au lieu de le glisser dans le coffre du marchand).
+RANGEMENT ET VENTE RAPIDES
+- Boutique ou coffre ouvert : MAJ + clic gauche sur un objet de votre inventaire l'y met directement
+  (vendu chez un marchand, range dans un coffre), au lieu de le glisser.
 
 VISAGES PERSONNALISES (nouveau)
 - "Visage" : "Personnage" = la tete choisie a la creation du perso (comme avant),
