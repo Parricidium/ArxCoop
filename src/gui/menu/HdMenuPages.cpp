@@ -218,6 +218,7 @@ public:
 		, m_reflections(nullptr)
 		, m_softParticles(nullptr)
 		, m_raytracing(nullptr)
+		, m_darkness(nullptr)
 		, m_antialiasing(nullptr)
 	{ }
 
@@ -389,6 +390,24 @@ public:
 			addCenter(std::move(cycle));
 		}
 
+		// Ambiance: how dark the unlit places are (independent of the quality presets)
+		{
+			auto cycle = std::make_unique<CycleTextWidget>(sliderSize(), hFontMenu,
+			                                               hdText("system_menus_options_hd_darkness", "Ambiance"));
+			cycle->addEntry(hdText("system_menus_options_hd_darkness_normal", "Normale"));
+			cycle->addEntry(hdText("system_menus_options_hd_darkness_dark", "Sombre"));
+			cycle->addEntry(hdText("system_menus_options_hd_darkness_darker", "Obscure"));
+			cycle->valueChanged = [](int pos, std::string_view /* string */) {
+				config.video.darkness = float(pos) * 0.5f;
+				if(pos > 0) {
+					config.video.postprocess = true;
+				}
+				applyHdSettings();
+			};
+			m_darkness = cycle.get();
+			addCenter(std::move(cycle));
+		}
+
 		// Ray tracing (independent of the quality presets, needs OpenGL 4.3)
 		if(GRenderer->hasRayTracing()) {
 			auto cycle = std::make_unique<CycleTextWidget>(sliderSize(), hFontMenu,
@@ -470,6 +489,7 @@ private:
 	CheckboxWidget * m_softParticles;
 	CycleTextWidget * m_antialiasing;
 	CycleTextWidget * m_raytracing;
+	CycleTextWidget * m_darkness;
 
 	//! An individual setting changed: the modern pipeline is needed, apply and show "custom"
 	void customChanged() {
@@ -508,6 +528,9 @@ private:
 		}
 		if(m_raytracing) {
 			m_raytracing->setValue(std::clamp(config.video.raytracing, 0, 2));
+		}
+		if(m_darkness) {
+			m_darkness->setValue(std::clamp(int(config.video.darkness * 2.f + 0.5f), 0, 2));
 		}
 		if(m_softParticles) {
 			m_softParticles->setChecked(config.video.postprocess && config.video.softParticles);
