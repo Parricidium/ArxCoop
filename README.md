@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/img/logo.png" width="320" alt="Arx Fatalis COOP">
+  <img src="docs/img/logo.png" width="520" alt="Arx Fatalis COOP - now with ray tracing">
 </p>
 
 <p align="center">
@@ -7,11 +7,27 @@
   <a href="COPYING"><img src="https://img.shields.io/badge/license-GPLv3-blue?style=for-the-badge" alt="GPLv3"></a>
 </p>
 
-# ArxCoop — Arx Fatalis co-op for 2 to 4 players
+# ArxCoop — Arx Fatalis co-op for 2 to 4 players, now with ray tracing
 
 A co-op mod for **Arx Fatalis**, built on the open-source [Arx Libertatis](https://arx-libertatis.org/) engine.
 One player hosts, the others join: everybody plays the adventure together in the same world, each with
 their own character. English and French.
+
+**The RT edition** (`ArxCoop-RT-*.zip`, the one to get) brings the 2002 engine into the present, all of it
+optional and switched live from the *Options RT* menu:
+
+- **Software ray tracing** on any OpenGL 4.3 card, no RTX needed: reflections traced through the level
+  (what is off screen or behind you reflects too, the water mirrors the scene) and soft shadows traced
+  from every torch, candle and spell.
+- **Volumetric haze**: a drifting mist that catches the light — halos, light shafts, and volumetric
+  shadows of the walls, pillars, characters and objects standing in a beam.
+- **Modern materials and lighting**: per-pixel lights, dynamic shadows, relief and glossiness of the
+  textures, specular highlights, bloom, SMAA, water with waves and refraction, glowing lava.
+- **Physics**: ragdoll corpses thrown by the killing blow, tumbling objects, shattering glass cases and
+  brittle walls, banners and curtains that move as cloth.
+- **Mood**: a *Dark* / *Pitch dark* setting that pushes the unlit places into blackness — bring a torch.
+
+The classic edition (`ArxCoop-*.zip`) is the same co-op mod with the original rendering.
 
 Tested on Arx Fatalis 1.21 (GOG) with Arx Libertatis 1.2 installed. The mod ships its own engine build
 (based on Arx Libertatis 1.3-dev) and does not touch the original game.
@@ -42,10 +58,10 @@ Tested on Arx Fatalis 1.21 (GOG) with Arx Libertatis 1.2 installed. The mod ship
 
 ## Download and install
 
-1. Download a zip from the [releases](https://github.com/Parricidium/ArxCoop/releases): **ArxCoop**
-   (the classic mod, original rendering) or **ArxCoop RT** (the same mod plus the modern rendering and
-   the physics, see [RT edition](#rt-edition)). The two are separate builds: everybody in a party must
-   use the same one.
+1. Download a zip from the [releases](https://github.com/Parricidium/ArxCoop/releases): **ArxCoop RT**
+   (recommended: the mod plus the ray tracing, the modern rendering and the physics, see
+   [RT edition](#rt-edition)) or **ArxCoop** (the classic mod, original rendering). The two are separate
+   builds: everybody in a party must use the same one.
 2. Unzip it **into your Arx Fatalis folder** (the one that contains `data.pak`).
    Nothing is overwritten: `arx.exe` is an extra executable, the original game stays intact.
 3. On first launch Windows may ask for network permission: allow it (private network).
@@ -312,6 +328,23 @@ Mod coopératif pour **Arx Fatalis**, construit sur le moteur libre [Arx Liberta
 Un joueur héberge, les autres le rejoignent : tout le monde joue l'aventure ensemble, dans le même monde,
 chacun avec son propre personnage. Français et anglais.
 
+**L'édition RT** (`ArxCoop-RT-*.zip`, celle à prendre) amène le moteur de 2002 dans le présent, tout étant
+optionnel et réglable à chaud dans le menu *Options RT* :
+
+- **Ray tracing logiciel** sur n'importe quelle carte OpenGL 4.3, sans RTX : reflets tracés dans le
+  niveau (ce qui est hors écran ou derrière vous se reflète aussi, l'eau reflète le décor) et ombres
+  douces tracées depuis chaque torche, bougie et sort.
+- **Brume volumétrique** : une brume qui dérive et accroche la lumière — halos, rais de lumière, et
+  ombres volumétriques des murs, piliers, personnages et objets qui se tiennent dans un faisceau.
+- **Matériaux et éclairage modernes** : lumières par pixel, ombres dynamiques, relief et brillance des
+  textures, reflets spéculaires, bloom, SMAA, eau avec vagues et réfraction, lave incandescente.
+- **Physique** : cadavres en ragdoll projetés par le coup fatal, objets qui roulent, vitrines et murs
+  friables qui volent en éclats, étendards et rideaux qui bougent comme du tissu.
+- **Ambiance** : un réglage *Sombre* / *Obscure* qui plonge les endroits non éclairés dans le noir —
+  prenez une torche.
+
+L'édition classique (`ArxCoop-*.zip`) est le même mod coop avec le rendu d'origine.
+
 Testé sur Arx Fatalis 1.21 (GOG) avec Arx Libertatis 1.2 installé. Le mod apporte son propre moteur
 (basé sur Arx Libertatis 1.3-dev) et ne touche pas au jeu d'origine.
 
@@ -319,10 +352,10 @@ Testé sur Arx Fatalis 1.21 (GOG) avec Arx Libertatis 1.2 installé. Le mod appo
 
 ## Téléchargement et installation
 
-1. Téléchargez un zip dans les [versions](https://github.com/Parricidium/ArxCoop/releases) : **ArxCoop**
-   (le mod classique, rendu d'origine) ou **ArxCoop RT** (le même mod plus le rendu moderne et la
-   physique, voir [Édition RT](#édition-rt)). Ce sont deux exécutables différents : dans une partie,
-   tout le monde doit avoir le même.
+1. Téléchargez un zip dans les [versions](https://github.com/Parricidium/ArxCoop/releases) : **ArxCoop RT**
+   (recommandé : le mod plus le ray tracing, le rendu moderne et la physique, voir
+   [Édition RT](#édition-rt)) ou **ArxCoop** (le mod classique, rendu d'origine). Ce sont deux
+   exécutables différents : dans une partie, tout le monde doit avoir le même.
 2. Dézippez-le **dans le dossier d'Arx Fatalis** (celui qui contient `data.pak`).
    Rien n'est écrasé : `arx.exe` est un exécutable en plus, le jeu d'origine reste intact.
 3. Au premier lancement, Windows demandera peut-être l'autorisation réseau : acceptez (réseau privé).
