@@ -127,8 +127,11 @@ bool GLPostProcess::init() {
 	}
 	if(!m_volumeProgram) {
 		m_volumeProgram = m_pipeline->buildProgram("post_volume", shadersources::post_vert, shadersources::post_volume_frag);
+		if(!m_volumeProgram) {
+			LogWarning << "Volumetric haze shader unavailable, no haze"; // the rest of the post-processing stays
+		}
 	}
-	if(!m_extractProgram || !m_blurProgram || !m_ssaoProgram || !m_finalProgram || !m_volumeProgram) {
+	if(!m_extractProgram || !m_blurProgram || !m_ssaoProgram || !m_finalProgram) {
 		LogWarning << "Post-processing shaders unavailable, post-processing disabled";
 		shutdown();
 		return false;
@@ -149,7 +152,7 @@ bool GLPostProcess::init() {
 	m_uSsaoRadius = glGetUniformLocation(m_ssaoProgram, "u_radius");
 	m_uSsaoBias = glGetUniformLocation(m_ssaoProgram, "u_bias");
 
-	glUseProgram(m_volumeProgram);
+	glUseProgram(m_volumeProgram); // 0 when unavailable: the locations below are then -1 and ignored
 	glUniform1i(glGetUniformLocation(m_volumeProgram, "u_depth"), 0);
 	if(m_traced) {
 		glUniform1i(glGetUniformLocation(m_volumeProgram, "u_rtTextures"), 10); // bound by the pipeline
@@ -533,7 +536,7 @@ void GLPostProcess::end() {
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_resolveFramebuffer);
 	glBlitFramebuffer(0, 0, m_width, m_height, 0, 0, m_width, m_height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 	bool ao = m_settings.ao > 0.f;
-	bool haze = m_settings.volumetric > 0.f;
+	bool haze = m_settings.volumetric > 0.f && m_volumeProgram != 0;
 	if(ao || haze) {
 		glBlitFramebuffer(0, 0, m_width, m_height, 0, 0, m_width, m_height, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
 	}
