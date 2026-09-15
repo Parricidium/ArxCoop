@@ -83,6 +83,7 @@ constexpr const std::string_view
 constexpr const int
 	shadows = 4,
 	shadowResolution = 1024,
+	raytracing = 0,
 	refreshRate = 0,
 	levelOfDetail = 2,
 	vsync = -1,
@@ -262,6 +263,7 @@ constexpr const std::string_view
 	lighting = "lighting",
 	shadows = "shadows",
 	shadowResolution = "shadow_resolution",
+	raytracing = "raytracing",
 	postprocess = "postprocess",
 	bloom = "bloom",
 	fxaa = "fxaa",
@@ -558,6 +560,7 @@ bool Config::save() {
 	writer.writeKey(Key::lighting, video.lighting);
 	writer.writeKey(Key::shadows, video.shadows);
 	writer.writeKey(Key::shadowResolution, video.shadowResolution);
+	writer.writeKey(Key::raytracing, video.raytracing);
 	writer.writeKey(Key::postprocess, video.postprocess);
 	writer.writeKey(Key::bloom, video.bloom);
 	writer.writeKey(Key::fxaa, video.fxaa);
@@ -719,6 +722,7 @@ bool Config::init(const fs::path & file) {
 	video.lighting = reader.getKey(Section::Video, Key::lighting, Default::lighting);
 	video.shadows = reader.getKey(Section::Video, Key::shadows, Default::shadows);
 	video.shadowResolution = reader.getKey(Section::Video, Key::shadowResolution, Default::shadowResolution);
+	video.raytracing = reader.getKey(Section::Video, Key::raytracing, Default::raytracing);
 	video.postprocess = reader.getKey(Section::Video, Key::postprocess, Default::postprocess);
 	video.bloom = reader.getKey(Section::Video, Key::bloom, Default::bloom);
 	video.fxaa = reader.getKey(Section::Video, Key::fxaa, Default::fxaa);

@@ -25,6 +25,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include "graphics/opengl/GLRayScene.h"
 #include "graphics/opengl/GLShaderSources.h"
 #include "graphics/opengl/GLShadowMaps.h"
 #include "graphics/opengl/GLTexture.h"
@@ -39,6 +40,9 @@ static const char * const g_shaderDir = "graph/shaders";
 GLShaderPipeline::GLShaderPipeline(OpenGLRenderer * renderer)
 	: m_renderer(renderer)
 	, m_program(0)
+	, m_rayTracing(0)
+	, m_rayDebug(0)
+	, m_raySceneBound(false)
 	, m_uMVP(-1)
 	, m_uView(-1)
 	, m_uTransform(-1)
@@ -178,6 +182,20 @@ GLuint GLShaderPipeline::build(std::string_view name, std::string_view vertFallb
 
 	std::string vertSource = std::string(prefixVert) + loadSource(vertName, vertFallback);
 	std::string fragSource = std::string(prefixFrag) + loadSource(fragName, fragFallback);
+	// A prelude carries the version: drop the one of the stage source (it must come first)
+	auto dropVersion = [](std::string & source, size_t preludeSize) {
+		size_t pos = source.find("#version", preludeSize);
+		if(pos != std::string::npos && source.find_first_not_of(" \t\r\n", preludeSize) == pos) {
+			size_t end = source.find('\n', pos);
+			source.erase(pos, (end == std::string::npos) ? std::string::npos : end + 1 - pos);
+		}
+	};
+	if(!prefixVert.empty()) {
+		dropVersion(vertSource, prefixVert.size());
+	}
+	if(!prefixFrag.empty()) {
+		dropVersion(fragSource, prefixFrag.size());
+	}
 
 	GLuint vert = compile(GL_VERTEX_SHADER, vertName, vertSource);
 	if(!vert) {
@@ -237,7 +255,22 @@ bool GLShaderPipeline::init() {
 
 	shutdown();
 
-	GLuint program = build("legacy", shadersources::legacy_vert, shadersources::legacy_frag);
+	GLuint program = 0;
+	if(m_rayTracing > 0) {
+		// The main shader with the ray tracing code (rt_common.glsl) compiled in
+		std::string prelude = "#version 430\n#define ARX_RT 1\n";
+		std::string common = loadSource("rt_common.glsl", shadersources::rt_common_glsl);
+		program = build("legacy", shadersources::legacy_vert, shadersources::legacy_frag,
+		                prelude, prelude + common + "\n#line 1\n");
+		if(!program) {
+			LogWarning << "Ray tracing shader unavailable, ray tracing disabled";
+			m_rayTracing = 0;
+			m_rayScene.reset();
+		}
+	}
+	if(!program) {
+		program = build("legacy", shadersources::legacy_vert, shadersources::legacy_frag);
+	}
 	if(!program) {
 		return false;
 	}
@@ -295,6 +328,13 @@ bool GLShaderPipeline::init() {
 	glUniform1i(glGetUniformLocation(m_program, "u_normalMap"), 3);
 	// Scene depth for the soft particles, on unit 8 (the water pass uses 8 and 9 for itself)
 	glUniform1i(glGetUniformLocation(m_program, "u_depth"), 8);
+	if(m_rayTracing > 0) {
+		// The level textures of the ray tracing, on unit 10 (GLRayScene)
+		glUniform1i(glGetUniformLocation(m_program, "u_rtTextures"), 10);
+		glUniform1i(glGetUniformLocation(m_program, "u_rtShadows"), (m_rayTracing >= 2) ? 1 : 0);
+		glUniform1i(glGetUniformLocation(m_program, "u_rtDebug"), m_rayDebug);
+		m_raySceneBound = false;
+	}
 
 	resetCache();
 
@@ -310,6 +350,7 @@ bool GLShaderPipeline::reload() {
 	GLuint old = m_program;
 	GLuint oldShadow = m_shadowProgram;
 	std::unique_ptr<GLShadowMaps> shadows = std::move(m_shadows);
+	std::unique_ptr<GLRayScene> rayScene = std::move(m_rayScene);
 	m_program = 0;
 	m_shadowProgram = 0;
 
@@ -326,15 +367,69 @@ bool GLShaderPipeline::reload() {
 		}
 	}
 
-	// The cube maps do not depend on the programs
+	// The cube maps and the level hierarchy do not depend on the programs
 	m_shadows = std::move(shadows);
+	if(m_rayTracing > 0) {
+		m_rayScene = std::move(rayScene);
+		m_raySceneBound = false;
+	}
 
 	return ok;
+}
+
+bool GLShaderPipeline::setRayTracing(int mode) {
+	if(mode > 0 && !GLRayScene::supported()) {
+		mode = 0;
+	}
+	if(mode == m_rayTracing) {
+		return mode > 0;
+	}
+	bool wasOn = (m_rayTracing > 0);
+	m_rayTracing = mode;
+	if(mode > 0 && !m_rayScene) {
+		m_rayScene = std::make_unique<GLRayScene>();
+	} else if(mode == 0) {
+		m_rayScene.reset();
+	}
+	if((mode > 0) != wasOn && m_program) {
+		reload();
+	} else if(m_program) {
+		glUseProgram(m_program);
+		glUniform1i(glGetUniformLocation(m_program, "u_rtShadows"), (m_rayTracing >= 2) ? 1 : 0);
+	}
+	return m_rayTracing > 0;
+}
+
+void GLShaderPipeline::setRayTracingDebug(int mode) {
+	m_rayDebug = mode;
+	if(m_program && m_rayTracing > 0) {
+		glUseProgram(m_program);
+		glUniform1i(glGetUniformLocation(m_program, "u_rtDebug"), mode);
+	}
+}
+
+void GLShaderPipeline::prepareRayScene() {
+	if(!m_rayScene || !m_program) {
+		return;
+	}
+	size_t generation = m_rayScene->generation();
+	if(!m_rayScene->update()) {
+		m_raySceneBound = false;
+		return;
+	}
+	if(m_rayScene->generation() != generation || !m_raySceneBound) {
+		// The upload touched the texture bindings
+		m_rayScene->bind(GL_TEXTURE10);
+		m_raySceneBound = true;
+		restoreAfterExternalDraw();
+	}
 }
 
 void GLShaderPipeline::shutdown() {
 
 	m_shadows.reset();
+	m_rayScene.reset();
+	m_raySceneBound = false;
 
 	if(m_shadowProgram) {
 		glDeleteProgram(m_shadowProgram);
