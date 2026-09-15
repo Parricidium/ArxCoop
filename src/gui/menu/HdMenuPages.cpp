@@ -416,8 +416,10 @@ public:
 			cycle->addEntry(hdText("system_menus_options_hd_volumetric_off", "Désactivée"));
 			cycle->addEntry(hdText("system_menus_options_hd_volumetric_light", "Légère"));
 			cycle->addEntry(hdText("system_menus_options_hd_volumetric_dense", "Dense"));
+			cycle->addEntry(hdText("system_menus_options_hd_volumetric_thick", "Épaisse"));
 			cycle->valueChanged = [](int pos, std::string_view /* string */) {
-				config.video.volumetric = float(pos) * 0.5f;
+				const float densities[4] = { 0.f, 0.5f, 1.f, 2.f };
+				config.video.volumetric = densities[std::clamp(pos, 0, 3)];
 				if(pos > 0) {
 					config.video.postprocess = true;
 				}
@@ -553,7 +555,8 @@ private:
 			m_darkness->setValue(std::clamp(int(config.video.darkness * 2.f + 0.5f), 0, 2));
 		}
 		if(m_volumetric) {
-			m_volumetric->setValue(std::clamp(int(config.video.volumetric * 2.f + 0.5f), 0, 2));
+			float v = config.video.volumetric;
+			m_volumetric->setValue((v >= 1.5f) ? 3 : (v >= 0.75f) ? 2 : (v > 0.f) ? 1 : 0);
 		}
 		if(m_softParticles) {
 			m_softParticles->setChecked(config.video.postprocess && config.video.softParticles);
