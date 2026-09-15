@@ -126,6 +126,8 @@ public:
 	[[nodiscard]] bool fogEnabled() const;
 	[[nodiscard]] const std::vector<glm::vec4> & lightPositions() const { return m_lightPos; }
 	[[nodiscard]] const std::vector<glm::vec4> & lightColors() const { return m_lightColor; }
+	//! Per light: whether its room is in view (RendererLight::inView)
+	[[nodiscard]] const std::vector<bool> & lightsInView() const { return m_lightInView; }
 	[[nodiscard]] size_t dynamicLightCount() const { return m_dynamicLightCount; }
 	[[nodiscard]] const glm::vec3 & fogColor() const { return m_fogColor; }
 
@@ -248,6 +250,7 @@ private:
 	int m_glPixelLighting;
 	std::vector<glm::vec4> m_lightPos;
 	std::vector<glm::vec4> m_lightColor;
+	std::vector<bool> m_lightInView;
 	std::vector<RendererLight> m_lights;
 	size_t m_dynamicLightCount;
 	bool m_lightsDirty;
