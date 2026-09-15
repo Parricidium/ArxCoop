@@ -481,7 +481,7 @@ void GLPostProcess::end() {
 		glUniform4f(m_uSsaoProjection, proj[0][0], proj[1][1], proj[2][2], -proj[3][2]);
 		glUniform2f(m_uSsaoInvSize, 1.f / float(m_width), 1.f / float(m_height));
 		glUniform1f(m_uSsaoRadius, m_settings.aoRadius);
-		glUniform1f(m_uSsaoBias, 1.5f);
+		glUniform1f(m_uSsaoBias, 2.5f); // world units: the floor tiles of the levels meet with small steps
 		glBindTexture(GL_TEXTURE_2D, m_depthTexture);
 		drawFullscreen();
 		glUseProgram(m_blurProgram);
