@@ -1029,7 +1029,8 @@ const int Steps = 12;               // samples along each ray
 const float MaxRange = 3000.0;      // world units of haze in front of the camera
 const float RangeFade = 0.5;        // fraction of the range from which the haze thins out
 const float Extinction = 0.00015;   // per world unit at density 1: how much the haze dims what is behind
-const float Scatter = 0.0011;       // per world unit at density 1: how much light it throws back
+const float Scatter = 0.0008;       // per world unit at density 1: how much light it throws back
+const float GlowCompression = 2.0;  // the brighter the glow, the more it is held back (soft ceiling)
 const float Ambient = 0.006;        // faint glow of the haze where no light reaches (low: the shadows in the beams read better)
 const float Anisotropy = 0.35;      // Henyey-Greenstein g: > 0 scatters forward (halos round the lights)
 const float NoiseScale = 0.0035;    // world units -> noise; smaller = larger wisps
@@ -1192,6 +1193,9 @@ void main() {
 		transmittance *= extinction;
 		t += dt;
 	}
+
+	// Many lights add up: compress the glow so that a lit hall never washes out to white
+	inscatter = inscatter / (1.0 + inscatter * GlowCompression) * (1.0 + GlowCompression);
 
 	fragColor = vec4(inscatter, transmittance);
 }
