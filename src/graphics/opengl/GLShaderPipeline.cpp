@@ -400,6 +400,10 @@ bool GLShaderPipeline::setRayTracing(int mode) {
 	return m_rayTracing > 0;
 }
 
+GLuint GLShaderPipeline::shadowMapTexture(size_t light) const {
+	return (m_shadows && light < m_shadows->count()) ? m_shadows->texture(light) : 0;
+}
+
 void GLShaderPipeline::setRayTracingDebug(int mode) {
 	m_rayDebug = mode;
 	if(m_program && m_rayTracing > 0) {
