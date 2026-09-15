@@ -19,10 +19,13 @@
 
 #include "graphics/opengl/GLPostProcess.h"
 
+#include <glm/gtc/type_ptr.hpp>
+
 #include <algorithm>
 
 #include <glm/glm.hpp>
 
+#include "core/GameTime.h"
 #include "graphics/opengl/GLShaderPipeline.h"
 #include "graphics/opengl/GLShaderSources.h"
 #include "io/log/Logger.h"
@@ -57,6 +60,18 @@ GLPostProcess::GLPostProcess(GLShaderPipeline * pipeline)
 	, m_uSsaoBias(-1)
 	, m_uFinalAo(-1)
 	, m_uFinalDarkness(-1)
+	, m_uFinalVolumetric(-1)
+	, m_volumeProgram(0)
+	, m_uVolumeProjection(-1)
+	, m_uVolumeInvView(-1)
+	, m_uVolumeCameraPos(-1)
+	, m_uVolumeDensity(-1)
+	, m_uVolumeTime(-1)
+	, m_uVolumeLightCount(-1)
+	, m_uVolumeLightPos(-1)
+	, m_uVolumeLightColor(-1)
+	, m_uVolumeShadows(-1)
+	, m_traced(false)
 	, m_uFinalDebug(-1)
 	, m_uExtractThreshold(-1)
 	, m_uBlurDirection(-1)
@@ -80,6 +95,8 @@ GLPostProcess::GLPostProcess(GLShaderPipeline * pipeline)
 	m_bloomFramebuffer[0] = m_bloomFramebuffer[1] = 0;
 	m_bloomTexture[0] = m_bloomTexture[1] = 0;
 	m_aoFramebuffer[0] = m_aoFramebuffer[1] = 0;
+	m_volumeTexture[0] = m_volumeTexture[1] = 0;
+	m_volumeFramebuffer[0] = m_volumeFramebuffer[1] = 0;
 	m_aoTexture[0] = m_aoTexture[1] = 0;
 }
 
@@ -95,7 +112,20 @@ bool GLPostProcess::init() {
 	m_blurProgram = m_pipeline->buildProgram("post_blur", shadersources::post_vert, shadersources::post_blur_frag);
 	m_ssaoProgram = m_pipeline->buildProgram("post_ssao", shadersources::post_vert, shadersources::post_ssao_frag);
 	m_finalProgram = m_pipeline->buildProgram("post_final", shadersources::post_vert, shadersources::post_final_frag);
-	if(!m_extractProgram || !m_blurProgram || !m_ssaoProgram || !m_finalProgram) {
+	// The haze: with the ray tracing code when the pipeline traces (shadowed light shafts)
+	m_traced = (m_pipeline->rayTracing() > 0);
+	if(m_traced) {
+		m_volumeProgram = m_pipeline->buildProgram("post_volume", shadersources::post_vert, shadersources::post_volume_frag,
+		                                           "#version 430\n#define ARX_RT 1\n", "rt_common.glsl", shadersources::rt_common_glsl);
+		if(!m_volumeProgram) {
+			LogWarning << "Ray-traced haze shader unavailable, falling back to the plain one";
+			m_traced = false;
+		}
+	}
+	if(!m_volumeProgram) {
+		m_volumeProgram = m_pipeline->buildProgram("post_volume", shadersources::post_vert, shadersources::post_volume_frag);
+	}
+	if(!m_extractProgram || !m_blurProgram || !m_ssaoProgram || !m_finalProgram || !m_volumeProgram) {
 		LogWarning << "Post-processing shaders unavailable, post-processing disabled";
 		shutdown();
 		return false;
@@ -116,10 +146,27 @@ bool GLPostProcess::init() {
 	m_uSsaoRadius = glGetUniformLocation(m_ssaoProgram, "u_radius");
 	m_uSsaoBias = glGetUniformLocation(m_ssaoProgram, "u_bias");
 
+	glUseProgram(m_volumeProgram);
+	glUniform1i(glGetUniformLocation(m_volumeProgram, "u_depth"), 0);
+	if(m_traced) {
+		glUniform1i(glGetUniformLocation(m_volumeProgram, "u_rtTextures"), 10); // bound by the pipeline
+	}
+	m_uVolumeProjection = glGetUniformLocation(m_volumeProgram, "u_projection");
+	m_uVolumeInvView = glGetUniformLocation(m_volumeProgram, "u_invView");
+	m_uVolumeCameraPos = glGetUniformLocation(m_volumeProgram, "u_cameraPos");
+	m_uVolumeDensity = glGetUniformLocation(m_volumeProgram, "u_density");
+	m_uVolumeTime = glGetUniformLocation(m_volumeProgram, "u_time");
+	m_uVolumeLightCount = glGetUniformLocation(m_volumeProgram, "u_lightCount");
+	m_uVolumeLightPos = glGetUniformLocation(m_volumeProgram, "u_lightPos");
+	m_uVolumeLightColor = glGetUniformLocation(m_volumeProgram, "u_lightColor");
+	m_uVolumeShadows = glGetUniformLocation(m_volumeProgram, "u_shadows");
+
 	glUseProgram(m_finalProgram);
 	glUniform1i(glGetUniformLocation(m_finalProgram, "u_scene"), 0);
 	glUniform1i(glGetUniformLocation(m_finalProgram, "u_bloomTexture"), 1);
 	glUniform1i(glGetUniformLocation(m_finalProgram, "u_aoTexture"), 2);
+	glUniform1i(glGetUniformLocation(m_finalProgram, "u_volumeTexture"), 3);
+	m_uFinalVolumetric = glGetUniformLocation(m_finalProgram, "u_volumetric");
 	m_uFinalAo = glGetUniformLocation(m_finalProgram, "u_ao");
 	m_uFinalDarkness = glGetUniformLocation(m_finalProgram, "u_darkness");
 	m_uFinalDebug = glGetUniformLocation(m_finalProgram, "u_debug");
@@ -212,7 +259,7 @@ void GLPostProcess::shutdown() {
 		glDeleteVertexArrays(1, &m_vao);
 		m_vao = 0;
 	}
-	for(GLuint * program : { &m_extractProgram, &m_blurProgram, &m_ssaoProgram, &m_finalProgram,
+	for(GLuint * program : { &m_extractProgram, &m_blurProgram, &m_ssaoProgram, &m_finalProgram, &m_volumeProgram,
 	                         &m_smaaEdgeProgram, &m_smaaWeightProgram, &m_smaaBlendProgram }) {
 		if(*program) {
 			glDeleteProgram(*program);
@@ -321,6 +368,15 @@ bool GLPostProcess::createBuffers(int width, int height, int samples) {
 		ok = framebufferComplete("ao") && ok;
 	}
 
+	// Volumetric haze ping-pong at half resolution
+	for(int i = 0; i < 2; i++) {
+		m_volumeTexture[i] = createColorTexture(std::max(width / 2, 1), std::max(height / 2, 1));
+		glGenFramebuffers(1, &m_volumeFramebuffer[i]);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_volumeFramebuffer[i]);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_volumeTexture[i], 0);
+		ok = framebufferComplete("volume") && ok;
+	}
+
 	// Bloom ping-pong at half resolution
 	m_bloomWidth = std::max(width / 2, 1);
 	m_bloomHeight = std::max(height / 2, 1);
@@ -347,7 +403,8 @@ bool GLPostProcess::createBuffers(int width, int height, int samples) {
 void GLPostProcess::destroyBuffers() {
 
 	for(GLuint * fb : { &m_sceneFramebuffer, &m_resolveFramebuffer, &m_bloomFramebuffer[0], &m_bloomFramebuffer[1],
-	                    &m_aoFramebuffer[0], &m_aoFramebuffer[1], &m_compositeFramebuffer, &m_edgesFramebuffer,
+	                    &m_aoFramebuffer[0], &m_aoFramebuffer[1], &m_volumeFramebuffer[0], &m_volumeFramebuffer[1],
+	                    &m_compositeFramebuffer, &m_edgesFramebuffer,
 	                    &m_blendFramebuffer }) {
 		if(*fb) {
 			glDeleteFramebuffers(1, fb);
@@ -361,7 +418,8 @@ void GLPostProcess::destroyBuffers() {
 		}
 	}
 	for(GLuint * tex : { &m_sceneTexture, &m_depthTexture, &m_bloomTexture[0], &m_bloomTexture[1],
-	                     &m_aoTexture[0], &m_aoTexture[1], &m_compositeTexture, &m_edgesTexture, &m_blendTexture }) {
+	                     &m_aoTexture[0], &m_aoTexture[1], &m_volumeTexture[0], &m_volumeTexture[1],
+	                     &m_compositeTexture, &m_edgesTexture, &m_blendTexture }) {
 		if(*tex) {
 			glDeleteTextures(1, tex);
 			*tex = 0;
@@ -467,7 +525,8 @@ void GLPostProcess::end() {
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_resolveFramebuffer);
 	glBlitFramebuffer(0, 0, m_width, m_height, 0, 0, m_width, m_height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 	bool ao = m_settings.ao > 0.f;
-	if(ao) {
+	bool haze = m_settings.volumetric > 0.f;
+	if(ao || haze) {
 		glBlitFramebuffer(0, 0, m_width, m_height, 0, 0, m_width, m_height, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
 	}
 
@@ -494,6 +553,40 @@ void GLPostProcess::end() {
 		glBindFramebuffer(GL_FRAMEBUFFER, m_aoFramebuffer[0]);
 		glUniform2f(m_uBlurDirection, 0.f, 1.f / float(m_bloomHeight));
 		glBindTexture(GL_TEXTURE_2D, m_aoTexture[1]);
+		drawFullscreen();
+	}
+
+	if(haze) {
+		// The volumetric haze along the rays, half size, then blurred (the alpha holds the transmittance)
+		const glm::mat4 & proj = m_pipeline->projection();
+		glm::mat4 invView = glm::inverse(m_pipeline->view());
+		glm::vec3 cameraPos(invView[3]);
+		glViewport(0, 0, m_bloomWidth, m_bloomHeight);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_volumeFramebuffer[0]);
+		glUseProgram(m_volumeProgram);
+		glUniform4f(m_uVolumeProjection, proj[0][0], proj[1][1], proj[2][2], -proj[3][2]);
+		glUniformMatrix4fv(m_uVolumeInvView, 1, GL_FALSE, glm::value_ptr(invView));
+		glUniform3fv(m_uVolumeCameraPos, 1, glm::value_ptr(cameraPos));
+		glUniform1f(m_uVolumeDensity, m_settings.volumetric);
+		glUniform1f(m_uVolumeTime, float(toMsi(g_gameTime.now())) * 0.001f);
+		glUniform1i(m_uVolumeShadows, (m_traced && m_settings.volumetricShadows) ? 1 : 0);
+		const std::vector<glm::vec4> & lightPos = m_pipeline->lightPositions();
+		GLsizei lights = GLsizei(std::min(lightPos.size(), size_t(128)));
+		glUniform1i(m_uVolumeLightCount, lights);
+		if(lights > 0) {
+			glUniform4fv(m_uVolumeLightPos, lights, glm::value_ptr(lightPos[0]));
+			glUniform4fv(m_uVolumeLightColor, lights, glm::value_ptr(m_pipeline->lightColors()[0]));
+		}
+		glBindTexture(GL_TEXTURE_2D, m_depthTexture);
+		drawFullscreen();
+		glUseProgram(m_blurProgram);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_volumeFramebuffer[1]);
+		glUniform2f(m_uBlurDirection, 1.f / float(m_bloomWidth), 0.f);
+		glBindTexture(GL_TEXTURE_2D, m_volumeTexture[0]);
+		drawFullscreen();
+		glBindFramebuffer(GL_FRAMEBUFFER, m_volumeFramebuffer[0]);
+		glUniform2f(m_uBlurDirection, 0.f, 1.f / float(m_bloomHeight));
+		glBindTexture(GL_TEXTURE_2D, m_volumeTexture[1]);
 		drawFullscreen();
 	}
 
@@ -534,8 +627,11 @@ void GLPostProcess::end() {
 	glUniform1i(m_uFinalFxaa, (m_settings.fxaa && !smaa) ? 1 : 0);
 	glUniform1f(m_uFinalAo, ao ? m_settings.ao : 0.f);
 	glUniform1f(m_uFinalDarkness, m_settings.darkness);
+	glUniform1i(m_uFinalVolumetric, haze ? 1 : 0);
 	glUniform1i(m_uFinalDebug, m_settings.debugView);
 	glUniform2f(m_uFinalInvSize, 1.f / float(m_width), 1.f / float(m_height));
+	glActiveTexture(GL_TEXTURE3);
+	glBindTexture(GL_TEXTURE_2D, haze ? m_volumeTexture[0] : 0);
 	glActiveTexture(GL_TEXTURE2);
 	glBindTexture(GL_TEXTURE_2D, ao ? m_aoTexture[0] : 0);
 	glActiveTexture(GL_TEXTURE1);

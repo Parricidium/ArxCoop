@@ -794,6 +794,14 @@ void OpenGLRenderer::applyGraphicsConfig() {
 			if(!m_post->init()) {
 				m_post.reset();
 			}
+		} else if(m_post->traced() != (m_shaders->rayTracing() > 0)) {
+			// The haze program carries the ray tracing code only when the pipeline traces
+			GLPostProcess::Settings settings = m_post->settings();
+			if(m_post->init()) {
+				m_post->settings() = settings;
+			} else {
+				m_post.reset();
+			}
 		}
 		m_shaders->setNormalMapStrength(config.video.normalMaps);
 		m_shaders->setMaterialStrength(config.video.parallax, config.video.specular);
@@ -803,7 +811,9 @@ void OpenGLRenderer::applyGraphicsConfig() {
 			m_post->settings().smaa = config.video.smaa;
 			m_post->settings().ao = config.video.ambientOcclusion;
 			m_post->settings().darkness = config.video.darkness;
-			m_post->settings().debugView = (config.video.postDebug == "ao") ? 1 : (config.video.postDebug == "bloom") ? 2 : 0;
+			m_post->settings().volumetric = config.video.volumetric;
+			m_post->settings().debugView = (config.video.postDebug == "ao") ? 1 : (config.video.postDebug == "bloom") ? 2
+			                               : (config.video.postDebug == "haze") ? 3 : 0;
 		}
 	} else {
 		m_reflect.reset();
