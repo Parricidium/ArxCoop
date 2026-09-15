@@ -71,7 +71,7 @@ Ultra* and individual settings, applied live): the *Off* preset gives exactly th
   (the original blurred shadow discs go away).
 - **Specular highlights** of the lights on every material and **screen-space reflections** of the
   scene on the glossy floors and walls (marble, metal, ice, wet stone).
-- **Post-processing**: bloom, FXAA (SMAA setting reserved), experimental ambient occlusion, **soft
+- **Post-processing**: bloom, FXAA or **SMAA** anti-aliasing, experimental ambient occlusion, **soft
   particles** (fire, smoke and magic no longer cut into the walls and floors).
 - **Water**: refraction through animated waves, specular reflections of the lights, soft banks.
   **Lava**: glowing, pulsing veins over a darker crust, heat haze above the pools.
@@ -277,7 +277,8 @@ physics compiles out and the rest of the HD rendering still builds.
 - [Arx Libertatis](https://arx-libertatis.org/) and its contributors, based on the Arx Fatalis source
   code released by Arkane Studios.
 - Co-op part, HD rendering and physics integration: JD, with the assistance of Claude (Anthropic).
-- HD edition: [JoltPhysics](https://github.com/jrouwe/JoltPhysics) by Jorrit Rouwe (MIT license).
+- HD edition: [JoltPhysics](https://github.com/jrouwe/JoltPhysics) by Jorrit Rouwe (MIT license),
+  [SMAA](https://github.com/iryoku/smaa) by Jorge Jimenez et al. (MIT license).
 - License **GPLv3+** with the Arx Libertatis additional terms: see [COPYING](COPYING) and [LICENSE](LICENSE).
   Arx Fatalis, its data and trademarks remain the property of their owners.
 
@@ -327,7 +328,7 @@ d'origine.
   (les disques d'ombre flous d'origine disparaissent).
 - **Reflets spéculaires** des lumières sur tous les matériaux et **reflets du décor en espace écran**
   sur les sols et murs brillants (marbre, métal, glace, pierre mouillée).
-- **Post-traitement** : bloom, FXAA (réglage SMAA réservé), occlusion ambiante expérimentale,
+- **Post-traitement** : bloom, anticrénelage FXAA ou **SMAA**, occlusion ambiante expérimentale,
   **particules douces** (feu, fumée et magie ne coupent plus les murs et les sols).
 - **Eau** : réfraction à travers des vagues animées, reflets spéculaires des lumières, berges douces.
   **Lave** : veines incandescentes qui pulsent sur une croûte plus sombre, brume de chaleur au-dessus.
@@ -532,6 +533,7 @@ compilée et le reste du rendu HD se construit quand même.
 - [Arx Libertatis](https://arx-libertatis.org/) et ses contributeurs, sur la base du code source
   d'Arx Fatalis publié par Arkane Studios.
 - Partie coopérative, rendu HD et intégration de la physique : JD, avec l'assistance de Claude (Anthropic).
-- Édition HD : [JoltPhysics](https://github.com/jrouwe/JoltPhysics) de Jorrit Rouwe (licence MIT).
+- Édition HD : [JoltPhysics](https://github.com/jrouwe/JoltPhysics) de Jorrit Rouwe (licence MIT),
+  [SMAA](https://github.com/iryoku/smaa) de Jorge Jimenez et al. (licence MIT).
 - Licence **GPLv3+** avec les termes additionnels d'Arx Libertatis : voir [COPYING](COPYING) et [LICENSE](LICENSE).
   Arx Fatalis, ses données et ses marques restent la propriété de leurs ayants droit.
