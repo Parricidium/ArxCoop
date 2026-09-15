@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/img/logo.png" width="520" alt="Arx Fatalis COOP - now with ray tracing">
+  <img src="docs/img/logo-rt.png" width="520" alt="Arx Fatalis COOP - now with ray tracing">
 </p>
 
 <p align="center">
