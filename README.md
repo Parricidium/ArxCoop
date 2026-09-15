@@ -83,6 +83,9 @@ Ultra* and individual settings, applied live): the *Off* preset gives exactly th
   curtains and tapestries of the levels hang as cloth and move in a light breeze and when someone walks
   into them. The host simulates the corpses and objects, the clients see the same thing (cloths are
   simulated on each machine). Player characters are not affected.
+- **Mood** (*Options HD > Mood: Normal / Dark / Pitch dark*): pushes the unlit places towards black
+  while what a torch, a spell or a lamp lights keeps its brightness — for those who want the dark to
+  be dangerous and the torches to matter. Independent of the quality presets.
 - **Ray tracing** (*Options HD > Ray tracing*, needs OpenGL 4.3, i.e. 2012 or later hardware — no
   RTX card needed, it runs on the shader cores): the level geometry is put in a bounding volume
   hierarchy that the shaders trace rays through. *Reflections*: the glossy floors and walls reflect
@@ -353,6 +356,10 @@ d'origine.
   bougent sous une brise légère ou quand on les traverse. L'hôte simule cadavres et objets, les clients
   voient la même chose (les tissus sont simulés sur chaque machine). Les personnages des joueurs ne sont
   pas concernés.
+- **Ambiance** (*Options HD > Ambiance : Normale / Sombre / Obscure*) : pousse les endroits non
+  éclairés vers le noir tandis que ce qu'une torche, un sort ou une lampe éclaire garde sa
+  luminosité — pour que le noir soit dangereux et que les torches comptent. Indépendant des
+  préréglages.
 - **Ray tracing** (*Options HD > Ray tracing*, demande OpenGL 4.3, soit du matériel de 2012 ou plus
   récent — pas besoin de carte RTX, ça tourne sur les unités de calcul classiques) : la géométrie du
   niveau est rangée dans une hiérarchie que les shaders parcourent avec des rayons. *Reflets* : les sols
