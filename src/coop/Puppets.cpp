@@ -1301,6 +1301,10 @@ EntityHandle attackTarget(const Entity & npc, EntityHandle target) {
 	return best;
 }
 
+Entity * puppetOf(PlayerId id) {
+	return findPuppet(id);
+}
+
 PlayerId puppetOwner(const Entity & io) {
 	if(!io.coopPuppet) {
 		return InvalidPlayerId;
@@ -1579,6 +1583,9 @@ void puppetsTestUpdate() {
 	static bool throwChecked = false;
 	static bool throwChecked2 = false;
 	static bool hostThrowDone = false;
+	static bool cutsceneArmed = false;
+	static bool cutsceneChatDone = false;
+	static bool cutsceneChatChecked = false;
 	static int hostThrowChecks = 0;
 	static bool tpDone = false;
 	static bool killDone = false;
@@ -2063,6 +2070,24 @@ void puppetsTestUpdate() {
 		LogInfo << "[coop] test: host types 'tp p2'";
 		Logger::flush();
 		coop::consoleCommand("tp p2");
+		Logger::flush();
+	} else if(step >= 4 && elapsed > std::chrono::seconds(121) && g_coop.isHost() && !cutsceneArmed) {
+		cutsceneArmed = true;
+		if(Entity * kultar = entities.getById("human_base_0028")) {
+			SETVarValueLong(kultar->m_variables, "§" "chatpos", 1); // back to his first dialogue, the one with the camera
+			LogInfo << "[coop] test: Kultar's dialogue rearmed";
+		}
+	} else if(step >= 4 && elapsed > std::chrono::seconds(123) && g_coop.isClient() && !cutsceneChatDone) {
+		cutsceneChatDone = true;
+		if(Entity * kultar = entities.getById("human_base_0028")) {
+			LogInfo << "[coop] test: client talks to " << kultar->idString() << " (cutscene takeover)";
+			SendIOScriptEvent(entities.player(), kultar, SM_CHAT);
+		}
+	} else if(step >= 4 && elapsed > std::chrono::seconds(128) && !cutsceneChatChecked) {
+		cutsceneChatChecked = true;
+		LogInfo << "[coop] test: after chat my pos " << int(entities.player()->pos.x) << "," << int(entities.player()->pos.y) << "," << int(entities.player()->pos.z)
+		        << " controls blocked " << BLOCK_PLAYER_CONTROLS << " cinemascope " << cinematicBorder.isActive()
+		        << " speech " << (getCinematicSpeech() != nullptr);
 		Logger::flush();
 	} else if(step >= 4 && elapsed > std::chrono::seconds(120) && !tpChecked) {
 		tpChecked = true;

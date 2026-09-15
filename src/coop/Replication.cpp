@@ -43,6 +43,7 @@
 #include "game/Player.h"
 #include "game/magic/Spell.h"
 #include "game/Spells.h"
+#include "game/Camera.h"
 #include "coop/Puppets.h"
 #include "gui/Dragging.h"
 #include "gui/Menu.h"
@@ -1930,6 +1931,60 @@ bool interceptScriptEvent(Entity * sender, Entity * entity, const ScriptEventNam
 	return true;
 }
 
+/*!
+ * A cutscene starting for a client (its dialogue with an NPC brings the camera in, blocks the
+ * controls): the host takes it over instead - it is teleported next to that player and plays the
+ * scene as if it had talked to the NPC itself, the client only hears the lines. The client-side
+ * cutscene path is what got players stuck (JD, 15/09); the host's path is the one the game was
+ * written for.
+ */
+bool cutsceneStarts(std::string_view command, const script::Context & context) {
+	if(command == "cinemascope" || command == "setplayercontrols") {
+		script::Context probe(context);
+		probe.setTranscript(nullptr);
+		std::string first = util::toLowercase(probe.getWord());
+		if(first.size() > 1 && first[0] == '-') {
+			first = util::toLowercase(probe.getWord());
+		}
+		return (command == "cinemascope") ? (first == "on") : (first == "off");
+	}
+	if(command == "speak") {
+		std::string flags = peekFlags(context);
+		return flags.find('c') != std::string::npos;
+	}
+	if(command == "teleport") {
+		// A same-level "teleport -p marker" is the staging of a cutscene (Kultar, Polsius, Atok...)
+		return peekPlayerDirected(command, context) && !peekTeleportChangesLevel(context);
+	}
+	if(command == "cameraactivate") {
+		script::Context probe(context);
+		probe.setTranscript(nullptr);
+		return util::toLowercase(probe.getWord()) != "none";
+	}
+	return command == "cine";
+}
+
+void takeOverCutscene(const Entity & npc) {
+	Entity * puppet = puppetOf(g_actingPlayer);
+	Entity * me = entities.player();
+	if(!puppet || !me || puppet->show != SHOW_FLAG_IN_SCENE) {
+		return; // the client is not in our level: the scene stays theirs
+	}
+	// Stand where they stand (a little to the side), facing the NPC
+	Vec3f toNpc = npc.pos - puppet->pos;
+	toNpc.y = 0.f;
+	Vec3f side = (arx::length2(toNpc) > 1.f) ? glm::normalize(Vec3f(-toNpc.z, 0.f, toNpc.x)) : Vec3f(1.f, 0.f, 0.f);
+	Vec3f pos = puppet->pos + side * 60.f;
+	ARX_INTERACTIVE_Teleport(me, pos, true);
+	if(arx::length2(toNpc) > 1.f) {
+		player.desiredangle = player.angle = Camera::getLookAtAngle(me->pos, npc.pos - Vec3f(0.f, 80.f, 0.f));
+		g_playerCamera.angle = player.angle;
+	}
+	LogInfo << "[coop] cutscene of " << npc.idString() << " started by player " << int(g_actingPlayer)
+	        << ": the host takes it over";
+	g_actingPlayer = g_coop.localId();
+}
+
 CommandSync commandSync(std::string_view command, const script::Context & context) {
 
 	if(!g_coop.isHost() || g_applyingRemote > 0 || g_creatingProxy || g_levelLoading > 0
@@ -1940,6 +1995,11 @@ CommandSync commandSync(std::string_view command, const script::Context & contex
 	const Entity * entity = context.getEntity();
 	if(!entity) {
 		return CommandSync::Local;
+	}
+
+	if(g_actingPlayer != InvalidPlayerId && g_actingPlayer != g_coop.localId() && !entity->coopProxy
+	   && !isPlayerSide(entity) && cutsceneStarts(command, context)) {
+		takeOverCutscene(*entity);
 	}
 
 	// Commands in the context of a client's item stand-in belong to that client

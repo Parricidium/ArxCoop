@@ -78,6 +78,9 @@ EntityHandle attackTarget(const Entity & npc, EntityHandle target);
 //! Owner of a puppet entity, or InvalidPlayerId.
 PlayerId puppetOwner(const Entity & io);
 
+//! The puppet of a player in this level, or null
+Entity * puppetOf(PlayerId id);
+
 //! Host: is a teammate (in this level) within \a limit of \a pos?
 bool teammateWithin(const Vec3f & pos, float limit);
 

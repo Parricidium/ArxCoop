@@ -514,7 +514,7 @@ Toutes modifiables dans *Options > Commandes*.
 
 - Conçu pour le réseau local ou un VPN ; jamais testé avec une vraie latence internet.
 - Les dégâts des sorts sont calculés chez celui qui les lance.
-- La caméra des cinématiques du scénario n'est donnée qu'à celui qui les déclenche.
+- Une cinématique de dialogue lancée par un client est jouée par l'hôte : il est téléporté à côté de ce joueur et voit la scène comme s'il avait parlé au PNJ ; les autres entendent les répliques sans être bloqués.
 - Windows uniquement pour les binaires fournis (le code compile ailleurs comme Arx Libertatis, non testé).
 
 ## Compiler
