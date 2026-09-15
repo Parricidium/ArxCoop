@@ -101,6 +101,9 @@ public:
 	[[nodiscard]] Entity * getObj(Vec2s pos) const noexcept;
 	
 	void dropEntity();
+	//! ArxCoop: sell an item of the player's inventory to the open shop (shift+click); false if not sold
+	bool sellEntity(Entity * item);
+	[[nodiscard]] Entity * container() const noexcept { return m_container; }
 	void dragEntity(Entity * io);
 	
 	void open(Entity * container);

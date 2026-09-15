@@ -1745,6 +1745,21 @@ void ArxGame::manageEditorControls() {
 			bOk = false;
 		}
 		
+		// ArxCoop: shift+click on one of our items while a shop is open sells it
+		if(   (FlyingOverIO->ioflags & IO_ITEM)
+		   && GInput->actionPressed(CONTROLS_CUST_STEALTHMODE)
+		   && container == entities.player()
+		   && g_playerInventoryHud.containsPos(DANAEMouse)
+		   && g_secondaryInventoryHud.isOpen()
+		   && g_secondaryInventoryHud.container()
+		   && (g_secondaryInventoryHud.container()->ioflags & IO_SHOP)
+		) {
+			if(g_secondaryInventoryHud.sellEntity(FlyingOverIO)) {
+				FlyingOverIO = nullptr;
+			}
+			return;
+		}
+
 		if(   !(FlyingOverIO->ioflags & IO_MOVABLE)
 		   && (FlyingOverIO->ioflags & IO_ITEM)
 		   && bOk

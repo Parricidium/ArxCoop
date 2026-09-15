@@ -772,18 +772,34 @@ void handleSpellCast(PlayerId from, Reader & reader) {
 	u32 flags = reader.u32_();
 	std::string targetId = reader.string();
 	s64 duration = reader.s64_();
+	float pitch = reader.f32_();
+	float yaw = reader.f32_();
 	Entity * caster = findPuppet(from);
 	if(!caster || !puppetsAllowed()) {
 		return;
 	}
 	Entity * target = mapRemoteEntity(from, targetId);
 	LogInfo << "[coop] player " << int(from) << " casts spell " << spell << " level " << level;
+	// Aim exactly where the caster looked when casting, not where the smoothed puppet faces
+	// now (the spells read the caster's yaw and, for puppets, the remote pitch)
+	Anglef savedAngle = caster->angle;
+	caster->angle.setYaw(MAKEANGLE(180.f - yaw));
+	auto remote = g_remote.find(from);
+	float savedPitch = 0.f;
+	if(remote != g_remote.end()) {
+		savedPitch = remote->second.angle.getPitch();
+		remote->second.angle.setPitch(pitch);
+	}
 	g_applyingRemoteSpell++;
 	ARX_SPELLS_Launch(SpellType(spell), *caster,
 	                  SpellcastFlags::load(flags) | SPELLCAST_FLAG_NOCHECKCANCAST | SPELLCAST_FLAG_NOMANA
 	                  | SPELLCAST_FLAG_NOANIM,
 	                  long(level), target, GameDuration::ofRaw(duration));
 	g_applyingRemoteSpell--;
+	caster->angle = savedAngle;
+	if(remote != g_remote.end()) {
+		remote->second.angle.setPitch(savedPitch);
+	}
 }
 
 void handlePlayerSpeech(PlayerId from, Reader & reader) {
@@ -1173,6 +1189,8 @@ void spellCast(unsigned spell, float level, unsigned flags, const Entity * targe
 	}
 	writer.string(targetId);
 	writer.s64_(durationUs);
+	writer.f32_(player.angle.getPitch());
+	writer.f32_(player.angle.getYaw());
 	g_coop.sendToOthers(MessageType::SpellCast, writer);
 }
 

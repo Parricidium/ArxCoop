@@ -324,6 +324,58 @@ void handleGiveItem(PlayerId from, Reader & reader) {
 	ARX_SOUND_PlayInterface(g_snd.INVSTD);
 }
 
+// Giving gold ---------------------------------------------------------------------------------
+
+bool giveGoldToPlayer(PlayerId to, long amount) {
+	if(to == InvalidPlayerId || to == g_coop.localId() || amount <= 0 || !g_coop.player(to)) {
+		return false;
+	}
+	if(player.gold < amount) {
+		notification_add(trs("coop_not_enough_gold", "Pas assez d'or"));
+		return false;
+	}
+	ARX_PLAYER_AddGold(-amount);
+	Writer writer;
+	writer.u8_(g_coop.localId());
+	writer.u8_(to);
+	writer.u32_(u32(amount));
+	if(g_coop.isHost()) {
+		g_coop.sendTo(to, MessageType::GiveGold, writer);
+	} else {
+		g_coop.sendToHost(MessageType::GiveGold, writer);
+	}
+	notification_add(std::to_string(amount) + trs("coop_gold_given_to", " pi\xC3\xA8" "ces d'or donn\xC3\xA9" "es \xC3\xA0 ") + nameOf(to));
+	ARX_SOUND_PlayInterface(g_snd.GOLD);
+	LogInfo << "[coop] gave " << amount << " gold to " << nameOf(to);
+	return true;
+}
+
+void handleGiveGold(PlayerId from, Reader & reader) {
+	PlayerId sender = reader.u8_();
+	PlayerId to = reader.u8_();
+	u32 amount = reader.u32_();
+	if(g_coop.isHost()) {
+		sender = from;
+	}
+	if(g_coop.isHost() && to != g_coop.localId()) {
+		if(g_coop.player(to)) {
+			Writer writer;
+			writer.u8_(sender);
+			writer.u8_(to);
+			writer.u32_(amount);
+			g_coop.sendTo(to, MessageType::GiveGold, writer);
+		}
+		return;
+	}
+	if(to != g_coop.localId() || amount == 0 || amount > 1000000) {
+		return;
+	}
+	ARX_PLAYER_AddGold(long(amount));
+	notification_add(nameOf(sender) + trs("coop_gives_you_gold", " vous donne ") + std::to_string(amount) + trs("coop_gold_pieces", " pi\xC3\xA8" "ces d'or"));
+	ARX_SOUND_PlayInterface(g_snd.GOLD);
+	LogInfo << "[coop] received " << amount << " gold from " << nameOf(sender);
+}
+
 // Downed players -----------------------------------------------------------------------------
 
 float bleedOutSecondsLeft() {

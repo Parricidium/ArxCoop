@@ -999,7 +999,7 @@ void applyDropItem(PlayerId from, Reader & reader) {
 		}
 		if(item->obj && item->obj->pbox) {
 			if(thrown) {
-				EERIE_PHYSICS_BOX_Launch(item->obj, item->pos, item->angle, direction);
+				EERIE_PHYSICS_BOX_Launch(item->obj, item->pos, item->angle, direction, item);
 				ARX_SOUND_PlaySFX(g_snd.WHOOSH, &item->pos);
 			} else {
 				item->obj->pbox->active = 0; // at rest where its owner says it is
@@ -1052,6 +1052,10 @@ void handleGameMessage(PlayerId from, MessageType type, Reader & reader) {
 		}
 		case MessageType::TeleportPlayer: {
 			applyTeleportPlayer(from, reader);
+			break;
+		}
+		case MessageType::GiveGold: {
+			handleGiveGold(from, reader);
 			break;
 		}
 		case MessageType::GiveItem: {
@@ -1742,16 +1746,8 @@ bool keptOverLevelState(const Entity & io) {
 	return g_coop.isClient() && g_coop.state() == State::InGame && isPlayerSide(&io);
 }
 
-bool consoleCommand(std::string_view line) {
-	std::string text = util::toLowercase(std::string(boost::trim_copy(std::string(line))));
-	if(text != "tp" && text.compare(0, 3, "tp ") != 0) {
-		return false;
-	}
-	if(!g_coop.isActive() || g_coop.state() != State::InGame || !inLevel()) {
-		ARX_LOG(Logger::Console) << "[coop] pas de partie coop en cours";
-		return true;
-	}
-	std::string arg = text.size() > 3 ? boost::trim_copy(text.substr(3)) : std::string();
+//! "p2" / "j2" (lobby order), a nickname, or "all"/"tous"/nothing for everybody else
+static std::vector<PlayerId> consoleTargets(const std::string & arg) {
 	std::vector<PlayerId> targets;
 	if(arg.empty() || arg == "all" || arg == "tous") {
 		for(const Player & other : g_coop.players()) {
@@ -1759,19 +1755,59 @@ bool consoleCommand(std::string_view line) {
 				targets.push_back(other.id);
 			}
 		}
-	} else {
-		std::string number = (arg[0] == 'p' || arg[0] == 'j') ? arg.substr(1) : arg;
-		bool numeric = !number.empty() && std::all_of(number.begin(), number.end(), [](char c) { return c >= '0' && c <= '9'; });
-		for(const Player & other : g_coop.players()) {
-			if((numeric && other.id == PlayerId(util::toInt(number).value_or(0) - 1))
-			   || util::toLowercase(other.name) == arg) {
-				targets.push_back(other.id);
-			}
+		return targets;
+	}
+	std::string number = (arg[0] == 'p' || arg[0] == 'j') ? arg.substr(1) : arg;
+	bool numeric = !number.empty() && std::all_of(number.begin(), number.end(), [](char c) { return c >= '0' && c <= '9'; });
+	for(const Player & other : g_coop.players()) {
+		if((numeric && other.id == PlayerId(util::toInt(number).value_or(0) - 1))
+		   || util::toLowercase(other.name) == arg) {
+			targets.push_back(other.id);
 		}
-		if(targets.empty()) {
-			ARX_LOG(Logger::Console) << "[coop] joueur inconnu: " << arg << " (tp p2, tp <pseudo>, tp all)";
+	}
+	return targets;
+}
+
+bool consoleCommand(std::string_view line) {
+	std::string text = util::toLowercase(std::string(boost::trim_copy(std::string(line))));
+	bool teleport = (text == "tp" || text.compare(0, 3, "tp ") == 0);
+	bool gold = (text.compare(0, 3, "or ") == 0 || text.compare(0, 5, "gold ") == 0);
+	if(!teleport && !gold) {
+		return false;
+	}
+	if(!g_coop.isActive() || g_coop.state() != State::InGame || !inLevel()) {
+		ARX_LOG(Logger::Console) << "[coop] pas de partie coop en cours";
+		return true;
+	}
+	if(gold) {
+		// or <joueur> <montant>
+		std::string rest = boost::trim_copy(text.substr(text.find(' ') + 1));
+		size_t space = rest.find(' ');
+		std::string who = boost::trim_copy(rest.substr(0, space));
+		std::string amountText = (space == std::string::npos) ? std::string() : boost::trim_copy(rest.substr(space + 1));
+		long amount = util::toInt(amountText).value_or(0);
+		std::vector<PlayerId> targets = consoleTargets(who);
+		if(who.empty() || who == "all" || who == "tous" || targets.size() != 1) {
+			ARX_LOG(Logger::Console) << "[coop] usage: or <p2|pseudo> <montant>";
 			return true;
 		}
+		if(amount <= 0) {
+			ARX_LOG(Logger::Console) << "[coop] montant invalide: " << amountText;
+			return true;
+		}
+		if(giveGoldToPlayer(targets[0], amount)) {
+			const Player * who2 = g_coop.player(targets[0]);
+			ARX_LOG(Logger::Console) << "[coop] " << amount << " pieces d'or donnees a " << (who2 ? who2->name : std::string("?"));
+		} else {
+			ARX_LOG(Logger::Console) << "[coop] impossible (pas assez d'or ?), il vous reste " << player.gold;
+		}
+		return true;
+	}
+	std::string arg = text.size() > 3 ? boost::trim_copy(text.substr(3)) : std::string();
+	std::vector<PlayerId> targets = consoleTargets(arg);
+	if(targets.empty() && !(arg.empty() || arg == "all" || arg == "tous")) {
+		ARX_LOG(Logger::Console) << "[coop] joueur inconnu: " << arg << " (tp p2, tp <pseudo>, tp all)";
+		return true;
 	}
 	for(PlayerId target : targets) {
 		if(target == g_coop.localId()) {

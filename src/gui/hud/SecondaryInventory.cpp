@@ -365,6 +365,32 @@ void SecondaryInventoryHud::dropEntity() {
 	
 }
 
+bool SecondaryInventoryHud::sellEntity(Entity * item) {
+
+	if(!isOpen() || !m_container || !(m_container->ioflags & IO_SHOP) || !item || !(item->ioflags & IO_ITEM)
+	   || !item->_itemdata) {
+		return false;
+	}
+	if(!m_container->shop_category.empty() && item->groups.find(m_container->shop_category) == item->groups.end()) {
+		return false; // not what this shop buys
+	}
+	long price = ARX_INTERACTIVE_GetSellValue(item, m_container, item->_itemdata->count);
+	if(price <= 0) {
+		return false;
+	}
+
+	removeFromInventories(item);
+	coop::ContainerDropScope coopScope(*m_container, item); // the others see what lands in there
+	if(!m_container->inventory->insert(item)) {
+		giveToPlayer(item); // shop full: back in our bag
+		return false;
+	}
+	ARX_PLAYER_AddGold(price);
+	ARX_SOUND_PlayInterface(g_snd.GOLD);
+	ARX_SOUND_PlayInterface(g_snd.INVSTD);
+	return true;
+}
+
 void SecondaryInventoryHud::dragEntity(Entity * io) {
 	
 	arx_assert(isOpen());
