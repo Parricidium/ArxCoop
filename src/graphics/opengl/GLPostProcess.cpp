@@ -56,6 +56,7 @@ GLPostProcess::GLPostProcess(GLShaderPipeline * pipeline)
 	, m_uSsaoRadius(-1)
 	, m_uSsaoBias(-1)
 	, m_uFinalAo(-1)
+	, m_uFinalDarkness(-1)
 	, m_uFinalDebug(-1)
 	, m_uExtractThreshold(-1)
 	, m_uBlurDirection(-1)
@@ -120,6 +121,7 @@ bool GLPostProcess::init() {
 	glUniform1i(glGetUniformLocation(m_finalProgram, "u_bloomTexture"), 1);
 	glUniform1i(glGetUniformLocation(m_finalProgram, "u_aoTexture"), 2);
 	m_uFinalAo = glGetUniformLocation(m_finalProgram, "u_ao");
+	m_uFinalDarkness = glGetUniformLocation(m_finalProgram, "u_darkness");
 	m_uFinalDebug = glGetUniformLocation(m_finalProgram, "u_debug");
 	m_uFinalBloom = glGetUniformLocation(m_finalProgram, "u_bloom");
 	m_uFinalFxaa = glGetUniformLocation(m_finalProgram, "u_fxaa");
@@ -531,6 +533,7 @@ void GLPostProcess::end() {
 	glUniform1f(m_uFinalBloom, bloom ? m_settings.bloom : 0.f);
 	glUniform1i(m_uFinalFxaa, (m_settings.fxaa && !smaa) ? 1 : 0);
 	glUniform1f(m_uFinalAo, ao ? m_settings.ao : 0.f);
+	glUniform1f(m_uFinalDarkness, m_settings.darkness);
 	glUniform1i(m_uFinalDebug, m_settings.debugView);
 	glUniform2f(m_uFinalInvSize, 1.f / float(m_width), 1.f / float(m_height));
 	glActiveTexture(GL_TEXTURE2);
