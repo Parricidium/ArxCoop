@@ -507,7 +507,7 @@ public:
 		}
 		
 		{
-			auto txt = std::make_unique<TextWidget>(hFontMenu, getLocalised("system_menus_options_hd", "Options HD"));
+			auto txt = std::make_unique<TextWidget>(hFontMenu, getLocalised("system_menus_options_hd", "Options RT"));
 			txt->setTargetPage(Page_OptionsHd);
 			addCenter(std::move(txt));
 		}

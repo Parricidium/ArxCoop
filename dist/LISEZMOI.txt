@@ -92,7 +92,7 @@ CE QUI EST PARTAGE
   En bas a gauche, a la place de l'orbe rouge : les memes barres pour vous (pseudo, vie avec le
   chiffre, faim). L'orbe bleue de mana reste. En haut au centre : temps de jeu.
 
-EDITION HD (zip ArxCoop-HD-* uniquement)
+EDITION RT (zip ArxCoop-RT-* uniquement)
 - Meme mod, meme reseau, mais avec un moteur modernise : eclairage dynamique par pixel, ombres des
   torches et des sorts, relief des textures (normal maps + parallax), reflets speculaires des
   materiaux (metal, marbre, sols mouilles) et reflets du decor sur les sols brillants, bloom,
@@ -101,21 +101,21 @@ EDITION HD (zip ArxCoop-HD-* uniquement)
   ou ils gisent, les objets laches ou jetes roulent et se posent, les objets cassables du jeu
   (vitrines, cryptes de verre, grilles) eclatent en morceaux, les bannieres et rideaux bougent.
   Les personnages des joueurs ne sont pas concernes.
-- Tout se regle dans Options > "Options HD" : prereglages Off / Faible /
+- Tout se regle dans Options > "Options RT" : prereglages Off / Faible /
   Moyenne / Elevee / Ultra et reglages detailles, appliques immediatement. "Off" = rendu d'origine.
   Reglages dans userdata\cfg.ini, section [video] : pipeline, lighting, shadows, shadow_resolution,
   postprocess, bloom, fxaa, smaa, ambient_occlusion, normal_maps, parallax, specular, reflections,
   soft_particles, water, lava, physics.
-- Ambiance (Options HD > "Ambiance" : Normale / Sombre / Obscure) : pousse les endroits non eclaires
+- Ambiance (Options RT > "Ambiance" : Normale / Sombre / Obscure) : pousse les endroits non eclaires
   vers le noir, ce qu'une torche, un sort ou une lampe eclaire garde sa luminosite - pour que le noir
   soit dangereux et que les torches comptent. Cle cfg.ini : darkness=0/0.5/1.
-- Brume volumetrique (Options HD > "Brume volumetrique" : Desactivee / Legere / Dense / Epaisse) : une brume
+- Brume volumetrique (Options RT > "Brume volumetrique" : Desactivee / Legere / Dense / Epaisse) : une brume
   legere qui derive dans l'air, ou chaque torche, applique et sort jette un halo et des rais de
   lumiere ; les personnages et objets dans une lumiere decoupent son faisceau (ombres volumetriques),
   et avec le ray tracing les rais sont aussi ombres par le niveau. Le curseur "Rais de lumiere" regle la force de la lumiere
   accrochee par la brume (et la nettete des ombres volumetriques). Cles cfg.ini : volumetric=0/0.5/1/2,
   volumetric_light=0..2.5.
-- Ray tracing (Options HD > "Ray tracing", desactive par defaut, demande OpenGL 4.3 = carte de 2012
+- Ray tracing (Options RT > "Ray tracing", desactive par defaut, demande OpenGL 4.3 = carte de 2012
   ou plus recente, pas besoin de RTX) : "Reflets" = les sols et murs brillants refletent ce qui est
   vraiment la, meme hors ecran ou derriere vous ; "Reflets + ombres" = chaque torche, bougie et sort
   projette des ombres douces a travers le niveau, par pixel. Purement local : un joueur avec et un
@@ -125,7 +125,7 @@ EDITION HD (zip ArxCoop-HD-* uniquement)
   du prereglage "Elevee" : environ 1 ms de plus par image en 720p.
 - Touche F7 : recharge les shaders (fichiers Graph\shaders\*.vert / *.frag, modifiables).
 - L'hote simule la physique, les clients voient la meme chose. Un joueur avec le zip classique
-  ne peut pas rejoindre une partie HD (protocole reseau different) : tout le monde prend le meme zip.
+  ne peut pas rejoindre une partie RT (protocole reseau different) : tout le monde prend le meme zip.
 
 RANGEMENT ET VENTE RAPIDES
 - Boutique ou coffre ouvert : MAJ + clic gauche sur un objet de votre inventaire l'y met directement
@@ -162,7 +162,7 @@ VUE A LA 3E PERSONNE (nouveau)
   (pour la retrouver : cfg.ini, section [misc], skip_intro=false).
 
 CONSOLE (touche ² a gauche du 1, ou la touche configuree pour la console)
-- Activee d'office dans l'edition HD (allow_console=false dans [input] de cfg.ini pour la couper).
+- Activee d'office dans l'edition RT (allow_console=false dans [input] de cfg.ini pour la couper).
 - tp p2       : teleporte le joueur 2 (ordre du salon, p1 = l'hote) a cote de moi (utilisable par tous)
 - tp Pseudo   : idem par pseudo ;  tp all : tout le monde vient a moi
   (le joueur doit etre dans le meme niveau)

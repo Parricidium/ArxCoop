@@ -231,7 +231,7 @@ public:
 		// Quality preset
 		{
 			auto cycle = std::make_unique<CycleTextWidget>(sliderSize(), hFontMenu,
-			                                               hdText("system_menus_options_hd_quality", "Qualité HD"));
+			                                               hdText("system_menus_options_hd_quality", "Qualité RT"));
 			cycle->addEntry(hdText("system_menus_options_hd_quality_off", "Désactivée"));
 			cycle->addEntry(hdText("system_menus_options_hd_quality_low", "Faible"));
 			cycle->addEntry(hdText("system_menus_options_hd_quality_medium", "Moyenne"));
