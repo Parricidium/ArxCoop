@@ -1918,14 +1918,7 @@ void MainMenu::init() {
 		txt->setPosition(pos);
 		m_widgets.add(std::move(txt));
 	}
-	pos.y += yOffset;
-	{
-		// ArxModern
-		auto txt = std::make_unique<TextWidget>(hFontMainMenu, getLocalised("system_menus_options_hd", "Options HD"));
-		txt->setTargetPage(Page_OptionsHd);
-		txt->setPosition(pos);
-		m_widgets.add(std::move(txt));
-	}
+	// ArxModern: the HD options page is reached from Options (JD, 15/09: not on the main menu)
 	pos.y += yOffset;
 	{
 		auto txt = std::make_unique<TextWidget>(hFontMainMenu, getLocalised("system_menus_main_credits"));

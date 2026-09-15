@@ -15,6 +15,9 @@ uniform float u_bias;     // world units
 in vec2 v_uv;
 out vec4 fragColor;
 
+// Tunables (a mod can edit this file: F7 reloads it)
+const float CreaseTolerance = 0.08; // ~4.5 degrees between neighbouring polygons ignored
+
 float linearDepth(vec2 uv) {
 	float d = texture(u_depth, uv).r;
 	float zNdc = d * 2.0 - 1.0;
@@ -40,14 +43,23 @@ void main() {
 		return;
 	}
 
-	// Normal from the depth derivatives, picking the neighbour on each axis that is closest
-	// in depth so that depth discontinuities (silhouettes) do not produce wrong normals
+	// Normal from the depth derivatives. On each axis the side whose two neighbours extrapolate
+	// best to this depth is used, so that depth discontinuities (silhouettes, and the small steps
+	// between the floor tiles of the levels, which showed as dark lines) do not tilt the normal
 	vec3 right = viewPosition(v_uv + vec2(u_invSize.x, 0.0));
 	vec3 left = viewPosition(v_uv - vec2(u_invSize.x, 0.0));
 	vec3 up = viewPosition(v_uv + vec2(0.0, u_invSize.y));
 	vec3 down = viewPosition(v_uv - vec2(0.0, u_invSize.y));
-	vec3 dx = (abs(right.z - position.z) < abs(position.z - left.z)) ? (right - position) : (position - left);
-	vec3 dy = (abs(up.z - position.z) < abs(position.z - down.z)) ? (up - position) : (position - down);
+	float right2 = linearDepth(v_uv + vec2(2.0 * u_invSize.x, 0.0));
+	float left2 = linearDepth(v_uv - vec2(2.0 * u_invSize.x, 0.0));
+	float up2 = linearDepth(v_uv + vec2(0.0, 2.0 * u_invSize.y));
+	float down2 = linearDepth(v_uv - vec2(0.0, 2.0 * u_invSize.y));
+	float errRight = abs(2.0 * right.z - right2 - position.z);
+	float errLeft = abs(2.0 * left.z - left2 - position.z);
+	float errUp = abs(2.0 * up.z - up2 - position.z);
+	float errDown = abs(2.0 * down.z - down2 - position.z);
+	vec3 dx = (errRight < errLeft) ? (right - position) : (position - left);
+	vec3 dy = (errUp < errDown) ? (up - position) : (position - down);
 	vec3 normal = normalize(cross(dx, dy));
 	if(dot(normal, -position) < 0.0) {
 		normal = -normal;
@@ -81,8 +93,10 @@ void main() {
 		}
 		float sceneZ = linearDepth(sampleUv);
 		float rangeCheck = smoothstep(0.0, 1.0, u_radius / abs(position.z - sceneZ));
-		// Depth precision drops with distance: grow the bias with it
-		float bias = u_bias + position.z * 0.004;
+		// Depth precision drops with distance: grow the bias with it. And the floors of the levels
+		// are not quite flat: adjacent tiles meet at a slight angle, which must not read as a
+		// crease (dark lines along the seams) - tolerate a few degrees over the sample distance
+		float bias = u_bias + position.z * 0.004 + length(k) * u_radius * CreaseTolerance;
 		occlusion += ((sceneZ <= samplePos.z - bias) ? 1.0 : 0.0) * rangeCheck;
 	}
 
