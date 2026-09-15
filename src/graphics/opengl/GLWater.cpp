@@ -19,9 +19,12 @@
 
 #include "graphics/opengl/GLWater.h"
 
+#include <algorithm>
+
 #include <glm/gtc/type_ptr.hpp>
 
 #include "graphics/opengl/GLPostProcess.h"
+#include "graphics/opengl/GLRayScene.h"
 #include "graphics/opengl/GLShaderPipeline.h"
 #include "graphics/opengl/GLShaderSources.h"
 #include "io/log/Logger.h"
@@ -34,9 +37,15 @@ GLWater::GLWater(GLShaderPipeline * pipeline, GLPostProcess * post)
 	: m_pipeline(pipeline)
 	, m_post(post)
 	, m_strength(1.f)
+	, m_reflection(0.f)
+	, m_traced(false)
 	, m_program(0)
 	, m_uViewProj(-1)
 	, m_uView(-1)
+	, m_uProj(-1)
+	, m_uReflection(-1)
+	, m_uFogColor(-1)
+	, m_uDynamicLightCount(-1)
 	, m_uInvSize(-1)
 	, m_uProjection(-1)
 	, m_uCameraPos(-1)
@@ -57,7 +66,18 @@ bool GLWater::init() {
 
 	shutdown();
 
-	m_program = m_pipeline->buildProgram("water", shadersources::water_vert, shadersources::water_frag);
+	m_traced = (m_pipeline->rayTracing() > 0);
+	if(m_traced) {
+		m_program = m_pipeline->buildProgram("water", shadersources::water_vert, shadersources::water_frag,
+		                                     "#version 430\n#define ARX_RT 1\n", "rt_common.glsl", shadersources::rt_common_glsl);
+		if(!m_program) {
+			LogWarning << "Ray-traced water shader unavailable, falling back to the screen-space one";
+			m_traced = false;
+		}
+	}
+	if(!m_program) {
+		m_program = m_pipeline->buildProgram("water", shadersources::water_vert, shadersources::water_frag);
+	}
 	if(!m_program) {
 		LogWarning << "Water shader unavailable, keeping the original water";
 		return false;
@@ -65,6 +85,10 @@ bool GLWater::init() {
 
 	m_uViewProj = glGetUniformLocation(m_program, "u_viewProj");
 	m_uView = glGetUniformLocation(m_program, "u_view");
+	m_uProj = glGetUniformLocation(m_program, "u_proj");
+	m_uReflection = glGetUniformLocation(m_program, "u_reflection");
+	m_uFogColor = glGetUniformLocation(m_program, "u_fogColor");
+	m_uDynamicLightCount = glGetUniformLocation(m_program, "u_dynamicLightCount");
 	m_uInvSize = glGetUniformLocation(m_program, "u_invSize");
 	m_uProjection = glGetUniformLocation(m_program, "u_projection");
 	m_uCameraPos = glGetUniformLocation(m_program, "u_cameraPos");
@@ -80,6 +104,9 @@ bool GLWater::init() {
 	glUniform1i(glGetUniformLocation(m_program, "u_enviro"), 0);
 	glUniform1i(glGetUniformLocation(m_program, "u_scene"), int(SceneUnit - GL_TEXTURE0));
 	glUniform1i(glGetUniformLocation(m_program, "u_depth"), int(DepthUnit - GL_TEXTURE0));
+	if(m_traced) {
+		glUniform1i(glGetUniformLocation(m_program, "u_rtTextures"), 10); // bound by the pipeline
+	}
 	m_pipeline->restoreAfterExternalDraw();
 
 	return true;
@@ -107,6 +134,9 @@ bool GLWater::begin(float time, const Vec3f & cameraPos) {
 	glm::mat4 viewProj = proj * m_pipeline->view();
 	glUniformMatrix4fv(m_uViewProj, 1, GL_FALSE, glm::value_ptr(viewProj));
 	glUniformMatrix4fv(m_uView, 1, GL_FALSE, glm::value_ptr(m_pipeline->view()));
+	glUniformMatrix4fv(m_uProj, 1, GL_FALSE, glm::value_ptr(proj));
+	glUniform1f(m_uReflection, (m_traced && (!m_pipeline->rayScene() || !m_pipeline->rayScene()->generation())) ? 0.f : m_reflection);
+	glUniform3fv(m_uFogColor, 1, glm::value_ptr(m_pipeline->fogColor()));
 	glUniform2f(m_uInvSize, 1.f / float(m_post->width()), 1.f / float(m_post->height()));
 	glUniform4f(m_uProjection, proj[0][0], proj[1][1], proj[2][2], -proj[3][2]);
 	glUniform3f(m_uCameraPos, cameraPos.x, cameraPos.y, cameraPos.z);
@@ -119,6 +149,7 @@ bool GLWater::begin(float time, const Vec3f & cameraPos) {
 	const std::vector<glm::vec4> & lightColor = m_pipeline->lightColors();
 	GLsizei count = GLsizei(lightPos.size());
 	glUniform1i(m_uLightCount, count);
+	glUniform1i(m_uDynamicLightCount, GLsizei(std::min(m_pipeline->dynamicLightCount(), lightPos.size())));
 	if(count > 0) {
 		glUniform4fv(m_uLightPos, count, glm::value_ptr(lightPos[0]));
 		glUniform4fv(m_uLightColor, count, glm::value_ptr(lightColor[0]));
