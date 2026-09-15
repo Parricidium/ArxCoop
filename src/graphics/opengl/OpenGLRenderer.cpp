@@ -812,6 +812,7 @@ void OpenGLRenderer::applyGraphicsConfig() {
 			m_post->settings().ao = config.video.ambientOcclusion;
 			m_post->settings().darkness = config.video.darkness;
 			m_post->settings().volumetric = config.video.volumetric;
+			m_post->settings().volumetricLight = config.video.volumetricLight;
 			m_post->settings().debugView = (config.video.postDebug == "ao") ? 1 : (config.video.postDebug == "bloom") ? 2
 			                               : (config.video.postDebug == "haze") ? 3 : 0;
 		}
