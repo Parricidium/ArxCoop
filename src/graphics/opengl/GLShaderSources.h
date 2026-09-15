@@ -984,7 +984,11 @@ void main() {
 }
 )glsl";
 
-constexpr const char * post_volume_frag = R"glsl(// ArxModern volumetric fog, computed at half resolution from the scene depth.
+constexpr const char * post_volume_frag = R"glsl(#version 130
+
+// ArxModern volumetric fog, computed at half resolution from the scene depth.
+// (Built with a "#version 430" / ARX_RT prelude when the ray tracing is on: the version line
+// above is then dropped.)
 //
 // The air of the levels becomes a thin, drifting haze: along the ray of every pixel the light
 // of the scene's torches, sconces and spells is scattered towards the camera (light shafts and
