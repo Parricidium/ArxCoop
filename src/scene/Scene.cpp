@@ -1832,6 +1832,14 @@ static void UploadPixelLights(const Vec3f & camPos, float camDepth) {
 		for(const EERIE_LIGHT * light : *list) {
 			RendererLight & out = lights.emplace_back();
 			out.pos = (light == torchLight) ? light->pos + torchOffset : light->pos;
+			// The haze only scatters the lights of the rooms in view (last frame's list, this
+			// frame's is computed right after): the lamps inside the houses round a square would
+			// otherwise glow through the walls, or crowd out the lanterns of the square
+			if(g_rooms && !g_rooms->visibleRooms.empty()) {
+				RoomHandle room = ARX_PORTALS_GetRoomNumForPosition(light->pos);
+				out.inView = !room || std::find(g_rooms->visibleRooms.begin(), g_rooms->visibleRooms.end(), room)
+				                      != g_rooms->visibleRooms.end();
+			}
 			auto owner = owners.find(light);
 			out.owner = (owner != owners.end()) ? owner->second : -1;
 			out.fallstart = light->fallstart;

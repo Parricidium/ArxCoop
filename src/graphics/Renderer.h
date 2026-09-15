@@ -247,6 +247,7 @@ struct RendererLight {
 	float fallend = 0.f;
 	Color3f color; //!< rgb premultiplied by intensity and the engine's global factors
 	int owner = -1; //!< index of the entity carrying this light (its geometry does not shadow it), -1 if none
+	bool inView = true; //!< ArxModern: the room it stands in was visible last frame (the volumetric haze skips the others)
 	constexpr RendererLight() arx_noexcept_default
 };
 
