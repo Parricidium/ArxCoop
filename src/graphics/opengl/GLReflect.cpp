@@ -19,9 +19,12 @@
 
 #include "graphics/opengl/GLReflect.h"
 
+#include <algorithm>
+
 #include <glm/gtc/type_ptr.hpp>
 
 #include "graphics/opengl/GLPostProcess.h"
+#include "graphics/opengl/GLRayScene.h"
 #include "graphics/opengl/GLShaderPipeline.h"
 #include "graphics/opengl/GLShaderSources.h"
 #include "graphics/opengl/GLTexture.h"
@@ -30,6 +33,10 @@
 // Texture units of the scene copies: above the shadow cube maps (4..7) of the main program
 static const GLenum ReflectSceneUnit = GL_TEXTURE8;
 static const GLenum ReflectDepthUnit = GL_TEXTURE9;
+static const GLenum ReflectRayTexturesUnit = GL_TEXTURE10; // bound by the pipeline (GLShaderPipeline::prepareRayScene)
+
+// Dynamic lights passed to the traced shading (MAX_RT_LIGHTS in reflect_rt.frag)
+static const size_t MaxRayLights = 32;
 
 GLReflect::GLReflect(GLShaderPipeline * pipeline, GLPostProcess * post)
 	: m_pipeline(pipeline)
@@ -46,7 +53,23 @@ GLReflect::GLReflect(GLShaderPipeline * pipeline, GLPostProcess * post)
 	, m_uFogRange(-1)
 	, m_uMaterial(-1)
 	, m_uNormalMapped(-1)
+	, m_traced(false)
+	, m_shadowRays(true)
+	, m_debugPrimary(false)
+	, m_uFogColor(-1)
+	, m_uCameraPos(-1)
+	, m_uMode(-1)
+	, m_uShadowRays(-1)
+	, m_uLightCount(-1)
+	, m_uLightPos(-1)
+	, m_uLightColor(-1)
 { }
+
+void GLReflect::setTraced(bool traced, bool shadowRays, bool debugPrimary) {
+	m_traced = traced && GLRayScene::supported();
+	m_shadowRays = shadowRays;
+	m_debugPrimary = debugPrimary;
+}
 
 GLReflect::~GLReflect() {
 	shutdown();
@@ -56,7 +79,17 @@ bool GLReflect::init() {
 
 	shutdown();
 
-	m_program = m_pipeline->buildProgram("reflect", shadersources::reflect_vert, shadersources::reflect_frag);
+	if(m_traced) {
+		m_program = m_pipeline->buildProgram("reflect_rt", shadersources::reflect_rt_vert, shadersources::reflect_rt_frag,
+		                                     "#version 430\n", "rt_common.glsl", shadersources::rt_common_glsl);
+		if(!m_program) {
+			LogWarning << "Ray-traced reflection shader unavailable, falling back to screen-space reflections";
+			m_traced = false;
+		}
+	}
+	if(!m_program) {
+		m_program = m_pipeline->buildProgram("reflect", shadersources::reflect_vert, shadersources::reflect_frag);
+	}
 	if(!m_program) {
 		LogWarning << "Reflection shader unavailable, no screen-space reflections";
 		return false;
@@ -72,8 +105,18 @@ bool GLReflect::init() {
 	m_uFogRange = glGetUniformLocation(m_program, "u_fogRange");
 	m_uMaterial = glGetUniformLocation(m_program, "u_material");
 	m_uNormalMapped = glGetUniformLocation(m_program, "u_normalMapped");
+	m_uFogColor = glGetUniformLocation(m_program, "u_fogColor");
+	m_uCameraPos = glGetUniformLocation(m_program, "u_cameraPos");
+	m_uMode = glGetUniformLocation(m_program, "u_mode");
+	m_uShadowRays = glGetUniformLocation(m_program, "u_shadowRays");
+	m_uLightCount = glGetUniformLocation(m_program, "u_lightCount");
+	m_uLightPos = glGetUniformLocation(m_program, "u_lightPos");
+	m_uLightColor = glGetUniformLocation(m_program, "u_lightColor");
 
 	glUseProgram(m_program);
+	if(m_traced) {
+		glUniform1i(glGetUniformLocation(m_program, "u_rtTextures"), int(ReflectRayTexturesUnit - GL_TEXTURE0));
+	}
 	glUniform1i(glGetUniformLocation(m_program, "u_texture0"), 0);
 	glUniform1i(glGetUniformLocation(m_program, "u_normalMap"), 3);
 	glUniform1i(glGetUniformLocation(m_program, "u_scene"), int(ReflectSceneUnit - GL_TEXTURE0));
@@ -98,6 +141,9 @@ bool GLReflect::begin() {
 	if(!m_post->captureScene()) {
 		return false;
 	}
+	if(m_traced && (!m_pipeline->rayScene() || !m_pipeline->rayScene()->generation())) {
+		return false; // no level hierarchy (bound by the pipeline at the start of the frame)
+	}
 
 	glUseProgram(m_program);
 
@@ -111,6 +157,21 @@ bool GLReflect::begin() {
 	glUniform1f(m_uStrength, m_strength);
 	glUniform1i(m_uFogEnabled, m_pipeline->fogEnabled() ? 1 : 0);
 	glUniform2fv(m_uFogRange, 1, glm::value_ptr(m_pipeline->fogRange()));
+
+	if(m_traced) {
+		glUniform3fv(m_uFogColor, 1, glm::value_ptr(m_pipeline->fogColor()));
+		glm::vec3 cameraPos(glm::inverse(m_pipeline->view())[3]);
+		glUniform3fv(m_uCameraPos, 1, glm::value_ptr(cameraPos));
+		glUniform1i(m_uMode, m_debugPrimary ? 1 : 0);
+		glUniform1i(m_uShadowRays, m_shadowRays ? 1 : 0);
+		const std::vector<glm::vec4> & lightPos = m_pipeline->lightPositions();
+		GLsizei lights = GLsizei(std::min({ m_pipeline->dynamicLightCount(), lightPos.size(), MaxRayLights }));
+		glUniform1i(m_uLightCount, lights);
+		if(lights > 0) {
+			glUniform4fv(m_uLightPos, lights, glm::value_ptr(lightPos[0]));
+			glUniform4fv(m_uLightColor, lights, glm::value_ptr(m_pipeline->lightColors()[0]));
+		}
+	}
 
 	glActiveTexture(ReflectSceneUnit);
 	glBindTexture(GL_TEXTURE_2D, m_post->sceneTexture());

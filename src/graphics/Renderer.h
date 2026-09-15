@@ -457,6 +457,12 @@ public:
 		ARX_UNUSED(normalMap), ARX_UNUSED(material);
 	}
 	virtual void endReflections() { }
+	//! ArxModern: whether the reflection pass wants every level material (ray tracing debug view)
+	[[nodiscard]] virtual bool reflectionsDrawAllMaterials() const { return false; }
+	//! ArxModern RT: the level shadows are traced in the shader, the shadow maps only need the entities
+	[[nodiscard]] virtual bool tracedShadows() const { return false; }
+	//! ArxModern RT: whether the context can trace at all (OpenGL 4.3)
+	[[nodiscard]] virtual bool hasRayTracing() const { return false; }
 	//! ArxModern: the 3D scene is complete; apply post-processing and return to the window
 	virtual void endScene() { }
 	

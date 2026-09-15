@@ -23,8 +23,11 @@
 #include "graphics/opengl/OpenGLUtil.h"
 #include "graphics/texture/Material.h"
 
+#include <memory>
+
 class GLShaderPipeline;
 class GLPostProcess;
+class GLRayScene;
 class GLTexture;
 
 /*!
@@ -33,6 +36,10 @@ class GLTexture;
  * The glossy level polygons are drawn a second time after the opaque scene, blending in what
  * the scene rendered so far shows along their reflected rays (ray marched through the depth
  * buffer). Needs the post-processing scene buffer for the scene colour and depth.
+ *
+ * Traced mode (reflect_rt.{vert,frag} + rt_common.glsl, OpenGL 4.3): the reflected rays are
+ * traced through the level geometry (GLRayScene) instead, so that what is off screen reflects
+ * too; the scene buffer still supplies the colour of what is visible.
  */
 class GLReflect {
 
@@ -47,6 +54,16 @@ public:
 
 	void setPost(GLPostProcess * post) { m_post = post; }
 	void setStrength(float strength) { m_strength = strength; }
+
+	/*!
+	 * Ray-traced reflections instead of screen-space ones (init() again after changing it).
+	 * shadowRays: the dynamic lights cast shadows at the reflected points.
+	 * debugPrimary: every level polygon shows what a ray from the camera hits (post_debug=rt).
+	 */
+	void setTraced(bool traced, bool shadowRays, bool debugPrimary);
+	[[nodiscard]] bool traced() const noexcept { return m_traced; }
+	//! Whether the pass wants every level material drawn, not only the glossy ones
+	[[nodiscard]] bool drawsAllMaterials() const noexcept { return m_traced && m_debugPrimary; }
 
 	/*!
 	 * Bind the reflection program with the scene captured as it is now.
@@ -76,6 +93,18 @@ private:
 	GLint m_uFogRange;
 	GLint m_uMaterial;
 	GLint m_uNormalMapped;
+
+	// Traced mode
+	bool m_traced;
+	bool m_shadowRays;
+	bool m_debugPrimary;
+	GLint m_uFogColor;
+	GLint m_uCameraPos;
+	GLint m_uMode;
+	GLint m_uShadowRays;
+	GLint m_uLightCount;
+	GLint m_uLightPos;
+	GLint m_uLightColor;
 
 };
 
