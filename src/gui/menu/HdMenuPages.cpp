@@ -220,6 +220,7 @@ public:
 		, m_raytracing(nullptr)
 		, m_darkness(nullptr)
 		, m_volumetric(nullptr)
+		, m_volumetricLight(nullptr)
 		, m_antialiasing(nullptr)
 	{ }
 
@@ -429,6 +430,18 @@ public:
 			addCenter(std::move(cycle));
 		}
 
+		// Strength of the light shafts in the haze (and so of the volumetric shadows), slider 0..10
+		{
+			auto slider = std::make_unique<SliderWidget>(sliderSize(), hFontMenu,
+			                                             hdText("system_menus_options_hd_volumetric_light", "Rais de lumière"));
+			slider->valueChanged = [](int value) {
+				config.video.volumetricLight = float(value) * 0.25f; // 4 = default
+				applyHdSettings();
+			};
+			m_volumetricLight = slider.get();
+			addCenter(std::move(slider));
+		}
+
 		// Ray tracing (independent of the quality presets, needs OpenGL 4.3)
 		if(GRenderer->hasRayTracing()) {
 			auto cycle = std::make_unique<CycleTextWidget>(sliderSize(), hFontMenu,
@@ -512,6 +525,7 @@ private:
 	CycleTextWidget * m_raytracing;
 	CycleTextWidget * m_darkness;
 	CycleTextWidget * m_volumetric;
+	SliderWidget * m_volumetricLight;
 
 	//! An individual setting changed: the modern pipeline is needed, apply and show "custom"
 	void customChanged() {
@@ -557,6 +571,9 @@ private:
 		if(m_volumetric) {
 			float v = config.video.volumetric;
 			m_volumetric->setValue((v >= 1.5f) ? 3 : (v >= 0.75f) ? 2 : (v > 0.f) ? 1 : 0);
+		}
+		if(m_volumetricLight) {
+			m_volumetricLight->setValue(std::clamp(int(config.video.volumetricLight * 4.f + 0.5f), 0, 10));
 		}
 		if(m_softParticles) {
 			m_softParticles->setChecked(config.video.postprocess && config.video.softParticles);
