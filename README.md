@@ -145,7 +145,8 @@ protocol).
 - Everybody down = game over.
 
 **Cutscenes and dialogues**
-- The camera of a dialogue is given only to whoever triggered it; the others hear the line.
+- A dialogue cutscene is played by the host: when a client starts one, the host is teleported next
+  to that player and sees the scene as if it had talked to the NPC; the others hear the line.
   Anyone's Escape skips the line for all.
 - Option "freeze me while a teammate is in a dialogue".
 - At the end of a scene that moved the host (intro, Polsius…) or after a level change, teammates left
@@ -185,7 +186,7 @@ protocol).
 | Level change | ✅ | grouped, led by the host |
 | Save / load | ✅ | host + everybody's character |
 | Joining in progress, reconnecting | ✅ | |
-| Scripted cutscenes | ✅ | camera for the initiator only |
+| Scripted cutscenes | ✅ | camera for the host (teleported to the initiator) |
 | Markers, chat, ping | ✅ | |
 | Real internet latency | ⚠️ | designed for LAN / VPN, little tested beyond |
 | Cutscene camera for everybody | ❌ | design choice |
