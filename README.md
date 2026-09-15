@@ -86,7 +86,7 @@ Ultra* and individual settings, applied live): the *Off* preset gives exactly th
 - **Mood** (*Options HD > Mood: Normal / Dark / Pitch dark*): pushes the unlit places towards black
   while what a torch, a spell or a lamp lights keeps its brightness — for those who want the dark to
   be dangerous and the torches to matter. Independent of the quality presets.
-- **Volumetric haze** (*Options HD > Volumetric haze: Off / Light / Dense*): a thin, drifting haze
+- **Volumetric haze** (*Options HD > Volumetric haze: Off / Light / Dense / Thick*): a thin, drifting haze
   fills the air; every torch, sconce and spell throws a glow and light shafts into it, and what lies
   far behind it dims a little. Characters and objects standing in a light cut its beam (volumetric
   shadows, for the lights that have a shadow map); with the ray tracing on the shafts are also
@@ -108,7 +108,7 @@ Requirements: OpenGL 3.0 (2008 or later hardware; 4.3 for the ray tracing); meas
 *High* preset: about one extra millisecond per frame in 720p. `[video]` keys in `userdata\cfg.ini`:
 `pipeline`, `lighting`, `shadows`, `shadow_resolution`, `postprocess`, `bloom`, `fxaa`, `smaa`,
 `ambient_occlusion`, `normal_maps`, `parallax`, `specular`, `reflections`, `soft_particles`, `water`,
-`lava`, `physics`, `raytracing` (0 / 1 / 2), `darkness` (0 / 0.5 / 1), `volumetric` (0 / 0.5 / 1).
+`lava`, `physics`, `raytracing` (0 / 1 / 2), `darkness` (0 / 0.5 / 1), `volumetric` (0 / 0.5 / 1 / 2).
 
 Not the HD edition: the classic zip has none of this and cannot play with the HD one (different network
 protocol).
@@ -367,7 +367,7 @@ d'origine.
   éclairés vers le noir tandis que ce qu'une torche, un sort ou une lampe éclaire garde sa
   luminosité — pour que le noir soit dangereux et que les torches comptent. Indépendant des
   préréglages.
-- **Brume volumétrique** (*Options HD > Brume volumétrique : Désactivée / Légère / Dense*) : une brume
+- **Brume volumétrique** (*Options HD > Brume volumétrique : Désactivée / Légère / Dense / Épaisse*) : une brume
   légère qui dérive dans l'air ; chaque torche, applique et sort y jette un halo et des rais de
   lumière, et ce qui est loin derrière s'estompe un peu. Les personnages et objets qui se tiennent dans
   une lumière découpent son faisceau (ombres volumétriques, pour les lumières qui ont une shadow map) ;
@@ -389,7 +389,7 @@ Prérequis : OpenGL 3.0 (matériel de 2008 ou plus récent ; 4.3 pour le ray tra
 préréglage *Élevée* : environ une milliseconde de plus par image en 720p. Clés `[video]` de
 `userdata\cfg.ini` : `pipeline`, `lighting`, `shadows`, `shadow_resolution`, `postprocess`, `bloom`,
 `fxaa`, `smaa`, `ambient_occlusion`, `normal_maps`, `parallax`, `specular`, `reflections`,
-`soft_particles`, `water`, `lava`, `physics`, `raytracing` (0 / 1 / 2), `darkness` (0 / 0.5 / 1), `volumetric` (0 / 0.5 / 1).
+`soft_particles`, `water`, `lava`, `physics`, `raytracing` (0 / 1 / 2), `darkness` (0 / 0.5 / 1), `volumetric` (0 / 0.5 / 1 / 2).
 
 Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition HD (protocole réseau différent).
 

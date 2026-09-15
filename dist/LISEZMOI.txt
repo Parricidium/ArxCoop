@@ -109,10 +109,10 @@ EDITION HD (zip ArxCoop-HD-* uniquement)
 - Ambiance (Options HD > "Ambiance" : Normale / Sombre / Obscure) : pousse les endroits non eclaires
   vers le noir, ce qu'une torche, un sort ou une lampe eclaire garde sa luminosite - pour que le noir
   soit dangereux et que les torches comptent. Cle cfg.ini : darkness=0/0.5/1.
-- Brume volumetrique (Options HD > "Brume volumetrique" : Desactivee / Legere / Dense) : une brume
+- Brume volumetrique (Options HD > "Brume volumetrique" : Desactivee / Legere / Dense / Epaisse) : une brume
   legere qui derive dans l'air, ou chaque torche, applique et sort jette un halo et des rais de
   lumiere ; les personnages et objets dans une lumiere decoupent son faisceau (ombres volumetriques),
-  et avec le ray tracing les rais sont aussi ombres par le niveau. Cle cfg.ini : volumetric=0/0.5/1.
+  et avec le ray tracing les rais sont aussi ombres par le niveau. Cle cfg.ini : volumetric=0/0.5/1/2.
 - Ray tracing (Options HD > "Ray tracing", desactive par defaut, demande OpenGL 4.3 = carte de 2012
   ou plus recente, pas besoin de RTX) : "Reflets" = les sols et murs brillants refletent ce qui est
   vraiment la, meme hors ecran ou derriere vous ; "Reflets + ombres" = chaque torche, bougie et sort
