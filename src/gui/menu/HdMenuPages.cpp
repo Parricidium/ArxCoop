@@ -219,6 +219,7 @@ public:
 		, m_softParticles(nullptr)
 		, m_raytracing(nullptr)
 		, m_darkness(nullptr)
+		, m_volumetric(nullptr)
 		, m_antialiasing(nullptr)
 	{ }
 
@@ -408,6 +409,24 @@ public:
 			addCenter(std::move(cycle));
 		}
 
+		// Volumetric haze (independent of the quality presets)
+		{
+			auto cycle = std::make_unique<CycleTextWidget>(sliderSize(), hFontMenu,
+			                                               hdText("system_menus_options_hd_volumetric", "Brume volumétrique"));
+			cycle->addEntry(hdText("system_menus_options_hd_volumetric_off", "Désactivée"));
+			cycle->addEntry(hdText("system_menus_options_hd_volumetric_light", "Légère"));
+			cycle->addEntry(hdText("system_menus_options_hd_volumetric_dense", "Dense"));
+			cycle->valueChanged = [](int pos, std::string_view /* string */) {
+				config.video.volumetric = float(pos) * 0.5f;
+				if(pos > 0) {
+					config.video.postprocess = true;
+				}
+				applyHdSettings();
+			};
+			m_volumetric = cycle.get();
+			addCenter(std::move(cycle));
+		}
+
 		// Ray tracing (independent of the quality presets, needs OpenGL 4.3)
 		if(GRenderer->hasRayTracing()) {
 			auto cycle = std::make_unique<CycleTextWidget>(sliderSize(), hFontMenu,
@@ -490,6 +509,7 @@ private:
 	CycleTextWidget * m_antialiasing;
 	CycleTextWidget * m_raytracing;
 	CycleTextWidget * m_darkness;
+	CycleTextWidget * m_volumetric;
 
 	//! An individual setting changed: the modern pipeline is needed, apply and show "custom"
 	void customChanged() {
@@ -531,6 +551,9 @@ private:
 		}
 		if(m_darkness) {
 			m_darkness->setValue(std::clamp(int(config.video.darkness * 2.f + 0.5f), 0, 2));
+		}
+		if(m_volumetric) {
+			m_volumetric->setValue(std::clamp(int(config.video.volumetric * 2.f + 0.5f), 0, 2));
 		}
 		if(m_softParticles) {
 			m_softParticles->setChecked(config.video.postprocess && config.video.softParticles);

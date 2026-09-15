@@ -10,11 +10,11 @@ out vec4 fragColor;
 
 void main() {
 	const float weights[5] = float[5](0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
-	vec3 result = texture(u_source, v_uv).rgb * weights[0];
+	vec4 result = texture(u_source, v_uv) * weights[0];
 	for(int i = 1; i < 5; i++) {
 		vec2 offset = u_direction * float(i);
-		result += texture(u_source, v_uv + offset).rgb * weights[i];
-		result += texture(u_source, v_uv - offset).rgb * weights[i];
+		result += texture(u_source, v_uv + offset) * weights[i];
+		result += texture(u_source, v_uv - offset) * weights[i];
 	}
-	fragColor = vec4(result, 1.0);
+	fragColor = result;
 }

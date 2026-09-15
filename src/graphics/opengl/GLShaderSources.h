@@ -652,13 +652,13 @@ out vec4 fragColor;
 
 void main() {
 	const float weights[5] = float[5](0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
-	vec3 result = texture(u_source, v_uv).rgb * weights[0];
+	vec4 result = texture(u_source, v_uv) * weights[0];
 	for(int i = 1; i < 5; i++) {
 		vec2 offset = u_direction * float(i);
-		result += texture(u_source, v_uv + offset).rgb * weights[i];
-		result += texture(u_source, v_uv - offset).rgb * weights[i];
+		result += texture(u_source, v_uv + offset) * weights[i];
+		result += texture(u_source, v_uv - offset) * weights[i];
 	}
-	fragColor = vec4(result, 1.0);
+	fragColor = result;
 }
 )glsl";
 
@@ -695,6 +695,8 @@ constexpr const char * post_final_frag = R"glsl(#version 130
 uniform sampler2D u_scene;
 uniform sampler2D u_bloomTexture;
 uniform sampler2D u_aoTexture;
+uniform sampler2D u_volumeTexture; // rgb = in-scattered light, a = transmittance (post_volume.frag)
+uniform int u_volumetric;
 uniform float u_bloom;
 uniform float u_ao;       // ambient occlusion strength (0 disables)
 uniform float u_darkness;
@@ -716,6 +718,10 @@ vec3 sceneAt(vec2 uv) {
 	vec3 c = texture(u_scene, uv).rgb;
 	if(u_ao > 0.0) {
 		c *= mix(1.0, texture(u_aoTexture, uv).r, u_ao);
+	}
+	if(u_volumetric != 0) {
+		vec4 haze = texture(u_volumeTexture, uv);
+		c = c * haze.a + haze.rgb;
 	}
 	if(u_darkness > 0.0) {
 		// Smooth toe: the darker a pixel already is, the more it is pulled towards black
@@ -862,6 +868,9 @@ void main() {
 	} else if(u_debug == 2) {
 		fragColor = vec4(texture(u_bloomTexture, v_uv).rgb, 1.0);
 		return;
+	} else if(u_debug == 3) {
+		fragColor = vec4(texture(u_volumeTexture, v_uv).rgb * 4.0, 1.0);
+		return;
 	}
 	vec3 c = (u_fxaa != 0) ? fxaa(v_uv) : sceneAt(v_uv);
 	fragColor = vec4(c, 1.0);
@@ -972,6 +981,144 @@ void main() {
 
 	float ao = 1.0 - occlusion / float(SAMPLES);
 	fragColor = vec4(ao, ao, ao, 1.0);
+}
+)glsl";
+
+constexpr const char * post_volume_frag = R"glsl(// ArxModern volumetric fog, computed at half resolution from the scene depth.
+//
+// The air of the levels becomes a thin, drifting haze: along the ray of every pixel the light
+// of the scene's torches, sconces and spells is scattered towards the camera (light shafts and
+// halos), and what lies behind the haze is dimmed by it. With the ray tracing built in (ARX_RT,
+// rt_common.glsl prepended) the shafts are shadowed by the level geometry: the light of a
+// sconce round a corner does not glow through the wall.
+//
+// Output: rgb = in-scattered light, a = transmittance (post_final.frag composes
+// scene * a + rgb). u_projection = (proj[0][0], proj[1][1], Q, Q * near) as in post_ssao.frag.
+
+#define MAX_LIGHTS 128
+
+uniform sampler2D u_depth;
+uniform vec4 u_projection;
+uniform mat4 u_invView;     // view -> world
+uniform vec3 u_cameraPos;
+uniform float u_density;    // 0..1, the "Haze" option
+uniform float u_time;
+uniform int u_lightCount;   // every light of the scene (the static sconces too), like the water pass
+uniform vec4 u_lightPos[MAX_LIGHTS];   // xyz, fallstart
+uniform vec4 u_lightColor[MAX_LIGHTS]; // rgb, fallend
+uniform int u_shadows;      // 1: trace the shafts' shadows (ARX_RT only)
+
+in vec2 v_uv;
+out vec4 fragColor;
+
+// Tunables (a mod can edit this file: F7 reloads it)
+const int Steps = 12;               // samples along each ray
+const float MaxRange = 2200.0;      // world units of haze in front of the camera
+const float Extinction = 0.00015;   // per world unit at density 1: how much the haze dims what is behind
+const float Scatter = 0.0011;       // per world unit at density 1: how much light it throws back
+const float Ambient = 0.012;        // faint glow of the haze where no light reaches
+const float Anisotropy = 0.35;      // Henyey-Greenstein g: > 0 scatters forward (halos round the lights)
+const float NoiseScale = 0.0035;    // world units -> noise; smaller = larger wisps
+const float NoiseAmount = 0.75;     // 0 = uniform haze, 1 = strongly wispy
+const float Drift = 0.05;           // wisps drifting speed
+const int MaxLightsPerRay = 6;      // the nearest lights only
+
+float linearDepth(vec2 uv) {
+	float zNdc = texture(u_depth, uv).r * 2.0 - 1.0;
+	return u_projection.w / (u_projection.z - zNdc);
+}
+
+float hash(vec3 p) {
+	p = fract(p * 0.3183099 + vec3(0.1, 0.17, 0.23));
+	p *= 17.0;
+	return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+// Smooth value noise, 0..1
+float noise(vec3 p) {
+	vec3 i = floor(p);
+	vec3 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(mix(hash(i), hash(i + vec3(1.0, 0.0, 0.0)), f.x),
+	               mix(hash(i + vec3(0.0, 1.0, 0.0)), hash(i + vec3(1.0, 1.0, 0.0)), f.x), f.y),
+	           mix(mix(hash(i + vec3(0.0, 0.0, 1.0)), hash(i + vec3(1.0, 0.0, 1.0)), f.x),
+	               mix(hash(i + vec3(0.0, 1.0, 1.0)), hash(i + vec3(1.0, 1.0, 1.0)), f.x), f.y), f.z);
+}
+
+float density(vec3 p) {
+	vec3 q = p * NoiseScale + vec3(u_time * Drift, u_time * Drift * 0.3, 0.0);
+	float n = noise(q) * 0.65 + noise(q * 2.7 + 3.1) * 0.35;
+	return u_density * mix(1.0, n * 1.6, NoiseAmount);
+}
+
+float phase(float cosTheta) {
+	float g = Anisotropy;
+	float d = 1.0 + g * g - 2.0 * g * cosTheta;
+	return (1.0 - g * g) / (4.0 * 3.14159265 * d * sqrt(d));
+}
+
+// Interleaved gradient noise: offsets the samples per pixel so that the steps do not band
+float dither(vec2 p) {
+	return fract(52.9829189 * fract(0.06711056 * p.x + 0.00583715 * p.y));
+}
+
+void main() {
+
+	// The ray of this pixel, in world space, with t = view depth
+	vec2 ndc = v_uv * 2.0 - 1.0;
+	vec3 dirView = vec3(ndc.x / u_projection.x, ndc.y / u_projection.y, 1.0);
+	vec3 dirWorld = mat3(u_invView) * dirView;
+	float dirLength = length(dirWorld);
+	vec3 dir = dirWorld / dirLength;
+	float range = min(linearDepth(v_uv), MaxRange / dirLength);
+
+	// The lights that can touch this ray at all: distance from the light to the ray segment
+	int lights[MaxLightsPerRay];
+	int lightCount = 0;
+	for(int i = 0; i < u_lightCount && lightCount < MaxLightsPerRay; i++) {
+		vec3 toLight = u_lightPos[i].xyz - u_cameraPos;
+		float along = clamp(dot(toLight, dir), 0.0, range * dirLength);
+		float away = length(toLight - dir * along);
+		if(away < u_lightColor[i].w) {
+			lights[lightCount++] = i;
+		}
+	}
+
+	float dt = range / float(Steps);
+	float t = dt * dither(gl_FragCoord.xy);
+	float transmittance = 1.0;
+	vec3 inscatter = vec3(0.0);
+	for(int s = 0; s < Steps; s++) {
+		vec3 p = u_cameraPos + dirWorld * t;
+		float rho = density(p);
+		float stepLength = dt * dirLength;
+		vec3 light = vec3(Ambient);
+		for(int k = 0; k < lightCount; k++) {
+			int i = lights[k];
+			vec3 toLight = u_lightPos[i].xyz - p;
+			float dist = length(toLight);
+			float fallend = u_lightColor[i].w;
+			if(dist >= fallend) {
+				continue;
+			}
+			float fallstart = u_lightPos[i].w;
+			float attenuation = (dist <= fallstart) ? 1.0 : (fallend - dist) / (fallend - fallstart);
+			// Closer to the source than fallstart the light gets stronger still (a flame is small)
+			attenuation *= 1.0 + 2.0 * clamp(1.0 - dist / fallstart, 0.0, 1.0);
+#ifdef ARX_RT
+			if(u_shadows != 0 && !rtLit(u_lightPos[i].xyz, p)) {
+				continue;
+			}
+#endif
+			light += u_lightColor[i].rgb * (attenuation * phase(dot(toLight / dist, -dir)));
+		}
+		float extinction = exp(-rho * Extinction * stepLength);
+		inscatter += transmittance * light * (rho * Scatter * stepLength);
+		transmittance *= extinction;
+		t += dt;
+	}
+
+	fragColor = vec4(inscatter, transmittance);
 }
 )glsl";
 

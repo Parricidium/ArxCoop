@@ -44,7 +44,9 @@ public:
 		float ao = 0.f;        //!< ambient occlusion strength, 0 = off
 		float aoRadius = 60.f; //!< world units
 		float darkness = 0.f;  //!< 0..1, crushes the dark end of the image (the unlit places)
-		int debugView = 0;     //!< 1 = ambient occlusion buffer, 2 = bloom buffer
+		float volumetric = 0.f; //!< 0..1, density of the volumetric haze (0 = off)
+		bool volumetricShadows = true; //!< trace the shadows of the light shafts (ray tracing only)
+		int debugView = 0;     //!< 1 = ambient occlusion buffer, 2 = bloom buffer, 3 = the haze
 	};
 
 	explicit GLPostProcess(GLShaderPipeline * pipeline);
@@ -64,6 +66,8 @@ public:
 	void end();
 
 	[[nodiscard]] bool isInScene() const { return m_inScene; }
+	//! Whether the haze program was built with the ray tracing code (init() again when this must change)
+	[[nodiscard]] bool traced() const noexcept { return m_traced; }
 
 	/*!
 	 * Copy the scene as rendered so far into the textures below (for passes that read the
@@ -104,6 +108,20 @@ private:
 	GLint m_uSsaoBias;
 	GLint m_uFinalAo;
 	GLint m_uFinalDarkness;
+	GLint m_uFinalVolumetric;
+	GLuint m_volumeProgram;
+	GLuint m_volumeTexture[2];
+	GLuint m_volumeFramebuffer[2];
+	GLint m_uVolumeProjection;
+	GLint m_uVolumeInvView;
+	GLint m_uVolumeCameraPos;
+	GLint m_uVolumeDensity;
+	GLint m_uVolumeTime;
+	GLint m_uVolumeLightCount;
+	GLint m_uVolumeLightPos;
+	GLint m_uVolumeLightColor;
+	GLint m_uVolumeShadows;
+	bool m_traced;
 	GLint m_uFinalDebug;
 	GLint m_uExtractThreshold;
 	GLint m_uBlurDirection;

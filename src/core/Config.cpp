@@ -136,6 +136,7 @@ constexpr const float
 	bloom = 0.35f,
 	ambientOcclusion = 0.f,
 	darkness = 0.f,
+	volumetric = 0.f,
 	normalMaps = 1.f,
 	water = 1.f,
 	lava = 1.f,
@@ -255,6 +256,7 @@ constexpr const std::string_view
 	fxaa = "fxaa",
 	ambientOcclusion = "ambient_occlusion",
 	darkness = "darkness",
+	volumetric = "volumetric",
 	normalMaps = "normal_maps",
 	physics = "physics",
 	water = "water",
@@ -534,6 +536,7 @@ bool Config::save() {
 	writer.writeKey(Key::fxaa, video.fxaa);
 	writer.writeKey(Key::ambientOcclusion, video.ambientOcclusion);
 	writer.writeKey(Key::darkness, video.darkness);
+	writer.writeKey(Key::volumetric, video.volumetric);
 	writer.writeKey(Key::normalMaps, video.normalMaps);
 	writer.writeKey(Key::physics, video.physics);
 	writer.writeKey(Key::water, video.water);
@@ -688,6 +691,7 @@ bool Config::init(const fs::path & file) {
 	video.fxaa = reader.getKey(Section::Video, Key::fxaa, Default::fxaa);
 	video.ambientOcclusion = reader.getKey(Section::Video, Key::ambientOcclusion, Default::ambientOcclusion);
 	video.darkness = reader.getKey(Section::Video, Key::darkness, Default::darkness);
+	video.volumetric = reader.getKey(Section::Video, Key::volumetric, Default::volumetric);
 	video.normalMaps = reader.getKey(Section::Video, Key::normalMaps, Default::normalMaps);
 	video.physics = reader.getKey(Section::Video, Key::physics, Default::physics);
 	video.water = reader.getKey(Section::Video, Key::water, Default::water);

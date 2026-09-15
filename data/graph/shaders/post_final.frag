@@ -13,6 +13,8 @@
 uniform sampler2D u_scene;
 uniform sampler2D u_bloomTexture;
 uniform sampler2D u_aoTexture;
+uniform sampler2D u_volumeTexture; // rgb = in-scattered light, a = transmittance (post_volume.frag)
+uniform int u_volumetric;
 uniform float u_bloom;
 uniform float u_ao;       // ambient occlusion strength (0 disables)
 uniform float u_darkness;
@@ -34,6 +36,10 @@ vec3 sceneAt(vec2 uv) {
 	vec3 c = texture(u_scene, uv).rgb;
 	if(u_ao > 0.0) {
 		c *= mix(1.0, texture(u_aoTexture, uv).r, u_ao);
+	}
+	if(u_volumetric != 0) {
+		vec4 haze = texture(u_volumeTexture, uv);
+		c = c * haze.a + haze.rgb;
 	}
 	if(u_darkness > 0.0) {
 		// Smooth toe: the darker a pixel already is, the more it is pulled towards black
@@ -179,6 +185,9 @@ void main() {
 		return;
 	} else if(u_debug == 2) {
 		fragColor = vec4(texture(u_bloomTexture, v_uv).rgb, 1.0);
+		return;
+	} else if(u_debug == 3) {
+		fragColor = vec4(texture(u_volumeTexture, v_uv).rgb * 4.0, 1.0);
 		return;
 	}
 	vec3 c = (u_fxaa != 0) ? fxaa(v_uv) : sceneAt(v_uv);
