@@ -365,28 +365,35 @@ void SecondaryInventoryHud::dropEntity() {
 	
 }
 
-bool SecondaryInventoryHud::sellEntity(Entity * item) {
+bool SecondaryInventoryHud::quickPutEntity(Entity * item) {
 
-	if(!isOpen() || !m_container || !(m_container->ioflags & IO_SHOP) || !item || !(item->ioflags & IO_ITEM)
-	   || !item->_itemdata) {
+	if(!isOpen() || !m_container || !item || !(item->ioflags & IO_ITEM) || !item->_itemdata
+	   || m_container == ioSteal || !m_container->inventory) {
 		return false;
 	}
-	if(!m_container->shop_category.empty() && item->groups.find(m_container->shop_category) == item->groups.end()) {
-		return false; // not what this shop buys
-	}
-	long price = ARX_INTERACTIVE_GetSellValue(item, m_container, item->_itemdata->count);
-	if(price <= 0) {
-		return false;
+
+	bool shop = (m_container->ioflags & IO_SHOP) != 0;
+	long price = 0;
+	if(shop) {
+		if(!m_container->shop_category.empty() && item->groups.find(m_container->shop_category) == item->groups.end()) {
+			return false; // not what this shop buys
+		}
+		price = ARX_INTERACTIVE_GetSellValue(item, m_container, item->_itemdata->count);
+		if(price <= 0) {
+			return false;
+		}
 	}
 
 	removeFromInventories(item);
 	coop::ContainerDropScope coopScope(*m_container, item); // the others see what lands in there
 	if(!m_container->inventory->insert(item)) {
-		giveToPlayer(item); // shop full: back in our bag
+		giveToPlayer(item); // container full: back in our bag
 		return false;
 	}
-	ARX_PLAYER_AddGold(price);
-	ARX_SOUND_PlayInterface(g_snd.GOLD);
+	if(shop) {
+		ARX_PLAYER_AddGold(price);
+		ARX_SOUND_PlayInterface(g_snd.GOLD);
+	}
 	ARX_SOUND_PlayInterface(g_snd.INVSTD);
 	return true;
 }
