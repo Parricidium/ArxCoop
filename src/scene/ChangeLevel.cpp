@@ -492,9 +492,14 @@ static bool ARX_CHANGELEVEL_PushLevel(AreaId oldArea, AreaId newArea) {
 	
 	ok = ARX_CHANGELEVEL_Push_AllIO(oldArea) || ok;
 	
-	// ArxModern: the ragdolls of the level, in a file of their own (the format above is untouched)
+	// ArxModern: the ragdolls of the level, in a file of their own (the format above is untouched);
+	// no ragdolls = no file (never an empty one)
 	std::string ragdolls = physics::serializeRagdolls();
-	g_currentSavedGame->save(physicsSaveName(oldArea), ragdolls.data(), ragdolls.size());
+	if(ragdolls.empty()) {
+		g_currentSavedGame->remove(physicsSaveName(oldArea));
+	} else {
+		g_currentSavedGame->save(physicsSaveName(oldArea), ragdolls.data(), ragdolls.size());
+	}
 	
 	return ok;
 }

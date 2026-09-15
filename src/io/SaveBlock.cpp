@@ -514,13 +514,19 @@ bool SaveBlock::save(std::string && name, const char * data, size_t size) {
 	File * file = &m_files[std::move(name)];
 	
 	file->uncompressedSize = size;
-	
+
 	if(size == 0) {
+		// An entry rewritten empty must forget its old chunks, or loading it would read them
+		// into a zero-length buffer (heap corruption, then a crash somewhere else)
 		file->comp = File::None;
 		file->storedSize = 0;
+		for(const Chunk & chunk : file->chunks) {
+			m_usedSize -= chunk.size;
+		}
+		file->chunks.clear();
 		return true;
 	}
-	
+
 	uLongf compressedSize = size - 1;
 	std::vector<char> compressed(compressedSize);
 	const char * p;
