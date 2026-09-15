@@ -27,12 +27,30 @@
 #include "graphics/opengl/GLShaderSources.h"
 #include "io/log/Logger.h"
 
+// SMAA lookup textures (Jorge Jimenez et al., MIT license, see smaa/LICENSE.txt)
+#include "graphics/opengl/smaa/AreaTex.h"
+#include "graphics/opengl/smaa/SearchTex.h"
+
 GLPostProcess::GLPostProcess(GLShaderPipeline * pipeline)
 	: m_pipeline(pipeline)
 	, m_extractProgram(0)
 	, m_blurProgram(0)
 	, m_ssaoProgram(0)
 	, m_finalProgram(0)
+	, m_smaaEdgeProgram(0)
+	, m_smaaWeightProgram(0)
+	, m_smaaBlendProgram(0)
+	, m_uSmaaEdgeMetrics(-1)
+	, m_uSmaaWeightMetrics(-1)
+	, m_uSmaaBlendMetrics(-1)
+	, m_areaTexture(0)
+	, m_searchTexture(0)
+	, m_compositeFramebuffer(0)
+	, m_compositeTexture(0)
+	, m_edgesFramebuffer(0)
+	, m_edgesTexture(0)
+	, m_blendFramebuffer(0)
+	, m_blendTexture(0)
 	, m_uSsaoProjection(-1)
 	, m_uSsaoInvSize(-1)
 	, m_uSsaoRadius(-1)
@@ -110,8 +128,75 @@ bool GLPostProcess::init() {
 	// An empty vertex array object: the full-screen triangle comes from gl_VertexID
 	glGenVertexArrays(1, &m_vao);
 
+	if(!initSmaa()) {
+		LogWarning << "SMAA shaders unavailable, FXAA will stand in";
+	}
+
 	// The pipeline's program must be current again, or its uniform updates would land here
 	m_pipeline->restoreAfterExternalDraw();
+
+	return true;
+}
+
+/*!
+ * SMAA 1x: three programs sharing the SMAA source (smaa.glsl, overridable) behind a prelude
+ * that selects GLSL 1.30 and the "high" preset, plus the two constant lookup textures.
+ */
+bool GLPostProcess::initSmaa() {
+
+	static const char * const prelude = "#version 130\n"
+		"#define SMAA_GLSL_3 1\n"
+		"#define SMAA_PRESET_HIGH 1\n"
+		"uniform vec4 u_rtMetrics; // 1/width, 1/height, width, height\n"
+		"#define SMAA_RT_METRICS u_rtMetrics\n";
+
+	m_smaaEdgeProgram = m_pipeline->buildProgram("smaa_edge", shadersources::smaa_edge_vert, shadersources::smaa_edge_frag,
+	                                             prelude, "smaa.glsl", shadersources::smaa_glsl);
+	m_smaaWeightProgram = m_pipeline->buildProgram("smaa_weight", shadersources::smaa_weight_vert, shadersources::smaa_weight_frag,
+	                                               prelude, "smaa.glsl", shadersources::smaa_glsl);
+	m_smaaBlendProgram = m_pipeline->buildProgram("smaa_blend", shadersources::smaa_blend_vert, shadersources::smaa_blend_frag,
+	                                              prelude, "smaa.glsl", shadersources::smaa_glsl);
+	if(!m_smaaEdgeProgram || !m_smaaWeightProgram || !m_smaaBlendProgram) {
+		for(GLuint * program : { &m_smaaEdgeProgram, &m_smaaWeightProgram, &m_smaaBlendProgram }) {
+			if(*program) {
+				glDeleteProgram(*program);
+				*program = 0;
+			}
+		}
+		return false;
+	}
+
+	glUseProgram(m_smaaEdgeProgram);
+	glUniform1i(glGetUniformLocation(m_smaaEdgeProgram, "u_scene"), 0);
+	m_uSmaaEdgeMetrics = glGetUniformLocation(m_smaaEdgeProgram, "u_rtMetrics");
+	glUseProgram(m_smaaWeightProgram);
+	glUniform1i(glGetUniformLocation(m_smaaWeightProgram, "u_edges"), 0);
+	glUniform1i(glGetUniformLocation(m_smaaWeightProgram, "u_area"), 1);
+	glUniform1i(glGetUniformLocation(m_smaaWeightProgram, "u_search"), 2);
+	m_uSmaaWeightMetrics = glGetUniformLocation(m_smaaWeightProgram, "u_rtMetrics");
+	glUseProgram(m_smaaBlendProgram);
+	glUniform1i(glGetUniformLocation(m_smaaBlendProgram, "u_scene"), 0);
+	glUniform1i(glGetUniformLocation(m_smaaBlendProgram, "u_blend"), 1);
+	m_uSmaaBlendMetrics = glGetUniformLocation(m_smaaBlendProgram, "u_rtMetrics");
+
+	// The lookup textures: the area texture is filtered bilinearly, the search texture is not
+	glGenTextures(1, &m_areaTexture);
+	glBindTexture(GL_TEXTURE_2D, m_areaTexture);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RG8, AREATEX_WIDTH, AREATEX_HEIGHT, 0, GL_RG, GL_UNSIGNED_BYTE, areaTexBytes);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glGenTextures(1, &m_searchTexture);
+	glBindTexture(GL_TEXTURE_2D, m_searchTexture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, SEARCHTEX_WIDTH, SEARCHTEX_HEIGHT, 0, GL_RED, GL_UNSIGNED_BYTE, searchTexBytes);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+	glBindTexture(GL_TEXTURE_2D, 0);
 
 	return true;
 }
@@ -124,10 +209,17 @@ void GLPostProcess::shutdown() {
 		glDeleteVertexArrays(1, &m_vao);
 		m_vao = 0;
 	}
-	for(GLuint * program : { &m_extractProgram, &m_blurProgram, &m_ssaoProgram, &m_finalProgram }) {
+	for(GLuint * program : { &m_extractProgram, &m_blurProgram, &m_ssaoProgram, &m_finalProgram,
+	                         &m_smaaEdgeProgram, &m_smaaWeightProgram, &m_smaaBlendProgram }) {
 		if(*program) {
 			glDeleteProgram(*program);
 			*program = 0;
+		}
+	}
+	for(GLuint * tex : { &m_areaTexture, &m_searchTexture }) {
+		if(*tex) {
+			glDeleteTextures(1, tex);
+			*tex = 0;
 		}
 	}
 
@@ -203,6 +295,20 @@ bool GLPostProcess::createBuffers(int width, int height, int samples) {
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, m_depthTexture, 0);
 	ok = framebufferComplete("resolve") && ok;
 
+	// SMAA: the composed image, its edges and the blending weights, full size
+	if(m_smaaEdgeProgram) {
+		struct Target { GLuint * fb; GLuint * tex; const char * what; };
+		for(Target target : { Target { &m_compositeFramebuffer, &m_compositeTexture, "composite" },
+		                      Target { &m_edgesFramebuffer, &m_edgesTexture, "edges" },
+		                      Target { &m_blendFramebuffer, &m_blendTexture, "blend" } }) {
+			*target.tex = createColorTexture(width, height);
+			glGenFramebuffers(1, target.fb);
+			glBindFramebuffer(GL_FRAMEBUFFER, *target.fb);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, *target.tex, 0);
+			ok = framebufferComplete(target.what) && ok;
+		}
+	}
+
 	// Ambient occlusion ping-pong at half resolution
 	for(int i = 0; i < 2; i++) {
 		m_aoTexture[i] = createColorTexture(std::max(width / 2, 1), std::max(height / 2, 1));
@@ -238,7 +344,8 @@ bool GLPostProcess::createBuffers(int width, int height, int samples) {
 void GLPostProcess::destroyBuffers() {
 
 	for(GLuint * fb : { &m_sceneFramebuffer, &m_resolveFramebuffer, &m_bloomFramebuffer[0], &m_bloomFramebuffer[1],
-	                    &m_aoFramebuffer[0], &m_aoFramebuffer[1] }) {
+	                    &m_aoFramebuffer[0], &m_aoFramebuffer[1], &m_compositeFramebuffer, &m_edgesFramebuffer,
+	                    &m_blendFramebuffer }) {
 		if(*fb) {
 			glDeleteFramebuffers(1, fb);
 			*fb = 0;
@@ -251,7 +358,7 @@ void GLPostProcess::destroyBuffers() {
 		}
 	}
 	for(GLuint * tex : { &m_sceneTexture, &m_depthTexture, &m_bloomTexture[0], &m_bloomTexture[1],
-	                     &m_aoTexture[0], &m_aoTexture[1] }) {
+	                     &m_aoTexture[0], &m_aoTexture[1], &m_compositeTexture, &m_edgesTexture, &m_blendTexture }) {
 		if(*tex) {
 			glDeleteTextures(1, tex);
 			*tex = 0;
@@ -410,12 +517,18 @@ void GLPostProcess::end() {
 		}
 	}
 
-	// 4. Final image to the window
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	// 4. Final image to the window, or to the composite buffer that SMAA then filters
+	bool smaa = m_settings.smaa && m_smaaEdgeProgram && m_compositeFramebuffer && m_settings.debugView == 0;
+	static int loggedSmaa = -1;
+	if(int(smaa) != loggedSmaa) {
+		loggedSmaa = int(smaa);
+		LogInfo << "Post-processing: SMAA " << (smaa ? "on" : "off");
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, smaa ? m_compositeFramebuffer : 0);
 	glViewport(0, 0, m_width, m_height);
 	glUseProgram(m_finalProgram);
 	glUniform1f(m_uFinalBloom, bloom ? m_settings.bloom : 0.f);
-	glUniform1i(m_uFinalFxaa, m_settings.fxaa ? 1 : 0);
+	glUniform1i(m_uFinalFxaa, (m_settings.fxaa && !smaa) ? 1 : 0);
 	glUniform1f(m_uFinalAo, ao ? m_settings.ao : 0.f);
 	glUniform1i(m_uFinalDebug, m_settings.debugView);
 	glUniform2f(m_uFinalInvSize, 1.f / float(m_width), 1.f / float(m_height));
@@ -426,6 +539,37 @@ void GLPostProcess::end() {
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, m_sceneTexture);
 	drawFullscreen();
+
+	if(smaa) {
+		// 5. SMAA: edges of the composed image, blending weights, then the blended image to the window.
+		// The edge and weight passes discard the pixels they do not touch: clear them first.
+		glClearColor(0.f, 0.f, 0.f, 0.f);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_edgesFramebuffer);
+		glClear(GL_COLOR_BUFFER_BIT);
+		glUseProgram(m_smaaEdgeProgram);
+		glUniform4f(m_uSmaaEdgeMetrics, 1.f / float(m_width), 1.f / float(m_height), float(m_width), float(m_height));
+		glBindTexture(GL_TEXTURE_2D, m_compositeTexture);
+		drawFullscreen();
+		glBindFramebuffer(GL_FRAMEBUFFER, m_blendFramebuffer);
+		glClear(GL_COLOR_BUFFER_BIT);
+		glUseProgram(m_smaaWeightProgram);
+		glUniform4f(m_uSmaaWeightMetrics, 1.f / float(m_width), 1.f / float(m_height), float(m_width), float(m_height));
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, m_searchTexture);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, m_areaTexture);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_edgesTexture);
+		drawFullscreen();
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glUseProgram(m_smaaBlendProgram);
+		glUniform4f(m_uSmaaBlendMetrics, 1.f / float(m_width), 1.f / float(m_height), float(m_width), float(m_height));
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, m_blendTexture);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_compositeTexture);
+		drawFullscreen();
+	}
 
 	// The HUD is drawn next into the window: give it a clean depth buffer
 	glDepthMask(GL_TRUE);
