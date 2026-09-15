@@ -796,7 +796,8 @@ void OpenGLRenderer::applyGraphicsConfig() {
 		m_shaders->setMaterialStrength(config.video.parallax, config.video.specular);
 		if(m_post) {
 			m_post->settings().bloom = config.video.bloom;
-			m_post->settings().fxaa = config.video.fxaa || config.video.smaa; // SMAA pass not written yet: FXAA stands in
+			m_post->settings().fxaa = config.video.fxaa || config.video.smaa; // FXAA stands in if the SMAA shaders failed
+			m_post->settings().smaa = config.video.smaa;
 			m_post->settings().ao = config.video.ambientOcclusion;
 			m_post->settings().debugView = (config.video.postDebug == "ao") ? 1 : (config.video.postDebug == "bloom") ? 2 : 0;
 		}

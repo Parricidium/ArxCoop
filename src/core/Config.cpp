@@ -121,7 +121,9 @@ constexpr const bool
 	borderTurning = true,
 	useAltRuneRecognition = true,
 	improvedBowAim = true,
-	physics = true;
+	physics = true,
+	softParticles = true,
+	smaa = false;
 
 #ifdef ARX_DEBUG
 const bool allowConsole = true;
@@ -138,8 +140,6 @@ constexpr const float
 	parallax = 1.f,
 	specular = 1.f,
 	reflections = 1.f,
-	softParticles = true,
-	smaa = false,
 	fogDistance = 10.f,
 	gamma = 5.f,
 	fov = 75.f,
