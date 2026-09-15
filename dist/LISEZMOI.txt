@@ -156,6 +156,11 @@ CONSOLE (touche ² a gauche du 1, ou la touche configuree pour la console)
   pieds (ici la patente de marchand de gemmes) ; le chemin est celui du dossier de l'objet dans les
   donnees du jeu (graph/obj3d/interactive/items/...).
 
+CINEMATIQUES DE DIALOGUE
+- Quand un autre joueur lance un dialogue a camera (Kultar, Polsius, Atok...), c'est l'hote qui joue la
+  scene : il est teleporte a cote de ce joueur et voit la cinematique comme s'il avait parle au PNJ
+  lui-meme ; les autres entendent les repliques sans etre bloques.
+
 LIMITES CONNUES (version de developpement)
 - Fait pour le reseau local ; jamais teste avec une vraie latence internet.
 - Les sorts des autres joueurs sont visibles ; leurs degats sont calcules chez le lanceur.
