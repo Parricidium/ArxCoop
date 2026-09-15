@@ -678,6 +678,15 @@ static void clothTest(u32 frames) {
 }
 ARX_PROGRAM_OPTION_ARG("clothtest", "", "Look at the largest cloth of the level from frame N (soft body test)", &clothTest, "FRAMES")
 
+// ArxModern: play a cinematic (graph/interface/illustrations/<name>.cin) at frame 60 in game
+static std::string g_cineTest;
+static long g_cineTestFrames = -1;
+static void cineTest(const std::string & name) {
+	g_cineTest = name;
+	g_cineTestFrames = 60;
+}
+ARX_PROGRAM_OPTION_ARG("cinetest", "", "Play the given cinematic once in game (texture upload test)", &cineTest, "NAME")
+
 static bool g_waterTestLava = false;
 static void lavaTest(u32 frames) {
 	g_waterTestFrames = long(frames);
@@ -2355,6 +2364,15 @@ void ArxGame::render() {
 		if(target->pos != player.pos) {
 			player.desiredangle = player.angle = Camera::getLookAtAngle(player.pos, target->pos - Vec3f(0.f, 40.f, 0.f));
 		}
+	}
+
+	if(g_cineTestFrames >= 0 && ARXmenu.mode() == Mode_InGame && !isInCinematic()) {
+		if(g_cineTestFrames == 0) {
+			LogInfo << "cinetest: playing " << g_cineTest;
+			cinematicPrepare(g_cineTest, false);
+			cinematicRequestStart();
+		}
+		g_cineTestFrames--;
 	}
 
 	static Vec3f g_clothTestTarget(0.f);
