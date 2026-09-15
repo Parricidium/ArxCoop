@@ -101,7 +101,7 @@ EDITION HD (zip ArxCoop-HD-* uniquement)
   ou ils gisent, les objets laches ou jetes roulent et se posent, les objets cassables du jeu
   (vitrines, cryptes de verre, grilles) eclatent en morceaux, les bannieres et rideaux bougent.
   Les personnages des joueurs ne sont pas concernes.
-- Tout se regle dans le menu "Options HD" (menu principal ou Options) : prereglages Off / Faible /
+- Tout se regle dans Options > "Options HD" : prereglages Off / Faible /
   Moyenne / Elevee / Ultra et reglages detailles, appliques immediatement. "Off" = rendu d'origine.
   Reglages dans userdata\cfg.ini, section [video] : pipeline, lighting, shadows, shadow_resolution,
   postprocess, bloom, fxaa, smaa, ambient_occlusion, normal_maps, parallax, specular, reflections,
