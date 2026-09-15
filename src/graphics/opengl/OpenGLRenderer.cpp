@@ -847,15 +847,19 @@ void OpenGLRenderer::applyGraphicsConfig() {
 	}
 
 	if(config.video.water > 0.f && m_post) {
+		bool created = false;
 		if(!m_water) {
 			m_water = std::make_unique<GLWater>(m_shaders.get(), m_post.get());
-			if(!m_water->init()) {
-				m_water.reset();
-			}
+			created = true;
+		}
+		// The program carries the ray tracing code only when the pipeline traces
+		if((created || m_water->traced() != (m_shaders->rayTracing() > 0)) && !m_water->init()) {
+			m_water.reset();
 		}
 		if(m_water) {
 			m_water->setPost(m_post.get());
 			m_water->setStrength(config.video.water);
+			m_water->setReflection(config.video.reflections);
 		}
 	} else {
 		m_water.reset();
