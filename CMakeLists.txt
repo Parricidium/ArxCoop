@@ -1062,6 +1062,7 @@ set(GRAPHICS_OPENGL_SOURCES
 	src/graphics/opengl/GLWater.cpp
 	src/graphics/opengl/GLLava.cpp
 	src/graphics/opengl/GLReflect.cpp
+	src/graphics/opengl/GLRayScene.cpp
 src/graphics/opengl/GLLava.cpp
 	src/gui/menu/HdMenuPages.cpp
 	src/graphics/texture/NormalMap.cpp
@@ -1231,6 +1232,7 @@ set(SCENE_SOURCES
 	src/scene/LoadLevel.cpp
 	src/scene/Object.cpp
 	src/scene/Rooms.cpp
+	src/scene/RayScene.cpp
 	src/scene/Scene.cpp
 	src/scene/Tiles.cpp
 )

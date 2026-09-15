@@ -123,6 +123,9 @@ public:
 	bool beginReflections() override;
 	void setReflectionMaterial(Texture * normalMap, const MaterialParams & material) override;
 	void endReflections() override;
+	[[nodiscard]] bool reflectionsDrawAllMaterials() const override;
+	[[nodiscard]] bool tracedShadows() const override;
+	[[nodiscard]] bool hasRayTracing() const override;
 	void forgetTextureBindings();
 	
 	bool hasTextureNPOT() const { return m_hasTextureNPOT; }

@@ -696,6 +696,13 @@ static void killTest(u32 frames) {
 }
 ARX_PROGRAM_OPTION_ARG("killtest", "", "Kill the NPCs near the player at frame N (ragdoll test)", &killTest, "FRAMES")
 
+// ArxModern: at frame N, the player lights a torch (shadow tests: a strong light they carry)
+static long g_torchTestFrames = -1000;
+static void torchTest(u32 frames) {
+	g_torchTestFrames = long(frames);
+}
+ARX_PROGRAM_OPTION_ARG("torchtest", "", "The player lights a torch at frame N (shadow test)", &torchTest, "FRAMES")
+
 // ArxModern: at frame N, throw the items lying near the player in front of them (loose object test)
 static long g_throwTestFrames = -1000;
 static EntityHandle g_throwTestTarget;
@@ -2292,6 +2299,20 @@ void ArxGame::render() {
 			mainApp->quit();
 		}
 		g_autoSnapshotFrames--;
+	}
+	
+	if(g_torchTestFrames > -1000 && ARXmenu.mode() == Mode_InGame && !isInCinematic()) {
+		if(g_torchTestFrames == 0) {
+			if(Entity * torch = AddItem("graph/obj3d/interactive/items/provisions/torch/torch", -1, IO_IMMEDIATELOAD)) {
+				torch->scriptload = 1;
+				SendInitScriptEvent(torch);
+				ARX_PLAYER_ClickedOnTorch(torch);
+				LogInfo << "torchtest: torch lit";
+			} else {
+				LogWarning << "torchtest: no torch";
+			}
+		}
+		g_torchTestFrames--;
 	}
 	
 	if(g_killTestFrames > -1000 && ARXmenu.mode() == Mode_InGame && !isInCinematic()) {

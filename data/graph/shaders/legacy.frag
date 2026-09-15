@@ -204,6 +204,50 @@ vec2 parallaxUv(vec2 uv, vec3 viewTS, float depth) {
 	return mix(currentUv, currentUv - delta, clamp(weight, 0.0, 1.0));
 }
 
+#ifdef ARX_RT
+// ArxModern RT (built with rt_common.glsl, "#define ARX_RT"): the shadows of the dynamic lights
+// are traced through the level geometry, several rays per light towards a disc the size of
+// the flame (soft edges). The cube maps then only hold the entities.
+uniform int u_rtShadows;
+uniform int u_rtDebug; // 1: show the traced shadow factor of the lights (post_debug=rtshadow)
+const int ShadowRays = 4;        // traced rays per light and fragment in the penumbra
+const float ShadowMinLight = 0.02; // lights contributing less than this are not traced
+const float PenumbraRange = 900.0; // world units from the camera within which the penumbra is refined
+const float LightRadius = 12.0;  // world units: size of the light source (penumbra width)
+
+// Interleaved gradient noise (Jimenez 2014): rotates the sample pattern per pixel
+float rtNoise(vec2 p) {
+	return fract(52.9829189 * fract(0.06711056 * p.x + 0.00583715 * p.y));
+}
+
+// Rays from points spread over a disc (the light) to the fragment: the first two are opposite
+// each other and settle most fragments (fully lit or fully in the umbra), the rest refine the
+// penumbra. Traced from the light so that the back faces it may sit behind (a sconce, a log
+// pile) are ignored (rt_common.glsl).
+float tracedShadow(vec3 origin, vec3 lightPos, vec3 toLight, float cameraDistance) {
+	vec3 up = (abs(toLight.y) < 0.9) ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+	vec3 tx = normalize(cross(up, toLight));
+	vec3 ty = cross(toLight, tx);
+	float noise = rtNoise(gl_FragCoord.xy);
+	// The penumbra detail is not worth it far away
+	int rays = (cameraDistance < PenumbraRange) ? ShadowRays : 2;
+	float lit = 0.0;
+	for(int k = 0; k < rays; k++) {
+		if(k == 2 && (lit == 0.0 || lit == 2.0)) {
+			return lit * 0.5;
+		}
+		// Two opposite points at mid radius first, then a spiral over the disc (golden angle);
+		// the whole pattern rotated per pixel
+		float angle = noise * 6.2831853 + ((k < 2) ? float(k) * 3.14159265 : float(k) * 2.399963);
+		float radius = LightRadius * ((k < 2) ? 0.7 : sqrt((float(k) + 0.5) / float(ShadowRays)));
+		if(rtLit(lightPos + (tx * cos(angle) + ty * sin(angle)) * radius, origin)) {
+			lit += 1.0;
+		}
+	}
+	return lit / float(rays);
+}
+#endif
+
 // Linear view depth of the scene behind this fragment (soft particles)
 float sceneDepthAt(vec2 uv) {
 	float zNdc = texture(u_depth, uv).r * 2.0 - 1.0;
@@ -229,8 +273,13 @@ void main() {
 	}
 
 	vec3 specular = vec3(0.0);
+#ifdef ARX_RT
+	float debugShadow = 1.0;
+	vec3 debugBlocker = vec3(1.0);
+#endif
 	if(lightCount > 0) {
 		vec3 normal = normalize(v_normal);
+		vec3 geometric = normal;
 		vec3 toCamera = u_cameraPos - v_worldPos;
 		vec3 view = normalize(toCamera);
 		float gloss = 0.0;
@@ -277,6 +326,22 @@ void main() {
 			}
 			float fallstart = u_lightPos[i].w;
 			float attenuation = (dist <= fallstart) ? 1.0 : (fallend - dist) / (fallend - fallstart);
+#ifdef ARX_RT
+			if(u_rtShadows != 0 && max(max(u_lightColor[i].r, u_lightColor[i].g), u_lightColor[i].b) * cosangle * attenuation * lightScale >= ShadowMinLight) {
+				float traced = tracedShadow(v_worldPos + geometric * (1.0 + dist * 0.004), u_lightPos[i].xyz, toLight, length(toCamera));
+				debugShadow = min(debugShadow, traced);
+				if(u_rtDebug == 2) {
+					// One ray from the light centre; the blocker's texture index as a colour
+					if(!rtLit(u_lightPos[i].xyz, v_worldPos + geometric * (1.0 + dist * 0.004))) {
+						debugBlocker = min(debugBlocker, vec3(float(i) / 8.0, 0.0, 0.0));
+					}
+				}
+				attenuation *= traced;
+				if(attenuation <= 0.0) {
+					continue;
+				}
+			}
+#endif
 			if(i < u_shadowCount) {
 				// Offset along the normal so that a surface does not shadow itself
 				vec3 fromLight = (v_worldPos + normal * (2.0 + dist * 0.01)) - u_lightPos[i].xyz;
@@ -337,6 +402,15 @@ void main() {
 			color.rgb = mix(vec3(1.0), color.rgb, fade);
 		}
 	}
+
+#ifdef ARX_RT
+	if(u_rtDebug == 1) {
+		color.rgb = vec3(debugShadow);
+	} else if(u_rtDebug == 2) {
+		color.rgb = debugBlocker;
+		color.a = debugShadow;
+	}
+#endif
 
 	fragColor = color;
 

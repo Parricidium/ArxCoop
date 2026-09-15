@@ -356,6 +356,50 @@ vec2 parallaxUv(vec2 uv, vec3 viewTS, float depth) {
 	return mix(currentUv, currentUv - delta, clamp(weight, 0.0, 1.0));
 }
 
+#ifdef ARX_RT
+// ArxModern RT (built with rt_common.glsl, "#define ARX_RT"): the shadows of the dynamic lights
+// are traced through the level geometry, several rays per light towards a disc the size of
+// the flame (soft edges). The cube maps then only hold the entities.
+uniform int u_rtShadows;
+uniform int u_rtDebug; // 1: show the traced shadow factor of the lights (post_debug=rtshadow)
+const int ShadowRays = 4;        // traced rays per light and fragment in the penumbra
+const float ShadowMinLight = 0.02; // lights contributing less than this are not traced
+const float PenumbraRange = 900.0; // world units from the camera within which the penumbra is refined
+const float LightRadius = 12.0;  // world units: size of the light source (penumbra width)
+
+// Interleaved gradient noise (Jimenez 2014): rotates the sample pattern per pixel
+float rtNoise(vec2 p) {
+	return fract(52.9829189 * fract(0.06711056 * p.x + 0.00583715 * p.y));
+}
+
+// Rays from points spread over a disc (the light) to the fragment: the first two are opposite
+// each other and settle most fragments (fully lit or fully in the umbra), the rest refine the
+// penumbra. Traced from the light so that the back faces it may sit behind (a sconce, a log
+// pile) are ignored (rt_common.glsl).
+float tracedShadow(vec3 origin, vec3 lightPos, vec3 toLight, float cameraDistance) {
+	vec3 up = (abs(toLight.y) < 0.9) ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+	vec3 tx = normalize(cross(up, toLight));
+	vec3 ty = cross(toLight, tx);
+	float noise = rtNoise(gl_FragCoord.xy);
+	// The penumbra detail is not worth it far away
+	int rays = (cameraDistance < PenumbraRange) ? ShadowRays : 2;
+	float lit = 0.0;
+	for(int k = 0; k < rays; k++) {
+		if(k == 2 && (lit == 0.0 || lit == 2.0)) {
+			return lit * 0.5;
+		}
+		// Two opposite points at mid radius first, then a spiral over the disc (golden angle);
+		// the whole pattern rotated per pixel
+		float angle = noise * 6.2831853 + ((k < 2) ? float(k) * 3.14159265 : float(k) * 2.399963);
+		float radius = LightRadius * ((k < 2) ? 0.7 : sqrt((float(k) + 0.5) / float(ShadowRays)));
+		if(rtLit(lightPos + (tx * cos(angle) + ty * sin(angle)) * radius, origin)) {
+			lit += 1.0;
+		}
+	}
+	return lit / float(rays);
+}
+#endif
+
 // Linear view depth of the scene behind this fragment (soft particles)
 float sceneDepthAt(vec2 uv) {
 	float zNdc = texture(u_depth, uv).r * 2.0 - 1.0;
@@ -381,8 +425,13 @@ void main() {
 	}
 
 	vec3 specular = vec3(0.0);
+#ifdef ARX_RT
+	float debugShadow = 1.0;
+	vec3 debugBlocker = vec3(1.0);
+#endif
 	if(lightCount > 0) {
 		vec3 normal = normalize(v_normal);
+		vec3 geometric = normal;
 		vec3 toCamera = u_cameraPos - v_worldPos;
 		vec3 view = normalize(toCamera);
 		float gloss = 0.0;
@@ -429,6 +478,22 @@ void main() {
 			}
 			float fallstart = u_lightPos[i].w;
 			float attenuation = (dist <= fallstart) ? 1.0 : (fallend - dist) / (fallend - fallstart);
+#ifdef ARX_RT
+			if(u_rtShadows != 0 && max(max(u_lightColor[i].r, u_lightColor[i].g), u_lightColor[i].b) * cosangle * attenuation * lightScale >= ShadowMinLight) {
+				float traced = tracedShadow(v_worldPos + geometric * (1.0 + dist * 0.004), u_lightPos[i].xyz, toLight, length(toCamera));
+				debugShadow = min(debugShadow, traced);
+				if(u_rtDebug == 2) {
+					// One ray from the light centre; the blocker's texture index as a colour
+					if(!rtLit(u_lightPos[i].xyz, v_worldPos + geometric * (1.0 + dist * 0.004))) {
+						debugBlocker = min(debugBlocker, vec3(float(i) / 8.0, 0.0, 0.0));
+					}
+				}
+				attenuation *= traced;
+				if(attenuation <= 0.0) {
+					continue;
+				}
+			}
+#endif
 			if(i < u_shadowCount) {
 				// Offset along the normal so that a surface does not shadow itself
 				vec3 fromLight = (v_worldPos + normal * (2.0 + dist * 0.01)) - u_lightPos[i].xyz;
@@ -459,7 +524,7 @@ void main() {
 	if(u_stage1.x != 0 || u_stage1.y != 0) {
 		vec4 tex = texture(u_texture1, v_texcoord1);
 		color.rgb = combineColor(u_stage1.x, tex.rgb, color.rgb);
-		color.a = combineAlpha(u_stage1.y, tex.a, color.a);
+)glsl" R"glsl(		color.a = combineAlpha(u_stage1.y, tex.a, color.a);
 	}
 
 	if(u_stage2.x != 0 || u_stage2.y != 0) {
@@ -489,6 +554,15 @@ void main() {
 			color.rgb = mix(vec3(1.0), color.rgb, fade);
 		}
 	}
+
+#ifdef ARX_RT
+	if(u_rtDebug == 1) {
+		color.rgb = vec3(debugShadow);
+	} else if(u_rtDebug == 2) {
+		color.rgb = debugBlocker;
+		color.a = debugShadow;
+	}
+#endif
 
 	fragColor = color;
 
@@ -1081,6 +1155,458 @@ void main() {
 	v_uv = a_texcoord0;
 	v_color = a_color;
 	gl_Position = u_viewProj * vec4(a_position.xyz, 1.0);
+}
+)glsl";
+
+constexpr const char * reflect_rt_frag = R"glsl(// ArxModern ray-traced reflections (rt_common.glsl is prepended, "#version 430").
+//
+// Like reflect.frag, the glossy level polygons are drawn again after the opaque scene, but the
+// reflected ray is traced through the level geometry itself instead of the depth buffer: what
+// is off screen, behind the camera or hidden behind a pillar reflects too, and the reflection
+// no longer fades at the screen edges. Where the point hit is visible on screen the scene
+// colour there is used (exact: characters, particles, everything drawn); elsewhere the hit is
+// shaded from the level textures, its static light and the dynamic lights (with a shadow ray
+// each, so the reflected torches cast shadows).
+//
+// u_mode 1 is a debugging view (post_debug=rt): every level polygon shows what a ray from the
+// camera hits there - it must look like the scene itself, minus the characters.
+
+#define MAX_RT_LIGHTS 32
+
+uniform sampler2D u_texture0;
+uniform sampler2D u_normalMap;
+uniform sampler2D u_scene;
+uniform sampler2D u_depth;
+uniform mat4 u_proj;
+uniform mat4 u_view;
+uniform vec4 u_projection; // (proj[0][0], proj[1][1], Q, Q * near): view z = Q * near / (Q - z_ndc)
+uniform vec2 u_invSize;
+uniform vec4 u_material;
+uniform int u_normalMapped;
+uniform float u_strength;  // 0..1, overall intensity
+uniform int u_fogEnabled;
+uniform vec3 u_fogColor;
+uniform vec2 u_fogRange;
+uniform vec3 u_cameraPos;
+uniform int u_mode;
+uniform int u_shadowRays;  // shadow rays towards the dynamic lights at the hit point
+uniform int u_lightCount;  // dynamic lights (torches, spells), like legacy.frag
+uniform vec4 u_lightPos[MAX_RT_LIGHTS];   // xyz, fallstart
+uniform vec4 u_lightColor[MAX_RT_LIGHTS]; // rgb, fallend
+
+in vec3 v_worldPos;
+in vec3 v_viewPos;
+in vec3 v_normal;
+in vec2 v_uv;
+in vec4 v_color;
+
+out vec4 fragColor;
+
+// Tunables (a mod can edit this file: F7 reloads it)
+const float MaxDistance = 8000.0;  // world units a reflected ray travels at most
+const float MaxReflection = 0.85;  // weight of a perfect mirror at a grazing angle
+const float MinReflection = 0.3;   // ... and head-on
+const float RoughnessBend = 0.35;  // how much the material map bends the reflected ray
+const float RoughnessBlur = 3.0;   // texture mip levels of blur on the hit at gloss 0
+const float SceneTolerance = 0.03; // depth match (fraction) for reusing the on-screen colour
+const float LightScale = 0.5;      // the dynamic lights on level geometry (ApplyTileLights)
+
+float linearDepth(float zBuffer) {
+	float zNdc = zBuffer * 2.0 - 1.0;
+	return u_projection.w / (u_projection.z - zNdc);
+}
+
+// Cotangent frame from derivatives (see legacy.frag)
+bool tangentFrame(vec3 normal, out mat3 tbn) {
+	vec3 dp1 = dFdx(v_worldPos);
+	vec3 dp2 = dFdy(v_worldPos);
+	vec2 duv1 = dFdx(v_uv);
+	vec2 duv2 = dFdy(v_uv);
+	vec3 dp2perp = cross(dp2, normal);
+	vec3 dp1perp = cross(normal, dp1);
+	vec3 tangent = dp2perp * duv1.x + dp1perp * duv2.x;
+	vec3 bitangent = dp2perp * duv1.y + dp1perp * duv2.y;
+	float invmax = inversesqrt(max(dot(tangent, tangent), dot(bitangent, bitangent)));
+	if(invmax > 1e6) {
+		return false;
+	}
+	tbn = mat3(tangent * invmax, bitangent * invmax, normal);
+	return true;
+}
+
+// What the level looks like at a hit point, seen along dir (blur = texture mip level)
+vec3 shadeHit(RtHit hit, vec3 point, vec3 dir, float blur) {
+	uint tri = hit.tri;
+	uint flags = rtFlags(tri);
+	vec3 albedo = textureLod(u_rtTextures, vec3(rtUv(tri, hit.bary), float(rtLayer(tri))), blur).rgb;
+	if((flags & RtGlow) != 0u) {
+		return albedo;
+	}
+	vec3 light = rtColor(tri, hit.bary);
+	vec3 normal = normalize(rtNormal(tri));
+	if(dot(normal, dir) > 0.0) {
+		normal = -normal; // seen from behind
+	}
+	vec3 dynamic = vec3(0.0);
+	for(int i = 0; i < u_lightCount; i++) {
+		vec3 toLight = u_lightPos[i].xyz - point;
+		float dist = length(toLight);
+		float fallend = u_lightColor[i].w;
+		if(dist >= fallend) {
+			continue;
+		}
+		toLight /= dist;
+		float cosangle = dot(normal, toLight);
+		if(cosangle <= 0.0) {
+			continue;
+		}
+		float fallstart = u_lightPos[i].w;
+		float attenuation = (dist <= fallstart) ? 1.0 : (fallend - dist) / (fallend - fallstart);
+		if(u_shadowRays != 0 && !rtLit(u_lightPos[i].xyz, point + normal * 2.0)) {
+			continue;
+		}
+		dynamic += u_lightColor[i].rgb * (cosangle * attenuation);
+	}
+	light = min(light + dynamic * LightScale, 1.0);
+	return albedo * light;
+}
+
+void main() {
+
+	if(u_mode == 1) {
+		// Debug: primary rays
+		vec3 dir = normalize(v_worldPos - u_cameraPos);
+		RtHit hit;
+		if(!rtTrace(u_cameraPos, dir, MaxDistance, false, false, hit)) {
+			fragColor = vec4(1.0, 0.0, 1.0, 1.0);
+			return;
+		}
+		vec3 point = u_cameraPos + dir * hit.t;
+		vec3 color = shadeHit(hit, point, dir, 0.0);
+		if(u_fogEnabled != 0) {
+			float fog = clamp((u_fogRange.y - hit.t) / (u_fogRange.y - u_fogRange.x), 0.0, 1.0);
+			color = mix(u_fogColor, color, fog);
+		}
+		fragColor = vec4(color, 1.0);
+		return;
+	}
+
+	// Glossiness of this texel
+	float gloss = u_material.y;
+	vec3 geometric = normalize(v_normal);
+	vec3 normal = geometric;
+	mat3 tbn;
+	bool framed = (u_normalMapped != 0) && tangentFrame(geometric, tbn);
+	if(framed) {
+		vec4 material = texture(u_normalMap, v_uv);
+		vec3 n;
+		if(u_material.w != 0.0) {
+			gloss *= material.a;
+			n = vec3(material.rg * 2.0 - 1.0, 0.0);
+			n.z = sqrt(max(1.0 - dot(n.xy, n.xy), 0.0));
+		} else {
+			n = material.xyz * 2.0 - 1.0;
+		}
+		// A rough surface reflects along a slightly bent normal (blurs the reflection)
+		n.xy *= RoughnessBend * (1.0 - gloss);
+		normal = normalize(tbn * n);
+	}
+	if(gloss <= 0.02) {
+		discard;
+	}
+
+	vec3 toCamera = u_cameraPos - v_worldPos;
+	vec3 view = normalize(toCamera);
+	if(dot(geometric, view) < 0.0) {
+		geometric = -geometric; // the polygon is seen from behind
+		normal = -normal;
+	}
+	vec3 dir = reflect(-view, normal);
+	if(dot(dir, geometric) < 0.02) {
+		dir = normalize(dir - geometric * (dot(dir, geometric) - 0.02)); // keep it off the surface
+	}
+
+	// Fresnel, lifted head-on so that a glossy floor visibly mirrors (a wet look rather
+	// than physically exact)
+	float facing = max(dot(normal, view), 0.0);
+	float fresnel = pow(1.0 - facing, 4.0);
+	float weight = mix(mix(MinReflection, 1.0, fresnel), 1.0, u_material.z * 0.5) * gloss * MaxReflection * u_strength;
+	if(weight <= 0.005) {
+		discard;
+	}
+
+	// Trace
+	vec3 origin = v_worldPos + geometric * 1.0;
+	RtHit hit;
+	if(!rtTrace(origin, dir, MaxDistance, false, false, hit)) {
+		discard;
+	}
+	vec3 point = origin + dir * hit.t;
+
+	// On screen and not hidden: take the scene colour there (characters, particles included)
+	vec3 reflected;
+	vec4 clip = u_proj * (u_view * vec4(point, 1.0));
+	vec3 viewPoint = (u_view * vec4(point, 1.0)).xyz;
+	bool onScreen = false;
+	if(clip.w > 0.0) {
+		vec2 uv = clip.xy / clip.w * 0.5 + 0.5;
+		if(uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0) {
+			float sceneZ = linearDepth(texture(u_depth, uv).r);
+			if(abs(sceneZ - viewPoint.z) < max(viewPoint.z * SceneTolerance, 8.0)) {
+				reflected = texture(u_scene, uv).rgb;
+				onScreen = true;
+			}
+		}
+	}
+	if(!onScreen) {
+		float blur = (1.0 - gloss) * RoughnessBlur + clamp(log2(hit.t / 512.0), 0.0, 3.0);
+		reflected = shadeHit(hit, point, dir, blur);
+		if(u_fogEnabled != 0) {
+			// The light travels from the hit to the surface and on to the camera
+			float travelled = length(toCamera) + hit.t;
+			float fog = clamp((u_fogRange.y - travelled) / (u_fogRange.y - u_fogRange.x), 0.0, 1.0);
+			reflected = mix(u_fogColor, reflected, fog);
+		}
+	}
+
+	// Metals tint their reflections
+	vec3 albedo = texture(u_texture0, v_uv).rgb;
+	reflected *= mix(vec3(1.0), albedo * 1.5, u_material.z);
+
+	if(u_fogEnabled != 0) {
+		float fog = clamp((u_fogRange.y - v_viewPos.z) / (u_fogRange.y - u_fogRange.x), 0.0, 1.0);
+		weight *= fog;
+	}
+
+	fragColor = vec4(reflected, weight);
+}
+)glsl";
+
+constexpr const char * reflect_rt_vert = R"glsl(// ArxModern ray-traced reflections: the glossy level polygons (world space, SMY_VERTEX) drawn
+// again after the opaque scene. Built with a "#version 430" prelude (see rt_common.glsl).
+
+uniform mat4 u_viewProj;
+uniform mat4 u_view;
+
+in vec4 a_position;
+in vec4 a_color;
+in vec2 a_texcoord0;
+in vec4 a_normal;
+
+out vec3 v_worldPos;
+out vec3 v_viewPos;
+out vec3 v_normal;
+out vec2 v_uv;
+out vec4 v_color;
+
+void main() {
+	v_worldPos = a_position.xyz;
+	v_viewPos = (u_view * vec4(a_position.xyz, 1.0)).xyz;
+	v_normal = a_normal.xyz;
+	v_uv = a_texcoord0;
+	v_color = a_color;
+	gl_Position = u_viewProj * vec4(a_position.xyz, 1.0);
+}
+)glsl";
+
+constexpr const char * rt_common_glsl = R"glsl(// ArxModern ray tracing: walking the level's bounding volume hierarchy (scene/RayScene.cpp).
+//
+// Shared by the traced passes (reflect_rt.frag, ...), which are built with a "#version 430"
+// prelude: this file carries no version line. Needs shader storage buffers (OpenGL 4.3).
+//
+// A node is two vec4: (min.xyz, leftFirst), (max.xyz, count); count > 0 = leaf over the
+// triangles [leftFirst, leftFirst + count), count == 0 = inner node with the children
+// leftFirst and leftFirst + 1. A triangle is three vec4: v0, e1 = v1 - v0 (w = |e1 x e2|), e2 = v2 - v0. Its
+// attributes are three more: (uv0, uv1), (uv2, layer | flags << 16, color0), (color1, color2,
+// 0, 0) - integers stored as their bit patterns, colors as packed RGBA bytes (the static light
+// of the vertices), layer = the texture in u_rtTextures.
+
+layout(std430, binding = 1) readonly buffer RtNodes { vec4 rt_nodes[]; };
+layout(std430, binding = 2) readonly buffer RtTriangles { vec4 rt_tris[]; };
+layout(std430, binding = 3) readonly buffer RtAttributes { vec4 rt_attrs[]; };
+
+uniform sampler2DArray u_rtTextures;
+
+const uint RtAlphaCutout = 1u;
+const uint RtWater = 2u;
+const uint RtLava = 4u;
+const uint RtGlow = 8u;
+const uint RtDoubleSided = 16u;
+
+const int RtStackSize = 32;
+const float RtInfinity = 1e30;
+const float RtGrazing = 0.12; // shadow rays pass surfaces they hit at less than ~7 degrees
+const float RtLightClearance = 48.0; // shadow rays ignore what lies this close to the light: the
+                                     // prop it sits in (log pile, candelabra, sconce)
+const float RtSkip = 4.0;     // ... and stop this far from the receiving surface (overlapping decals)
+
+
+struct RtHit {
+	float t;
+	uint tri;
+	vec2 bary; // weights of v1 and v2 (v0 gets the rest)
+};
+
+uint rtLayer(uint tri) {
+	return floatBitsToUint(rt_attrs[tri * 3u + 1u].z) & 0xffffu;
+}
+
+uint rtFlags(uint tri) {
+	return floatBitsToUint(rt_attrs[tri * 3u + 1u].z) >> 16u;
+}
+
+vec2 rtUv(uint tri, vec2 bary) {
+	vec4 a = rt_attrs[tri * 3u];
+	vec4 b = rt_attrs[tri * 3u + 1u];
+	return a.xy * (1.0 - bary.x - bary.y) + a.zw * bary.x + b.xy * bary.y;
+}
+
+// The static light of the surface (the vertex colours, interpolated)
+vec3 rtColor(uint tri, vec2 bary) {
+	vec4 b = rt_attrs[tri * 3u + 1u];
+	vec4 c = rt_attrs[tri * 3u + 2u];
+	vec3 c0 = unpackUnorm4x8(floatBitsToUint(b.w)).rgb;
+	vec3 c1 = unpackUnorm4x8(floatBitsToUint(c.x)).rgb;
+	vec3 c2 = unpackUnorm4x8(floatBitsToUint(c.y)).rgb;
+	return c0 * (1.0 - bary.x - bary.y) + c1 * bary.x + c2 * bary.y;
+}
+
+// Face normal, not normalised
+vec3 rtNormal(uint tri) {
+	return cross(rt_tris[tri * 3u + 1u].xyz, rt_tris[tri * 3u + 2u].xyz);
+}
+
+// Möller-Trumbore. cullBack (shadow rays): a ray leaving a surface through its back (the
+// triangles are wound with their normal towards the open space) passes - lights sitting inside
+// the geometry; so does a ray grazing a surface - the slightly uneven floors of the levels must
+// not shadow themselves under a low light
+bool rtIntersectTriangle(uint tri, vec3 origin, vec3 dir, float tMax, bool cullBack, out float t, out vec2 bary) {
+	vec3 v0 = rt_tris[tri * 3u].xyz;
+	vec4 e1n = rt_tris[tri * 3u + 1u];
+	vec3 e1 = e1n.xyz;
+	vec3 e2 = rt_tris[tri * 3u + 2u].xyz;
+	vec3 p = cross(dir, e2);
+	float det = dot(e1, p); // = -dot(dir, normal): < 0 when the ray goes along the normal (back face)
+	if(abs(det) < 1e-7) {
+		return false;
+	}
+	if(cullBack) {
+		if(det < 0.0 && (rtFlags(tri) & RtDoubleSided) == 0u) {
+			return false;
+		}
+		if(abs(det) < RtGrazing * e1n.w) {
+			return false;
+		}
+	}
+	float invDet = 1.0 / det;
+	vec3 s = origin - v0;
+	float u = dot(s, p) * invDet;
+	if(u < 0.0 || u > 1.0) {
+		return false;
+	}
+	vec3 q = cross(s, e1);
+	float v = dot(dir, q) * invDet;
+	if(v < 0.0 || u + v > 1.0) {
+		return false;
+	}
+	t = dot(e2, q) * invDet;
+	if(t <= 0.0 || t >= tMax) {
+		return false;
+	}
+	bary = vec2(u, v);
+	return true;
+}
+
+// Entry distance of the ray into the box, or RtInfinity when it misses (slab test)
+float rtIntersectBox(vec3 bmin, vec3 bmax, vec3 origin, vec3 invDir, float tMax) {
+	vec3 t0 = (bmin - origin) * invDir;
+	vec3 t1 = (bmax - origin) * invDir;
+	vec3 tmin = min(t0, t1);
+	vec3 tmax = max(t0, t1);
+	float near = max(max(tmin.x, tmin.y), max(tmin.z, 0.0));
+	float far = min(min(tmax.x, tmax.y), min(tmax.z, tMax));
+	return (near <= far) ? near : RtInfinity;
+}
+
+// Holes of the colour-keyed textures (grids, fences, cobwebs) let the ray through
+bool rtOpaqueAt(uint tri, vec2 bary) {
+	if((rtFlags(tri) & RtAlphaCutout) == 0u) {
+		return true;
+	}
+	return textureLod(u_rtTextures, vec3(rtUv(tri, bary), float(rtLayer(tri))), 0.0).a >= 0.5;
+}
+
+/*!
+ * Nearest hit along the ray within tMax. anyHit: stop at the first surface found (shadow rays).
+ * cullBack: see rtIntersectTriangle.
+ */
+bool rtTrace(vec3 origin, vec3 dir, float tMax, bool anyHit, bool cullBack, out RtHit hit) {
+	vec3 invDir = 1.0 / dir; // inf on a zero component is fine for the slab test
+	hit.t = tMax;
+	hit.tri = 0xffffffffu;
+	hit.bary = vec2(0.0);
+	uint stack[RtStackSize];
+	int sp = 0;
+	uint node = 0u;
+	float rootT = rtIntersectBox(rt_nodes[0].xyz, rt_nodes[1].xyz, origin, invDir, hit.t);
+	if(rootT >= RtInfinity) {
+		return false;
+	}
+	while(true) {
+		vec4 a = rt_nodes[node * 2u];
+		vec4 b = rt_nodes[node * 2u + 1u];
+		uint leftFirst = floatBitsToUint(a.w);
+		uint count = floatBitsToUint(b.w);
+		if(count > 0u) {
+			for(uint i = leftFirst; i < leftFirst + count; i++) {
+				float t;
+				vec2 bary;
+				if(rtIntersectTriangle(i, origin, dir, hit.t, cullBack, t, bary) && rtOpaqueAt(i, bary)) {
+					hit.t = t;
+					hit.tri = i;
+					hit.bary = bary;
+					if(anyHit) {
+						return true;
+					}
+				}
+			}
+		} else {
+			uint left = leftFirst;
+			uint right = leftFirst + 1u;
+			float tLeft = rtIntersectBox(rt_nodes[left * 2u].xyz, rt_nodes[left * 2u + 1u].xyz, origin, invDir, hit.t);
+			float tRight = rtIntersectBox(rt_nodes[right * 2u].xyz, rt_nodes[right * 2u + 1u].xyz, origin, invDir, hit.t);
+			if(tLeft > tRight) {
+				float tt = tLeft; tLeft = tRight; tRight = tt;
+				uint nn = left; left = right; right = nn;
+			}
+			if(tLeft < RtInfinity) {
+				if(tRight < RtInfinity && sp < RtStackSize) {
+					stack[sp++] = right;
+				}
+				node = left;
+				continue;
+			}
+		}
+		if(sp == 0) {
+			break;
+		}
+		node = stack[--sp];
+	}
+	return hit.tri != 0xffffffffu;
+}
+
+/*!
+ * Shadow ray: is the point lit by (a sample of) a light? Traced from the light, see rtTrace.
+ */
+bool rtLit(vec3 lightPos, vec3 point) {
+	vec3 d = point - lightPos;
+	float len = length(d);
+	if(len <= RtLightClearance + RtSkip) {
+		return true;
+	}
+	d /= len;
+	RtHit hit;
+	return !rtTrace(lightPos + d * RtLightClearance, d, len - RtLightClearance - RtSkip, true, true, hit);
 }
 )glsl";
 

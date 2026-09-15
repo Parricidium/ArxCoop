@@ -44,6 +44,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 //
 // Copyright (c) 1999-2000 ARKANE Studios SA. All rights reserved
 
+#include "scene/RayScene.h"
 #include "scene/Scene.h"
 
 #include <cmath>
@@ -1139,6 +1140,7 @@ static bool g_lavaInteriorBuilt = false;
 void ResetFluidCaches() {
 	g_lavaInterior.clear();
 	g_lavaInteriorBuilt = false;
+	raySceneChanged(); // ArxModern RT: the level geometry changed as well
 }
 
 static void BuildLavaInterior() {
@@ -1533,10 +1535,11 @@ static void RenderReflections() {
 	}
 
 	bool begun = false;
+	bool allMaterials = GRenderer->reflectionsDrawAllMaterials(); // ray tracing debug view
 	for(RoomHandle roomIndex : g_rooms->visibleRooms) {
 		Room & room = g_rooms->rooms[roomIndex];
 		for(TextureContainer & material : util::dereference(room.ppTextureContainer)) {
-			if(material.m_material.gloss < ReflectiveGloss) {
+			if(material.m_material.gloss < ReflectiveGloss && !allMaterials) {
 				continue;
 			}
 			const SMY_ARXMAT & roomMat = material.m_roomBatches[roomIndex];
@@ -1871,9 +1874,12 @@ static void DrawShadowCasters(const RendererLight & light) {
 	// Alpha-tested materials (grates...) keep their holes, everything else is drawn solid
 	UseRenderState state(RenderState().depthTest().depthWrite().cull(false));
 	
+	// ArxModern RT: the level's shadows are traced in the shader, only the entities go in the maps
+	bool tracedLevel = GRenderer->tracedShadows();
+	
 	for(RoomHandle roomIndex : g_rooms->rooms.handles()) {
 		Room & room = g_rooms->rooms[roomIndex];
-		if(!room.pVertexBuffer || room.shadowIndexBuffer.empty()) {
+		if(tracedLevel || !room.pVertexBuffer || room.shadowIndexBuffer.empty()) {
 			continue;
 		}
 		// Light volume vs room bounds

@@ -33,6 +33,7 @@
 #include "graphics/texture/TextureStage.h"
 
 class OpenGLRenderer;
+class GLRayScene;
 class GLShadowMaps;
 class GLTexture;
 
@@ -125,6 +126,8 @@ public:
 	[[nodiscard]] bool fogEnabled() const;
 	[[nodiscard]] const std::vector<glm::vec4> & lightPositions() const { return m_lightPos; }
 	[[nodiscard]] const std::vector<glm::vec4> & lightColors() const { return m_lightColor; }
+	[[nodiscard]] size_t dynamicLightCount() const { return m_dynamicLightCount; }
+	[[nodiscard]] const glm::vec3 & fogColor() const { return m_fogColor; }
 
 	/*!
 	 * While another program of ours is current (the water pass), the draws must not push the
@@ -132,6 +135,22 @@ public:
 	 */
 	void setExternalPass(bool external) { m_externalPass = external; }
 	
+	/*!
+	 * ArxModern RT (OpenGL 4.3): 0 = off, 1 = the level hierarchy is available to the passes
+	 * (traced reflections), 2 = the main shader also traces the shadows of the dynamic lights
+	 * through the level (the cube maps then only hold the entities). Rebuilds the programs
+	 * when the mode crosses on/off; returns false if unsupported (the mode stays off).
+	 */
+	bool setRayTracing(int mode);
+	//! post_debug=rtshadow: the traced shadow factors instead of the scene
+	void setRayTracingDebug(int mode);
+	[[nodiscard]] int rayTracing() const noexcept { return m_rayTracing; }
+	[[nodiscard]] bool tracedShadows() const noexcept { return m_rayTracing >= 2; }
+	//! The level hierarchy, null when ray tracing is off or there is no level
+	[[nodiscard]] GLRayScene * rayScene() const noexcept { return m_rayScene.get(); }
+	//! Once per frame before the scene: (re)build and bind the hierarchy
+	void prepareRayScene();
+
 	//! Create the shadow maps (count = 0 disables them)
 	bool initShadows(size_t count, int resolution);
 	//! Render the cube maps of the first shadowed dynamic lights
@@ -149,6 +168,11 @@ private:
 
 	OpenGLRenderer * m_renderer;
 	GLuint m_program;
+
+	int m_rayTracing;
+	int m_rayDebug;
+	std::unique_ptr<GLRayScene> m_rayScene;
+	bool m_raySceneBound;
 
 	// uniform locations
 	GLint m_uMVP;
