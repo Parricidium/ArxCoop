@@ -164,7 +164,6 @@ CINEMATIQUES DE DIALOGUE
 LIMITES CONNUES (version de developpement)
 - Fait pour le reseau local ; jamais teste avec une vraie latence internet.
 - Les sorts des autres joueurs sont visibles ; leurs degats sont calcules chez le lanceur.
-- Les cinematiques du scenario ne sont vues qu'avec la camera par celui qui les declenche.
 - Les sauvegardes du mod (userdata\) sont separees de celles du jeu d'origine : aucun risque pour elles.
 
 Sources : disponibles sur demande (GPLv3), branche "coop" du depot Arx Libertatis modifie.
