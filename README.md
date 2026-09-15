@@ -102,7 +102,7 @@ Requirements: OpenGL 3.0 (2008 or later hardware; 4.3 for the ray tracing); meas
 *High* preset: about one extra millisecond per frame in 720p. `[video]` keys in `userdata\cfg.ini`:
 `pipeline`, `lighting`, `shadows`, `shadow_resolution`, `postprocess`, `bloom`, `fxaa`, `smaa`,
 `ambient_occlusion`, `normal_maps`, `parallax`, `specular`, `reflections`, `soft_particles`, `water`,
-`lava`, `physics`, `raytracing` (0 / 1 / 2).
+`lava`, `physics`, `raytracing` (0 / 1 / 2), `darkness` (0 / 0.5 / 1).
 
 Not the HD edition: the classic zip has none of this and cannot play with the HD one (different network
 protocol).
@@ -376,7 +376,7 @@ Prérequis : OpenGL 3.0 (matériel de 2008 ou plus récent ; 4.3 pour le ray tra
 préréglage *Élevée* : environ une milliseconde de plus par image en 720p. Clés `[video]` de
 `userdata\cfg.ini` : `pipeline`, `lighting`, `shadows`, `shadow_resolution`, `postprocess`, `bloom`,
 `fxaa`, `smaa`, `ambient_occlusion`, `normal_maps`, `parallax`, `specular`, `reflections`,
-`soft_particles`, `water`, `lava`, `physics`, `raytracing` (0 / 1 / 2).
+`soft_particles`, `water`, `lava`, `physics`, `raytracing` (0 / 1 / 2), `darkness` (0 / 0.5 / 1).
 
 Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition HD (protocole réseau différent).
 

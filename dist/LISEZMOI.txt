@@ -106,6 +106,9 @@ EDITION HD (zip ArxCoop-HD-* uniquement)
   Reglages dans userdata\cfg.ini, section [video] : pipeline, lighting, shadows, shadow_resolution,
   postprocess, bloom, fxaa, smaa, ambient_occlusion, normal_maps, parallax, specular, reflections,
   soft_particles, water, lava, physics.
+- Ambiance (Options HD > "Ambiance" : Normale / Sombre / Obscure) : pousse les endroits non eclaires
+  vers le noir, ce qu'une torche, un sort ou une lampe eclaire garde sa luminosite - pour que le noir
+  soit dangereux et que les torches comptent. Cle cfg.ini : darkness=0/0.5/1.
 - Ray tracing (Options HD > "Ray tracing", desactive par defaut, demande OpenGL 4.3 = carte de 2012
   ou plus recente, pas besoin de RTX) : "Reflets" = les sols et murs brillants refletent ce qui est
   vraiment la, meme hors ecran ou derriere vous ; "Reflets + ombres" = chaque torche, bougie et sort
