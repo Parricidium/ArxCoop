@@ -134,11 +134,9 @@ constexpr const bool
 	softParticles = true,
 	smaa = false;
 
-#ifdef ARX_DEBUG
+// ArxCoop HD: the script console (key next to 1) is available by default, to recover
+// quest items and test things; `allow_console=false` in [input] switches it off
 const bool allowConsole = true;
-#else
-const bool allowConsole = false;
-#endif
 
 constexpr const float
 	bloom = 0.35f,
@@ -625,10 +623,7 @@ bool Config::save() {
 	writer.writeKey(Key::useAltRuneRecognition, input.useAltRuneRecognition);
 	writer.writeKey(Key::improvedBowAim, input.improvedBowAim);
 	writer.writeKey(Key::quickLevelTransition, int(input.quickLevelTransition));
-	if(input.allowConsole) {
-		// Only write this if true so that switching from release to debug builds enables the console
-		writer.writeKey(Key::allowConsole, input.allowConsole);
-	}
+	writer.writeKey(Key::allowConsole, input.allowConsole); // always written: the default is true here
 	
 	// key
 	writer.beginSection(Section::Key);
