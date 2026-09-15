@@ -143,9 +143,13 @@ VUE A LA 3E PERSONNE (nouveau)
   (pour la retrouver : cfg.ini, section [misc], skip_intro=false).
 
 CONSOLE (touche ² a gauche du 1, ou la touche configuree pour la console)
+- Activee d'office dans l'edition HD (allow_console=false dans [input] de cfg.ini pour la couper).
 - tp p2       : teleporte le joueur 2 (ordre du salon, p1 = l'hote) a cote de moi (utilisable par tous)
 - tp Pseudo   : idem par pseudo ;  tp all : tout le monde vient a moi
   (le joueur doit etre dans le meme niveau)
+- spawn item quest_item/gem_dealer_badge/gem_dealer_badge player : fait apparaitre un objet a mes
+  pieds (ici la patente de marchand de gemmes) ; le chemin est celui du dossier de l'objet dans les
+  donnees du jeu (graph/obj3d/interactive/items/...).
 
 LIMITES CONNUES (version de developpement)
 - Fait pour le reseau local ; jamais teste avec une vraie latence internet.
