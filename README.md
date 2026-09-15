@@ -25,7 +25,7 @@ Tested on Arx Fatalis 1.21 (GOG) with Arx Libertatis 1.2 installed. The mod ship
 ## Contents
 
 - [Download and install](#download-and-install)
-- [HD edition](#hd-edition)
+- [RT edition](#rt-edition)
 - [Playing](#playing)
 - [Features](#features)
 - [Synchronisation status](#synchronisation-status)
@@ -43,8 +43,8 @@ Tested on Arx Fatalis 1.21 (GOG) with Arx Libertatis 1.2 installed. The mod ship
 ## Download and install
 
 1. Download a zip from the [releases](https://github.com/Parricidium/ArxCoop/releases): **ArxCoop**
-   (the classic mod, original rendering) or **ArxCoop HD** (the same mod plus the modern rendering and
-   the physics, see [HD edition](#hd-edition)). The two are separate builds: everybody in a party must
+   (the classic mod, original rendering) or **ArxCoop RT** (the same mod plus the modern rendering and
+   the physics, see [RT edition](#rt-edition)). The two are separate builds: everybody in a party must
    use the same one.
 2. Unzip it **into your Arx Fatalis folder** (the one that contains `data.pak`).
    Nothing is overwritten: `arx.exe` is an extra executable, the original game stays intact.
@@ -58,10 +58,10 @@ protocol number is checked when joining).
 
 **Language**: the mod follows the game language (*Options > Language*): English or French.
 
-## HD edition
+## RT edition
 
-`ArxCoop-HD-*.zip` is the co-op mod with a modernised engine (the *ArxModern* work merged in). Everything
-is optional and switched from the new **Options HD** menu (quality presets *Off / Low / Medium / High /
+`ArxCoop-RT-*.zip` is the co-op mod with a modernised engine (the *ArxModern* work merged in). Everything
+is optional and switched from the new **Options RT** menu (quality presets *Off / Low / Medium / High /
 Ultra* and individual settings, applied live): the *Off* preset gives exactly the original look.
 
 - **Per-pixel dynamic lighting** of the level and the characters, with generated material maps: relief
@@ -83,17 +83,17 @@ Ultra* and individual settings, applied live): the *Off* preset gives exactly th
   curtains and tapestries of the levels hang as cloth and move in a light breeze and when someone walks
   into them. The host simulates the corpses and objects, the clients see the same thing (cloths are
   simulated on each machine). Player characters are not affected.
-- **Mood** (*Options HD > Mood: Normal / Dark / Pitch dark*): pushes the unlit places towards black
+- **Mood** (*Options RT > Mood: Normal / Dark / Pitch dark*): pushes the unlit places towards black
   while what a torch, a spell or a lamp lights keeps its brightness — for those who want the dark to
   be dangerous and the torches to matter. Independent of the quality presets.
-- **Volumetric haze** (*Options HD > Volumetric haze: Off / Light / Dense / Thick*): a thin, drifting haze
+- **Volumetric haze** (*Options RT > Volumetric haze: Off / Light / Dense / Thick*): a thin, drifting haze
   fills the air; every torch, sconce and spell throws a glow and light shafts into it, and what lies
   far behind it dims a little. Characters and objects standing in a light cut its beam (volumetric
   shadows, for the lights that have a shadow map); with the ray tracing on the shafts are also
   shadowed by the level (a light round a corner does not glow through the wall). The *Light shafts*
   slider sets how strongly the haze catches the light (and so how marked the volumetric shadows are).
   Independent of the quality presets.
-- **Ray tracing** (*Options HD > Ray tracing*, needs OpenGL 4.3, i.e. 2012 or later hardware — no
+- **Ray tracing** (*Options RT > Ray tracing*, needs OpenGL 4.3, i.e. 2012 or later hardware — no
   RTX card needed, it runs on the shader cores): the level geometry is put in a bounding volume
   hierarchy that the shaders trace rays through. *Reflections*: the glossy floors and walls reflect
   what is really there, including what is off screen or behind you (the screen-space reflections faded
@@ -111,7 +111,7 @@ Requirements: OpenGL 3.0 (2008 or later hardware; 4.3 for the ray tracing); meas
 `ambient_occlusion`, `normal_maps`, `parallax`, `specular`, `reflections`, `soft_particles`, `water`,
 `lava`, `physics`, `raytracing` (0 / 1 / 2), `darkness` (0 / 0.5 / 1), `volumetric` (0 / 0.5 / 1 / 2), `volumetric_light` (0..2.5, 1 = default).
 
-Not the HD edition: the classic zip has none of this and cannot play with the HD one (different network
+Not the RT edition: the classic zip has none of this and cannot play with the RT one (different network
 protocol).
 
 ## Playing
@@ -253,7 +253,7 @@ Opened in game (the world keeps running), key configurable in *Options > Control
   (20 m, to get out of a jam), *save now*.
 - **Client**: *teleport me to this player* (if you are stuck in the level).
 
-Console (`²` key on French keyboards, the key left of `1`, on by default in the HD edition): `tp p2`
+Console (`²` key on French keyboards, the key left of `1`, on by default in the RT edition): `tp p2`
 teleports player 2 next to you, `tp Name`, `tp all`; `or p2 100` (or `gold p2 100`) gives player 2
 100 gold. With a shop or a chest open, **Shift+click** on one of your items puts it there (sold, or stored).
 
@@ -288,18 +288,18 @@ session, replication, puppets, faces, admin, third person) plus hooks in the eng
 CMake + Visual Studio 2022, `cmake --build build --config Release`. The non-binary package files
 (LISEZMOI, translation, face templates, menu skin) are in `dist/`.
 
-Branches: `coop` is the classic mod, `coop-hd` the HD edition (`coop` + the `modern` branch, which holds
-the rendering and physics work in `src/graphics/`, `src/physics/` and `data/graph/shaders/`). The HD
+Branches: `coop` is the classic mod, `coop-hd` the RT edition (`coop` + the `modern` branch, which holds
+the rendering and physics work in `src/graphics/`, `src/physics/` and `data/graph/shaders/`). The RT
 build needs [JoltPhysics](https://github.com/jrouwe/JoltPhysics) cloned into `libs/jolt` next to the
 engine (`BUILD_PHYSICS` CMake option, SSE4.2 only so that the exe runs everywhere); without it the
-physics compiles out and the rest of the HD rendering still builds.
+physics compiles out and the rest of the RT rendering still builds.
 
 ## Credits and license
 
 - [Arx Libertatis](https://arx-libertatis.org/) and its contributors, based on the Arx Fatalis source
   code released by Arkane Studios.
-- Co-op part, HD rendering and physics integration: JD, with the assistance of Claude (Anthropic).
-- HD edition: [JoltPhysics](https://github.com/jrouwe/JoltPhysics) by Jorrit Rouwe (MIT license),
+- Co-op part, RT rendering and physics integration: JD, with the assistance of Claude (Anthropic).
+- RT edition: [JoltPhysics](https://github.com/jrouwe/JoltPhysics) by Jorrit Rouwe (MIT license),
   [SMAA](https://github.com/iryoku/smaa) by Jorge Jimenez et al. (MIT license).
 - License **GPLv3+** with the Arx Libertatis additional terms: see [COPYING](COPYING) and [LICENSE](LICENSE).
   Arx Fatalis, its data and trademarks remain the property of their owners.
@@ -320,8 +320,8 @@ Testé sur Arx Fatalis 1.21 (GOG) avec Arx Libertatis 1.2 installé. Le mod appo
 ## Téléchargement et installation
 
 1. Téléchargez un zip dans les [versions](https://github.com/Parricidium/ArxCoop/releases) : **ArxCoop**
-   (le mod classique, rendu d'origine) ou **ArxCoop HD** (le même mod plus le rendu moderne et la
-   physique, voir [Édition HD](#édition-hd)). Ce sont deux exécutables différents : dans une partie,
+   (le mod classique, rendu d'origine) ou **ArxCoop RT** (le même mod plus le rendu moderne et la
+   physique, voir [Édition RT](#édition-rt)). Ce sont deux exécutables différents : dans une partie,
    tout le monde doit avoir le même.
 2. Dézippez-le **dans le dossier d'Arx Fatalis** (celui qui contient `data.pak`).
    Rien n'est écrasé : `arx.exe` est un exécutable en plus, le jeu d'origine reste intact.
@@ -335,10 +335,10 @@ jamais dans « Parties enregistrées ». Vos sauvegardes du jeu d'origine ne ris
 
 **Langue** : le mod suit la langue du jeu (Options > Language) : français ou anglais.
 
-## Édition HD
+## Édition RT
 
-`ArxCoop-HD-*.zip` est le mod coop avec un moteur modernisé (le travail *ArxModern* fusionné). Tout est
-optionnel et se règle dans le nouveau menu **Options HD** (préréglages *Off / Faible / Moyenne / Élevée /
+`ArxCoop-RT-*.zip` est le mod coop avec un moteur modernisé (le travail *ArxModern* fusionné). Tout est
+optionnel et se règle dans le nouveau menu **Options RT** (préréglages *Off / Faible / Moyenne / Élevée /
 Ultra* et réglages individuels, appliqués à chaud) : le préréglage *Off* redonne exactement le rendu
 d'origine.
 
@@ -364,18 +364,18 @@ d'origine.
   bougent sous une brise légère ou quand on les traverse. L'hôte simule cadavres et objets, les clients
   voient la même chose (les tissus sont simulés sur chaque machine). Les personnages des joueurs ne sont
   pas concernés.
-- **Ambiance** (*Options HD > Ambiance : Normale / Sombre / Obscure*) : pousse les endroits non
+- **Ambiance** (*Options RT > Ambiance : Normale / Sombre / Obscure*) : pousse les endroits non
   éclairés vers le noir tandis que ce qu'une torche, un sort ou une lampe éclaire garde sa
   luminosité — pour que le noir soit dangereux et que les torches comptent. Indépendant des
   préréglages.
-- **Brume volumétrique** (*Options HD > Brume volumétrique : Désactivée / Légère / Dense / Épaisse*) : une brume
+- **Brume volumétrique** (*Options RT > Brume volumétrique : Désactivée / Légère / Dense / Épaisse*) : une brume
   légère qui dérive dans l'air ; chaque torche, applique et sort y jette un halo et des rais de
   lumière, et ce qui est loin derrière s'estompe un peu. Les personnages et objets qui se tiennent dans
   une lumière découpent son faisceau (ombres volumétriques, pour les lumières qui ont une shadow map) ;
   avec le ray tracing les rais sont aussi ombrés par le niveau (une lumière derrière un angle ne rayonne
   pas à travers le mur). Le curseur *Rais de lumière* règle la force avec laquelle la brume accroche la
   lumière (et donc la netteté des ombres volumétriques). Indépendant des préréglages.
-- **Ray tracing** (*Options HD > Ray tracing*, demande OpenGL 4.3, soit du matériel de 2012 ou plus
+- **Ray tracing** (*Options RT > Ray tracing*, demande OpenGL 4.3, soit du matériel de 2012 ou plus
   récent — pas besoin de carte RTX, ça tourne sur les unités de calcul classiques) : la géométrie du
   niveau est rangée dans une hiérarchie que les shaders parcourent avec des rayons. *Reflets* : les sols
   et murs brillants reflètent ce qui est vraiment là, y compris hors écran ou derrière vous (les reflets
@@ -393,7 +393,7 @@ préréglage *Élevée* : environ une milliseconde de plus par image en 720p. Cl
 `fxaa`, `smaa`, `ambient_occlusion`, `normal_maps`, `parallax`, `specular`, `reflections`,
 `soft_particles`, `water`, `lava`, `physics`, `raytracing` (0 / 1 / 2), `darkness` (0 / 0.5 / 1), `volumetric` (0 / 0.5 / 1 / 2), `volumetric_light` (0..2.5, 1 = default).
 
-Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition HD (protocole réseau différent).
+Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition RT (protocole réseau différent).
 
 ## Jouer
 
@@ -533,7 +533,7 @@ Ouvert en jeu (le monde continue de tourner), touche modifiable dans *Options > 
   autour de moi (20 m, pour se sortir d'un blocage), *sauvegarder maintenant*.
 - **Client** : *me téléporter vers ce joueur* (si vous êtes coincé dans le niveau).
 
-Console (touche `²`, activée d'office dans l'édition HD) : `tp p2` téléporte le joueur 2 à côté de
+Console (touche `²`, activée d'office dans l'édition RT) : `tp p2` téléporte le joueur 2 à côté de
 vous, `tp Pseudo`, `tp all` ; `or p2 100` donne 100 pièces d'or au joueur 2. Boutique ou coffre ouvert,
 **Maj + clic** sur un objet de votre inventaire l'y met directement (vendu, ou rangé).
 
@@ -568,18 +568,18 @@ C'est un fork d'Arx Libertatis : mêmes dépendances et même procédure (voir
 dans le moteur. Sous Windows : CMake + Visual Studio 2022, `cmake --build build --config Release`.
 Le contenu non binaire du paquet (LISEZMOI, traduction, modèles de visages, habillage) est dans `dist/`.
 
-Branches : `coop` est le mod classique, `coop-hd` l'édition HD (`coop` + la branche `modern`, qui porte le
-rendu et la physique dans `src/graphics/`, `src/physics/` et `data/graph/shaders/`). Le build HD demande
+Branches : `coop` est le mod classique, `coop-hd` l'édition RT (`coop` + la branche `modern`, qui porte le
+rendu et la physique dans `src/graphics/`, `src/physics/` et `data/graph/shaders/`). Le build RT demande
 [JoltPhysics](https://github.com/jrouwe/JoltPhysics) cloné dans `libs/jolt` à côté du moteur (option
 CMake `BUILD_PHYSICS`, SSE4.2 seulement pour que l'exe tourne partout) ; sans lui la physique n'est pas
-compilée et le reste du rendu HD se construit quand même.
+compilée et le reste du rendu RT se construit quand même.
 
 ## Crédits et licence
 
 - [Arx Libertatis](https://arx-libertatis.org/) et ses contributeurs, sur la base du code source
   d'Arx Fatalis publié par Arkane Studios.
-- Partie coopérative, rendu HD et intégration de la physique : JD, avec l'assistance de Claude (Anthropic).
-- Édition HD : [JoltPhysics](https://github.com/jrouwe/JoltPhysics) de Jorrit Rouwe (licence MIT),
+- Partie coopérative, rendu RT et intégration de la physique : JD, avec l'assistance de Claude (Anthropic).
+- Édition RT : [JoltPhysics](https://github.com/jrouwe/JoltPhysics) de Jorrit Rouwe (licence MIT),
   [SMAA](https://github.com/iryoku/smaa) de Jorge Jimenez et al. (licence MIT).
 - Licence **GPLv3+** avec les termes additionnels d'Arx Libertatis : voir [COPYING](COPYING) et [LICENSE](LICENSE).
   Arx Fatalis, ses données et ses marques restent la propriété de leurs ayants droit.
