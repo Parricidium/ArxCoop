@@ -1006,6 +1006,7 @@ uniform vec4 u_projection;
 uniform mat4 u_invView;     // view -> world
 uniform vec3 u_cameraPos;
 uniform float u_density;    // 0..1, the "Haze" option
+uniform float u_lightScale; // strength of the light scattered by the haze (the shafts and their shadows)
 uniform float u_time;
 uniform int u_lightCount;   // every light of the scene (the static sconces too), like the water pass
 uniform vec4 u_lightPos[MAX_LIGHTS];   // xyz, fallstart
@@ -1029,7 +1030,7 @@ const float MaxRange = 3000.0;      // world units of haze in front of the camer
 const float RangeFade = 0.5;        // fraction of the range from which the haze thins out
 const float Extinction = 0.00015;   // per world unit at density 1: how much the haze dims what is behind
 const float Scatter = 0.0011;       // per world unit at density 1: how much light it throws back
-const float Ambient = 0.012;        // faint glow of the haze where no light reaches
+const float Ambient = 0.006;        // faint glow of the haze where no light reaches (low: the shadows in the beams read better)
 const float Anisotropy = 0.35;      // Henyey-Greenstein g: > 0 scatters forward (halos round the lights)
 const float NoiseScale = 0.0035;    // world units -> noise; smaller = larger wisps
 const float NoiseAmount = 0.75;     // 0 = uniform haze, 1 = strongly wispy
@@ -1186,6 +1187,7 @@ void main() {
 			light += u_lightColor[i].rgb * (attenuation * phase(dot(toLight / dist, -dir)));
 		}
 		float extinction = exp(-rho * Extinction * stepLength);
+		light = vec3(Ambient) + (light - vec3(Ambient)) * u_lightScale;
 		inscatter += transmittance * light * (rho * Scatter * stepLength);
 		transmittance *= extinction;
 		t += dt;
