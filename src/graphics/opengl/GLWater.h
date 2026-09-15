@@ -47,6 +47,10 @@ public:
 
 	void setPost(GLPostProcess * post) { m_post = post; }
 	void setStrength(float strength) { m_strength = strength; }
+	//! Strength of the mirrored scene (0 = off); traced through the level when the pipeline ray traces
+	void setReflection(float reflection) { m_reflection = reflection; }
+	//! Whether the program was built with the ray tracing code (init() again when this must change)
+	[[nodiscard]] bool traced() const noexcept { return m_traced; }
 
 	/*!
 	 * Bind the water program with the scene captured as it is now.
@@ -62,9 +66,15 @@ private:
 	GLShaderPipeline * m_pipeline;
 	GLPostProcess * m_post;
 	float m_strength;
+	float m_reflection;
+	bool m_traced;
 	GLuint m_program;
 	GLint m_uViewProj;
 	GLint m_uView;
+	GLint m_uProj;
+	GLint m_uReflection;
+	GLint m_uFogColor;
+	GLint m_uDynamicLightCount;
 	GLint m_uInvSize;
 	GLint m_uProjection;
 	GLint m_uCameraPos;

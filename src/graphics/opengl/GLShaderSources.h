@@ -2532,6 +2532,12 @@ constexpr const char * water_frag = R"glsl(#version 130
 // Inputs from the engine: u_scene / u_depth = the scene as rendered so far (resolved copies),
 // u_enviro = the original highlight texture (unit 0) with its three scrolling uv sets,
 // u_lightPos = (xyz, fallstart), u_lightColor = (rgb * intensity, fallend) as in legacy.frag.
+//
+// Reflections (u_reflection > 0): the scene mirrored in the surface, stronger at grazing angles.
+// The reflected ray is first marched through the depth buffer (what is on screen: characters,
+// the walls in view); with the ray tracing on (ARX_RT, rt_common.glsl prepended) whatever that
+// misses is traced through the level geometry instead, so the ceiling and the walls behind the
+// camera reflect too.
 
 #define MAX_LIGHTS 128
 
@@ -2548,6 +2554,11 @@ uniform vec2 u_fogRange;
 uniform int u_lightCount;
 uniform vec4 u_lightPos[MAX_LIGHTS];
 uniform vec4 u_lightColor[MAX_LIGHTS];
+uniform int u_dynamicLightCount; // the first lights are the dynamic ones (torches, spells)
+uniform mat4 u_view;
+uniform mat4 u_proj;
+uniform float u_reflection; // 0..1, strength of the mirrored scene (0 = off)
+uniform vec3 u_fogColor;
 
 in vec3 v_worldPos;
 in float v_viewDepth;
@@ -2568,6 +2579,15 @@ const vec3 TintColor = vec3(0.55, 0.72, 0.85);
 const float Specular = 1.2;
 const float Shininess = 160.0;
 const float LegacyMix = 0.2;         // how much of the original highlight overlay is kept
+const float ReflectMin = 0.1;        // weight of the mirrored scene head-on...
+const float ReflectMax = 0.8;        // ... and at a grazing angle
+const float ReflectBend = 0.5;       // how much the waves bend the reflected ray (1 = fully)
+const int Steps = 24;                // screen-space march steps
+const float FirstStep = 6.0;
+const float StepGrowth = 1.28;
+const float Thickness = 0.12;
+const float MinThickness = 12.0;
+const float MaxDistance = 8000.0;    // world units a traced ray travels at most
 
 float linearDepth(float zBuffer) {
 	float zNdc = zBuffer * 2.0 - 1.0;
@@ -2577,6 +2597,117 @@ float linearDepth(float zBuffer) {
 float sceneDepth(vec2 uv) {
 	return linearDepth(texture(u_depth, uv).r);
 }
+
+// Screen position of a view-space point; z <= 0 when behind the camera
+vec3 project(vec3 p) {
+	vec4 clip = u_proj * vec4(p, 1.0);
+	return vec3(clip.xy / clip.w * 0.5 + 0.5, clip.w);
+}
+
+// March the reflected ray through the depth buffer (see reflect.frag); false when it leaves
+// the screen or finds nothing
+bool marchScreen(vec3 worldPos, vec3 worldDir, out vec3 color) {
+	vec3 p = (u_view * vec4(worldPos, 1.0)).xyz;
+	vec3 dir = mat3(u_view) * worldDir;
+	if(dir.z < -0.15) {
+		return false; // towards the camera: what it would show is behind us
+	}
+	float step = FirstStep;
+	float tPrev = 0.0, t = 0.0;
+	for(int i = 0; i < Steps; i++) {
+		tPrev = t;
+		t += step;
+		step *= StepGrowth;
+		vec3 q = p + dir * t;
+		vec3 s = project(q);
+		if(s.z <= 0.0 || s.x < 0.0 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0) {
+			return false;
+		}
+		float sceneZ = sceneDepth(s.xy);
+		float behind = q.z - sceneZ;
+		if(behind > 0.0 && behind < max(sceneZ * Thickness, MinThickness)) {
+			float a = tPrev, b = t;
+			for(int k = 0; k < 5; k++) {
+				float m = 0.5 * (a + b);
+				vec3 qm = p + dir * m;
+				vec3 sm = project(qm);
+				if(qm.z > sceneDepth(sm.xy)) {
+					b = m;
+				} else {
+					a = m;
+				}
+			}
+			vec2 hitUv = project(p + dir * b).xy;
+			// Fade at the screen edges (the traced ray takes over there when available)
+			vec2 edge = smoothstep(vec2(0.0), vec2(0.08), hitUv) * smoothstep(vec2(0.0), vec2(0.08), 1.0 - hitUv);
+			if(edge.x * edge.y < 0.5) {
+				return false;
+			}
+			color = texture(u_scene, hitUv).rgb;
+			return true;
+		}
+	}
+	return false;
+}
+
+#ifdef ARX_RT
+// What the level looks like at a traced hit (see reflect_rt.frag)
+vec3 shadeHit(RtHit hit, vec3 point, vec3 dir, float blur) {
+	uint tri = hit.tri;
+	vec3 albedo = textureLod(u_rtTextures, vec3(rtUv(tri, hit.bary), float(rtLayer(tri))), blur).rgb;
+	if((rtFlags(tri) & RtGlow) != 0u) {
+		return albedo;
+	}
+	vec3 light = rtColor(tri, hit.bary);
+	vec3 normal = normalize(rtNormal(tri));
+	if(dot(normal, dir) > 0.0) {
+		normal = -normal;
+	}
+	vec3 dynamic = vec3(0.0);
+	for(int i = 0; i < u_dynamicLightCount; i++) {
+		vec3 toLight = u_lightPos[i].xyz - point;
+		float dist = length(toLight);
+		float fallend = u_lightColor[i].w;
+		if(dist >= fallend) {
+			continue;
+		}
+		toLight /= dist;
+		float cosangle = dot(normal, toLight);
+		if(cosangle <= 0.0) {
+			continue;
+		}
+		float fallstart = u_lightPos[i].w;
+		float attenuation = (dist <= fallstart) ? 1.0 : (fallend - dist) / (fallend - fallstart);
+		if(!rtLit(u_lightPos[i].xyz, point + normal * 2.0)) {
+			continue;
+		}
+		dynamic += u_lightColor[i].rgb * (cosangle * attenuation);
+	}
+	return albedo * min(light + dynamic * 0.5, 1.0);
+}
+
+// Trace the reflected ray through the level; the scene colour where the hit is on screen
+bool traceLevel(vec3 origin, vec3 dir, float pathSoFar, out vec3 color) {
+	RtHit hit;
+	if(!rtTrace(origin, dir, MaxDistance, false, false, hit)) {
+		return false;
+	}
+	vec3 point = origin + dir * hit.t;
+	vec3 viewPoint = (u_view * vec4(point, 1.0)).xyz;
+	vec3 s = project(viewPoint);
+	if(s.z > 0.0 && s.x >= 0.0 && s.x <= 1.0 && s.y >= 0.0 && s.y <= 1.0
+	   && abs(sceneDepth(s.xy) - viewPoint.z) < max(viewPoint.z * 0.03, 8.0)) {
+		color = texture(u_scene, s.xy).rgb;
+		return true;
+	}
+	color = shadeHit(hit, point, dir, clamp(log2(hit.t / 512.0), 0.0, 3.0) + 1.0);
+	if(u_fogEnabled != 0) {
+		float fog = clamp((u_fogRange.y - (pathSoFar + hit.t)) / (u_fogRange.y - u_fogRange.x), 0.0, 1.0);
+		color = mix(u_fogColor, color, fog);
+	}
+	return true;
+}
+#endif
 
 // Sum of three plane waves: height and its slopes along two tangent directions
 void waves(vec2 p, out float dhdu, out float dhdv) {
@@ -2646,6 +2777,26 @@ void main() {
 	// Fresnel: glossier at grazing angles
 	float facing = max(dot(normal, view), 0.0);
 	float fresnel = 0.03 + 0.97 * pow(1.0 - facing, 5.0);
+
+	// The mirrored scene: along the reflected ray, bent a little by the waves
+	if(u_reflection > 0.0) {
+		vec3 mirrorNormal = normalize(mix(geoNormal, normal, ReflectBend));
+		vec3 dir = reflect(-view, mirrorNormal);
+		if(dot(dir, geoNormal) < 0.05) {
+			dir = normalize(dir - geoNormal * (dot(dir, geoNormal) - 0.05)); // keep it off the surface
+		}
+		vec3 mirrored;
+		bool found = marchScreen(v_worldPos + geoNormal * 0.5, dir, mirrored);
+#ifdef ARX_RT
+		if(!found) {
+			found = traceLevel(v_worldPos + geoNormal * 1.0, dir, toCameraLength, mirrored);
+		}
+#endif
+		if(found) {
+			float weight = mix(ReflectMin, ReflectMax, pow(1.0 - max(dot(geoNormal, view), 0.0), 3.0)) * u_reflection;
+			color = mix(color, mirrored, weight);
+		}
+	}
 
 	// Specular trails of the scene's lights (same attenuation as the engine)
 	vec3 specular = vec3(0.0);
