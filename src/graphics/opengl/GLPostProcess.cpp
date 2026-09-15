@@ -68,6 +68,7 @@ GLPostProcess::GLPostProcess(GLShaderPipeline * pipeline)
 	, m_uVolumeInvView(-1)
 	, m_uVolumeCameraPos(-1)
 	, m_uVolumeDensity(-1)
+	, m_uVolumeLightScale(-1)
 	, m_uVolumeTime(-1)
 	, m_uVolumeLightCount(-1)
 	, m_uVolumeLightPos(-1)
@@ -161,6 +162,7 @@ bool GLPostProcess::init() {
 	m_uVolumeInvView = glGetUniformLocation(m_volumeProgram, "u_invView");
 	m_uVolumeCameraPos = glGetUniformLocation(m_volumeProgram, "u_cameraPos");
 	m_uVolumeDensity = glGetUniformLocation(m_volumeProgram, "u_density");
+	m_uVolumeLightScale = glGetUniformLocation(m_volumeProgram, "u_lightScale");
 	m_uVolumeTime = glGetUniformLocation(m_volumeProgram, "u_time");
 	m_uVolumeLightCount = glGetUniformLocation(m_volumeProgram, "u_lightCount");
 	m_uVolumeLightPos = glGetUniformLocation(m_volumeProgram, "u_lightPos");
@@ -579,6 +581,7 @@ void GLPostProcess::end() {
 		glUniformMatrix4fv(m_uVolumeInvView, 1, GL_FALSE, glm::value_ptr(invView));
 		glUniform3fv(m_uVolumeCameraPos, 1, glm::value_ptr(cameraPos));
 		glUniform1f(m_uVolumeDensity, m_settings.volumetric);
+		glUniform1f(m_uVolumeLightScale, m_settings.volumetricLight);
 		glUniform1f(m_uVolumeTime, float(toMsi(g_gameTime.now())) * 0.001f);
 		glUniform1i(m_uVolumeShadows, (m_traced && m_settings.volumetricShadows) ? 1 : 0);
 		// Only the lights whose room is in view (RendererLight::inView)
