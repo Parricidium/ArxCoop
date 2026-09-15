@@ -167,6 +167,7 @@ public:
 		float bloom;
 		bool fxaa;
 		float ambientOcclusion;
+		float darkness; // ArxModern: 0 = as lit, 1 = the dark places go really dark (torches matter)
 		float normalMaps; // relief strength of the (generated or provided) normal maps, 0 = off
 		bool physics; // Jolt physics: ragdoll corpses, loose objects
 		float water; // water shader strength, 0 = the original overlay

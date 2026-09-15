@@ -43,6 +43,7 @@ public:
 		bool smaa = false;     //!< SMAA 1x (takes precedence over fxaa)
 		float ao = 0.f;        //!< ambient occlusion strength, 0 = off
 		float aoRadius = 60.f; //!< world units
+		float darkness = 0.f;  //!< 0..1, crushes the dark end of the image (the unlit places)
 		int debugView = 0;     //!< 1 = ambient occlusion buffer, 2 = bloom buffer
 	};
 
@@ -102,6 +103,7 @@ private:
 	GLint m_uSsaoRadius;
 	GLint m_uSsaoBias;
 	GLint m_uFinalAo;
+	GLint m_uFinalDarkness;
 	GLint m_uFinalDebug;
 	GLint m_uExtractThreshold;
 	GLint m_uBlurDirection;

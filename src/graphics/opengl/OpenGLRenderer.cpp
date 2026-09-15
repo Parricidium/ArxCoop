@@ -802,6 +802,7 @@ void OpenGLRenderer::applyGraphicsConfig() {
 			m_post->settings().fxaa = config.video.fxaa || config.video.smaa; // FXAA stands in if the SMAA shaders failed
 			m_post->settings().smaa = config.video.smaa;
 			m_post->settings().ao = config.video.ambientOcclusion;
+			m_post->settings().darkness = config.video.darkness;
 			m_post->settings().debugView = (config.video.postDebug == "ao") ? 1 : (config.video.postDebug == "bloom") ? 2 : 0;
 		}
 	} else {
