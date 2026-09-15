@@ -686,6 +686,9 @@ constexpr const char * post_final_frag = R"glsl(#version 130
 //
 // u_bloom      : bloom intensity (0 disables)
 // u_ao         : ambient occlusion strength (0 disables)
+// u_darkness   : 0..1, how much the dark places are pushed towards black (the "Ambiance" option:
+//                what the static lighting left dim becomes really dark, only the torches, spells
+//                and lit areas keep their brightness)
 // u_fxaa       : 1 to enable the anti-aliasing filter
 // u_invSize    : 1 / window size in pixels
 
@@ -694,12 +697,16 @@ uniform sampler2D u_bloomTexture;
 uniform sampler2D u_aoTexture;
 uniform float u_bloom;
 uniform float u_ao;       // ambient occlusion strength (0 disables)
+uniform float u_darkness;
 uniform int u_fxaa;
 uniform vec2 u_invSize;
 uniform int u_debug;      // 1 = show the ambient occlusion buffer, 2 = the bloom buffer
 
 in vec2 v_uv;
 out vec4 fragColor;
+
+// Tunables (a mod can edit this file: F7 reloads it)
+const float DarkKnee = 0.4; // luma below which the darkness curve bites (above: untouched)
 
 float luma(vec3 c) {
 	return dot(c, vec3(0.299, 0.587, 0.114));
@@ -709,6 +716,11 @@ vec3 sceneAt(vec2 uv) {
 	vec3 c = texture(u_scene, uv).rgb;
 	if(u_ao > 0.0) {
 		c *= mix(1.0, texture(u_aoTexture, uv).r, u_ao);
+	}
+	if(u_darkness > 0.0) {
+		// Smooth toe: the darker a pixel already is, the more it is pulled towards black
+		float l = luma(c);
+		c *= mix(1.0, smoothstep(0.0, DarkKnee, l), u_darkness);
 	}
 	if(u_bloom > 0.0) {
 		c += texture(u_bloomTexture, uv).rgb * u_bloom;
