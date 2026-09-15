@@ -121,6 +121,7 @@ private:
 	GLint m_uVolumeLightPos;
 	GLint m_uVolumeLightColor;
 	GLint m_uVolumeShadows;
+	GLint m_uVolumeLightShadow;
 	bool m_traced;
 	GLint m_uFinalDebug;
 	GLint m_uExtractThreshold;
