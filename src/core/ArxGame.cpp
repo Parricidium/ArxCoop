@@ -649,6 +649,13 @@ static void killTest(u32 frames) {
 }
 ARX_PROGRAM_OPTION_ARG("killtest", "", "Kill the NPCs near the player at frame N (ragdoll test)", &killTest, "FRAMES")
 
+// ArxModern: at frame N, log every entity of the level with its position (to pick --viewtest spots)
+static long g_listTestFrames = -1000;
+static void listTest(u32 frames) {
+	g_listTestFrames = long(frames);
+}
+ARX_PROGRAM_OPTION_ARG("listtest", "", "Log the entities of the level and their positions at frame N", &listTest, "FRAMES")
+
 // ArxModern: at frame N, the player lights a torch (shadow tests: a strong light they carry)
 static long g_torchTestFrames = -1000;
 static void torchTest(u32 frames) {
@@ -2185,6 +2192,15 @@ void ArxGame::render() {
 			mainApp->quit();
 		}
 		g_autoSnapshotFrames--;
+	}
+	
+	if(g_listTestFrames > -1000 && ARXmenu.mode() == Mode_InGame) {
+		if(g_listTestFrames == 0) {
+			for(Entity & entity : entities) {
+				LogInfo << "listtest: " << entity.idString() << " at " << entity.pos.x << ' ' << entity.pos.y << ' ' << entity.pos.z;
+			}
+		}
+		g_listTestFrames--;
 	}
 	
 	if(g_torchTestFrames > -1000 && ARXmenu.mode() == Mode_InGame && !isInCinematic()) {

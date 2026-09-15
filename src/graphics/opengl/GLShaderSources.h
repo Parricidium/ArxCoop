@@ -1022,7 +1022,8 @@ const float Anisotropy = 0.35;      // Henyey-Greenstein g: > 0 scatters forward
 const float NoiseScale = 0.0035;    // world units -> noise; smaller = larger wisps
 const float NoiseAmount = 0.75;     // 0 = uniform haze, 1 = strongly wispy
 const float Drift = 0.05;           // wisps drifting speed
-const int MaxLightsPerRay = 8;      // the strongest lights on the ray only
+const int MaxLightsPerRay = 12;     // the strongest lights on the ray only
+const float HiddenWeight = 0.25;    // ranking weight kept by a light hidden where the ray passes closest
 const float MinFalloff = 0.35;      // fraction of a light's range over which it fades at least
 
 float linearDepth(vec2 uv) {
@@ -1099,6 +1100,14 @@ void main() {
 			continue;
 		}
 		float weight = falloff(away, u_lightPos[i].w, fallend) * dot(u_lightColor[i].rgb, vec3(0.299, 0.587, 0.114));
+#ifdef ARX_RT
+		// A bright light hidden behind a wall must not crowd out the lanterns that really shine
+		// on this ray (it left dark discs): one ray to where it would matter most weighs it down
+		// - softly, so that the ranking does not flip at the edge of the wall's shadow
+		if(u_shadows != 0 && !rtLit(u_lightPos[i].xyz, u_cameraPos + dir * along)) {
+			weight *= HiddenWeight;
+		}
+#endif
 		// Insert in decreasing weight, dropping the weakest beyond MaxLightsPerRay
 		int slot = min(lightCount, MaxLightsPerRay - 1);
 		if(lightCount < MaxLightsPerRay || weight > weights[slot]) {

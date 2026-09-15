@@ -595,10 +595,12 @@ void GLShaderPipeline::setLights(const RendererLight * lights, size_t dynamicCou
 
 	m_lightPos.resize(count);
 	m_lightColor.resize(count);
+	m_lightInView.resize(count);
 	for(size_t i = 0; i < count; i++) {
 		const RendererLight & light = lights[i];
 		m_lightPos[i] = glm::vec4(light.pos.x, light.pos.y, light.pos.z, light.fallstart);
 		m_lightColor[i] = glm::vec4(light.color.r, light.color.g, light.color.b, light.fallend);
+		m_lightInView[i] = light.inView;
 	}
 	m_lightsDirty = true;
 
