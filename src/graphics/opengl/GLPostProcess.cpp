@@ -19,6 +19,8 @@
 
 #include "graphics/opengl/GLPostProcess.h"
 
+#include <string>
+
 #include <glm/gtc/type_ptr.hpp>
 
 #include <algorithm>
@@ -71,6 +73,7 @@ GLPostProcess::GLPostProcess(GLShaderPipeline * pipeline)
 	, m_uVolumeLightPos(-1)
 	, m_uVolumeLightColor(-1)
 	, m_uVolumeShadows(-1)
+	, m_uVolumeLightShadow(-1)
 	, m_traced(false)
 	, m_uFinalDebug(-1)
 	, m_uExtractThreshold(-1)
@@ -160,6 +163,11 @@ bool GLPostProcess::init() {
 	m_uVolumeLightPos = glGetUniformLocation(m_volumeProgram, "u_lightPos");
 	m_uVolumeLightColor = glGetUniformLocation(m_volumeProgram, "u_lightColor");
 	m_uVolumeShadows = glGetUniformLocation(m_volumeProgram, "u_shadows");
+	m_uVolumeLightShadow = glGetUniformLocation(m_volumeProgram, "u_lightShadow");
+	// The shadow cube maps of the main pipeline stay on units 4..7
+	for(int i = 0; i < 4; i++) {
+		glUniform1i(glGetUniformLocation(m_volumeProgram, ("u_shadow" + std::to_string(i)).c_str()), 4 + i);
+	}
 
 	glUseProgram(m_finalProgram);
 	glUniform1i(glGetUniformLocation(m_finalProgram, "u_scene"), 0);
@@ -575,12 +583,16 @@ void GLPostProcess::end() {
 		const std::vector<glm::vec4> & lightColor = m_pipeline->lightColors();
 		const std::vector<bool> & inView = m_pipeline->lightsInView();
 		static std::vector<glm::vec4> hazePos, hazeColor;
+		static std::vector<GLint> hazeShadow;
 		hazePos.clear();
 		hazeColor.clear();
+		hazeShadow.clear();
+		size_t shadowed = std::min(m_pipeline->shadowedLightCount(), size_t(4));
 		for(size_t i = 0; i < lightPos.size() && hazePos.size() < 128; i++) {
 			if(i >= inView.size() || inView[i]) {
 				hazePos.push_back(lightPos[i]);
 				hazeColor.push_back(lightColor[i]);
+				hazeShadow.push_back((i < shadowed) ? GLint(i) : -1); // its cube map, if it has one
 			}
 		}
 		GLsizei lights = GLsizei(hazePos.size());
@@ -588,7 +600,13 @@ void GLPostProcess::end() {
 		if(lights > 0) {
 			glUniform4fv(m_uVolumeLightPos, lights, glm::value_ptr(hazePos[0]));
 			glUniform4fv(m_uVolumeLightColor, lights, glm::value_ptr(hazeColor[0]));
+			glUniform1iv(m_uVolumeLightShadow, lights, hazeShadow.data());
 		}
+		for(size_t i = 0; i < 4; i++) {
+			glActiveTexture(GL_TEXTURE4 + GLenum(i));
+			glBindTexture(GL_TEXTURE_CUBE_MAP, (i < shadowed) ? m_pipeline->shadowMapTexture(i) : 0);
+		}
+		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, m_depthTexture);
 		drawFullscreen();
 		glUseProgram(m_blurProgram);

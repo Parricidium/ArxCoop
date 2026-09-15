@@ -126,6 +126,9 @@ public:
 	[[nodiscard]] bool fogEnabled() const;
 	[[nodiscard]] const std::vector<glm::vec4> & lightPositions() const { return m_lightPos; }
 	[[nodiscard]] const std::vector<glm::vec4> & lightColors() const { return m_lightColor; }
+	//! The cube maps rendered this frame: the first shadowedLightCount() lights have one (units 4..7)
+	[[nodiscard]] size_t shadowedLightCount() const noexcept { return m_shadowedLights; }
+	[[nodiscard]] GLuint shadowMapTexture(size_t light) const;
 	//! Per light: whether its room is in view (RendererLight::inView)
 	[[nodiscard]] const std::vector<bool> & lightsInView() const { return m_lightInView; }
 	[[nodiscard]] size_t dynamicLightCount() const { return m_dynamicLightCount; }
