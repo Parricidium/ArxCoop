@@ -215,6 +215,7 @@ constexpr const ActionKey actions[NUM_ACTION_KEY] = {
 	ActionKey(Mouse::Wheel_Down), // CAMERA_ZOOM_OUT
 	ActionKey(Mouse::Button_2), // PING
 	ActionKey(Keyboard::Key_F8), // ADMIN
+	ActionKey(Keyboard::Key_Z), // ROLL (the physical key left of X / crouch; W on an AZERTY keyboard)
 };
 
 } // namespace Default
@@ -386,6 +387,7 @@ constexpr const std::string_view actions[NUM_ACTION_KEY] = {
 	"camera_zoom_out",
 	"ping",
 	"admin",
+	"roll",
 };
 
 // Misc options

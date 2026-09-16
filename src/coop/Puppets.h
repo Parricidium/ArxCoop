@@ -80,6 +80,9 @@ EntityHandle attackTarget(const Entity & npc, EntityHandle target);
 //! Owner of a puppet entity, or InvalidPlayerId.
 PlayerId puppetOwner(const Entity & io);
 
+//! Progress of a puppet's dodge roll (0 = none), from its player state.
+float puppetRollPhase(const Entity & puppet);
+
 //! Halo of a puppet's worn helmet (0), armor (1) or leggings (2) when it glows, else null (AnimationRender.cpp).
 IO_HALO * puppetSlotHalo(const Entity & puppet, unsigned slot);
 

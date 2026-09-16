@@ -38,6 +38,7 @@
 #include "coop/Protocol.h"
 #include "coop/Qol.h"
 #include "coop/Replication.h"
+#include "coop/Roll.h"
 #include "coop/Session.h"
 #include "coop/Text.h"
 #include "coop/ThirdPerson.h"
@@ -167,6 +168,7 @@ struct PlayerSnapshot {
 	float hunger = 1.f; // ratio (1 = full)
 	bool inDialogue = false; //!< locked in a cinematic dialogue with an NPC
 	float ignition = 0.f;    //!< on fire (the engine's Entity::ignition of the player)
+	float roll = 0.f;        //!< dodge roll progress, 0 = none (coop/Roll.cpp)
 	IO_HALO slotHalo[3];     //!< helmet, armor, leggings glow, drawn on the puppet's mesh (puppetSlotHalo)
 	PlatformInstant received;
 };
@@ -753,6 +755,7 @@ void handlePlayerState(PlayerId id, Reader & reader) {
 	state.hunger = reader.f32_();
 	state.inDialogue = reader.remaining() ? reader.bool_() : false;
 	state.ignition = reader.remaining() >= sizeof(float) ? reader.f32_() : 0.f;
+	state.roll = reader.remaining() >= sizeof(float) ? reader.f32_() : 0.f;
 	state.received = platform::getTime();
 
 }
@@ -1424,6 +1427,14 @@ std::string puppetIdString(PlayerId id) {
 	return EntityId("coop_player", EntityInstance(id + 1)).string();
 }
 
+float puppetRollPhase(const Entity & puppet) {
+	if(!puppet.coopPuppet) {
+		return 0.f;
+	}
+	auto it = g_remote.find(puppetOwner(puppet));
+	return it == g_remote.end() ? 0.f : it->second.roll;
+}
+
 IO_HALO * puppetSlotHalo(const Entity & puppet, unsigned slot) {
 	if(slot >= 3 || !puppet.coopPuppet) {
 		return nullptr;
@@ -1525,6 +1536,7 @@ void puppetsSendLocalState() {
 	writer.f32_(player.hunger * 0.01f);
 	writer.bool_(getCinematicSpeech() != nullptr);
 	writer.f32_(std::max(io.ignition, 0.f));
+	writer.f32_(rollPhase());
 
 	g_coop.sendToOthers(MessageType::PlayerState, writer);
 	sendEquipmentIfNeeded(false);
@@ -1873,18 +1885,71 @@ void puppetsTestUpdate() {
 				}
 			}
 		}
+		// Dodge roll: the client rolls in third person (its own body tumbling), the host looks at
+		// the puppet doing it; both take a picture mid-roll
+		static int rollStep = 0;
+		static PlatformInstant rollStart;
+		if(arrived != PlatformInstant() && rollStep == 0 && now - arrived > std::chrono::seconds(6)) {
+			rollStep = 1;
+			rollStart = now;
+			if(g_coop.isClient()) {
+				thirdPersonTestSet(true, false, false, 0.f);
+				g_rollTestRequest = true;
+				LogInfo << "[coop] test: client rolls (third person)";
+			} else if(const Entity * puppet = !g_remote.empty() ? findPuppet(g_remote.begin()->first) : nullptr) {
+				// Stand 220 units behind the puppet, looking at it
+				Vec3f dir = angleToVectorXZ(player.angle.getYaw());
+				Vec3f eye = puppet->pos - dir * 220.f + Vec3f(0.f, -160.f, 0.f);
+				ARX_INTERACTIVE_Teleport(entities.player(), eye + Vec3f(0.f, 160.f, 0.f));
+				Vec3f to = puppet->pos + Vec3f(0.f, -90.f, 0.f) - player.pos;
+				player.angle.setYaw(MAKEANGLE(glm::degrees(std::atan2(-to.x, to.z))));
+				player.angle.setPitch(MAKEANGLE(glm::degrees(std::atan2(to.y, glm::length(Vec2f(to.x, to.z))))));
+				player.desiredangle = player.angle;
+				LogInfo << "[coop] test: host watches the puppet at " << int(fdist(player.pos, puppet->pos)) << " units";
+			}
+			Logger::flush();
+		}
+		if(rollStep == 1 && g_coop.isClient() && now - rollStart > std::chrono::milliseconds(260)) {
+			rollStep = 2;
+			GetSnapShot();
+			LogInfo << "[coop] test: mid-roll snapshot, phase " << rollPhase() << " invulnerable "
+			        << bool(player.playerflags & PLAYERFLAGS_INVULNERABILITY) << " crouch " << bool(player.m_currentMovement & PLAYER_CROUCH);
+			Logger::flush();
+		}
+		if(rollStep == 1 && g_coop.isHost()) {
+			// The client rolls on its own clock: picture its puppet as soon as it is mid-roll
+			for(const auto & entry : g_remote) {
+				if(entry.second.roll >= 0.3f || now - rollStart > std::chrono::seconds(40)) {
+					rollStep = 2;
+					rollStart = now;
+					GetSnapShot();
+					LogInfo << "[coop] test: puppet " << int(entry.first) << " roll phase " << entry.second.roll << " (snapshot)";
+					Logger::flush();
+					break;
+				}
+			}
+		}
+		if(rollStep == 2 && now - rollStart > std::chrono::milliseconds(1500)) {
+			rollStep = 3;
+			if(g_coop.isClient()) {
+				LogInfo << "[coop] test: after the roll: rolling " << rollActive() << " invulnerable "
+				        << bool(player.playerflags & PLAYERFLAGS_INVULNERABILITY) << " at " << int(player.pos.x) << "," << int(player.pos.y) << "," << int(player.pos.z);
+				thirdPersonTestSet(false, false, false, 0.f);
+			}
+			Logger::flush();
+		}
 		// Skills and burning of a client, as seen by the host
 		static bool skillSet = false;
 		static bool skillChecked = false;
 		static bool fireSet = false;
 		static int fireChecks = 0;
-		if(arrived != PlatformInstant() && g_coop.isClient() && !skillSet && now - arrived > std::chrono::seconds(5)) {
+		if(arrived != PlatformInstant() && g_coop.isClient() && !skillSet && now - arrived > std::chrono::seconds(10)) {
 			skillSet = true;
 			player.m_skill.mecanism = 77.f;
 			entities.player()->ignition = 100.f;
 			LogInfo << "[coop] test: client sets mecanism 77 and catches fire";
 		}
-		if(arrived != PlatformInstant() && g_coop.isHost() && now - arrived > std::chrono::seconds(fireChecks == 0 ? 10 : 22)
+		if(arrived != PlatformInstant() && g_coop.isHost() && now - arrived > std::chrono::seconds(fireChecks == 0 ? 14 : 24)
 		   && fireChecks < 2) {
 			fireChecks++;
 			for(const auto & entry : g_remote) {

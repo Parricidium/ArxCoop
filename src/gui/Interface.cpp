@@ -67,6 +67,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "coop/Puppets.h"
 #include "coop/Text.h"
 #include "coop/Qol.h"
+#include "coop/Roll.h"
 #include "coop/ThirdPerson.h"
 #include "core/Application.h"
 #include "core/ArxGame.h"
@@ -887,9 +888,13 @@ void ArxGame::managePlayerControls() {
 			MOVE_PRECEDENCE = 0;
 		}
 		
+		// Co-op mod: the dodge roll takes over the movement (and starts on its key)
+		coop::rollMovement(GInput->actionPressed(CONTROLS_CUST_WALKFORWARD), GInput->actionPressed(CONTROLS_CUST_WALKBACKWARD),
+		                   left, right, 10.f * FD * MoveDiv, tm);
+
 		g_moveto = player.pos + tm;
 	}
-	
+
 	// Checks CROUCH Key Status.
 	if(GInput->actionNowPressed(CONTROLS_CUST_CROUCHTOGGLE)) {
 		bGCroucheToggle = !bGCroucheToggle;
@@ -919,7 +924,8 @@ void ArxGame::managePlayerControls() {
 	}
 	
 	// Checks JUMP Key Status.
-	if(player.jumpphase == NotJumping && GInput->actionNowPressed(CONTROLS_CUST_JUMP) && !player.levitate) {
+	if(player.jumpphase == NotJumping && GInput->actionNowPressed(CONTROLS_CUST_JUMP) && !player.levitate
+	   && !coop::rollActive()) {
 		REQUEST_JUMP = g_platformTime.frameStart();
 	}
 	
