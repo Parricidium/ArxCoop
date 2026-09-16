@@ -1776,9 +1776,77 @@ void puppetsTestUpdate() {
 				LogInfo << "[coop] test: ^player_skill_mecanism for me " << mine << " (" << player.m_skillFull.mecanism
 				        << "), acting for player " << int(client) << " " << theirs;
 				Logger::flush();
+				{
+					// A trap's spell aimed at "the player" who set it off (the client here)
+					PlayerActorScope actor(client);
+					runScriptLine(*marker, "spellcast -smf 3 magic_missile player");
+					LogInfo << "[coop] test: " << marker->idString() << " shoots a magic missile at player " << int(client);
+				}
 			}
 		}
-		if(listed && now - arrived > std::chrono::seconds(g_coop.isHost() ? 40 : 30)) {
+		// A client picks a lock and brews a potion (its items are stand-ins on the host)
+		static int craftStep = 0;
+		if(arrived != PlatformInstant() && g_coop.isClient()) {
+			Entity * chest = entities.getById("chest_metal_0097");
+			Entity * apparatus = entities.getById("apparatus_0001");
+			if(craftStep == 0 && now - arrived > std::chrono::seconds(14)) {
+				craftStep = 1;
+				player.m_skill.mecanism = 5.f;         // too clumsy for that chest (40): "impossible", the tools wear
+				player.m_skill.objectKnowledge = 80.f; // good enough for a mana potion (59)
+				if(Entity * tools = AddItem("graph/obj3d/interactive/items/provisions/lockpicks/lockpicks", -1, IO_IMMEDIATELOAD)) {
+					SendInitScriptEvent(tools);
+					giveToPlayer(tools);
+				}
+				if(Entity * ingredient = AddItem("graph/obj3d/interactive/items/magic/potion2beblue/potion2beblue", -1, IO_IMMEDIATELOAD)) {
+					SendInitScriptEvent(ingredient);
+					giveToPlayer(ingredient);
+				}
+				if(chest) {
+					ARX_INTERACTIVE_Teleport(entities.player(), chest->pos + Vec3f(0.f, -50.f, -120.f));
+					LogInfo << "[coop] test: client at the chest " << chest->idString() << " unlock " << GETVarValueLong(chest->m_variables, "§unlock")
+					        << " pickability " << GETVarValueLong(chest->m_variables, "§lockpickability");
+				} else {
+					LogInfo << "[coop] test: no chest_metal_0097 in this level";
+				}
+			} else if(craftStep == 1 && now - arrived > std::chrono::seconds(16)) {
+				craftStep = 2;
+				for(Entity & entity : entities) {
+					if(chest && entity.className() == "lockpicks" && IsInPlayerInventory(&entity)) {
+						LogInfo << "[coop] test: client combines " << entity.idString() << " with the chest";
+						SendIOScriptEvent(&entity, chest, SM_COMBINE, ScriptParameters(entity.idString()));
+						break;
+					}
+				}
+			} else if(craftStep == 2 && now - arrived > std::chrono::seconds(21)) {
+				craftStep = 3;
+				if(apparatus) {
+					ARX_INTERACTIVE_Teleport(entities.player(), apparatus->pos + Vec3f(0.f, -50.f, -120.f));
+					for(Entity & entity : entities) {
+						if(entity.className() == "potion2beblue" && IsInPlayerInventory(&entity)) {
+							LogInfo << "[coop] test: client combines " << entity.idString() << " with " << apparatus->idString();
+							SendIOScriptEvent(&entity, apparatus, SM_COMBINE, ScriptParameters(entity.idString()));
+							break;
+						}
+					}
+				} else {
+					LogInfo << "[coop] test: no apparatus_0001 in this level";
+				}
+			} else if(craftStep == 3 && now - arrived > std::chrono::seconds(28)) {
+				craftStep = 4;
+				for(const Entity & entity : entities) {
+					if((entity.ioflags & IO_ITEM) && IsInPlayerInventory(const_cast<Entity *>(&entity))) {
+						LogInfo << "[coop] test: client has " << entity.idString() << " x" << entity._itemdata->count
+						        << " durability " << entity.durability << " interactive " << bool(entity.gameFlags & GFLAG_INTERACTIVITY)
+						        << " objectlife " << GETVarValueLong(entity.m_variables, "§objectlife");
+					}
+				}
+				if(chest) {
+					LogInfo << "[coop] test: chest unlock " << GETVarValueLong(chest->m_variables, "§unlock");
+				}
+				Logger::flush();
+			}
+		}
+		if(listed && now - arrived > std::chrono::seconds(g_coop.isHost() ? 40 : 32)) {
 			mainApp->quit();
 		}
 		return;

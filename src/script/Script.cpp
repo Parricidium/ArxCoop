@@ -1516,6 +1516,7 @@ struct QueuedEvent {
 	Entity * entity;
 	ScriptEventName event;
 	ScriptParameters parameters;
+	unsigned coopActor; //!< co-op: the player whose action queued the event (0xFF: none), like the timers
 	
 	void clear() {
 		exists = false;
@@ -1523,6 +1524,7 @@ struct QueuedEvent {
 		entity = nullptr;
 		event = ScriptEventName();
 		parameters.clear();
+		coopActor = 0xFF;
 	}
 	
 };
@@ -1567,6 +1569,10 @@ void ARX_SCRIPT_EventStackExecute(size_t limit) {
 		if(ValidIOAddress(event.entity)) {
 			Entity * sender = ValidIOAddress(event.sender) ? event.sender : nullptr;
 			LogDebug("running queued " << event.event << " for " << event.entity->idString());
+			// "sendevent" from a script processing a player's action (the chest telling the
+			// lockpicks "interactive again", the alchemy set telling the ingredient "make the
+			// potion"): still that player's business, its item stand-in answers to it
+			coop::PlayerActorScope actorScope(event.coopActor);
 			SendIOScriptEvent(sender, event.entity, event.event, event.parameters);
 		} else {
 			LogDebug("could not run queued " << event.event
@@ -1595,6 +1601,7 @@ void Stack_SendIOScriptEvent(Entity * sender, Entity * entity, const ScriptEvent
 			entry.entity = entity;
 			entry.event = event;
 			entry.parameters = parameters;
+			entry.coopActor = coop::currentActor();
 			entry.exists = true;
 			return;
 		}
@@ -1676,6 +1683,7 @@ SCR_TIMER & createScriptTimer(Entity * io, std::string && name) {
 		for(SCR_TIMER & timer : g_scriptTimers) {
 			if(!timer.exist) {
 				timer = SCR_TIMER(io, std::move(name));
+				timer.coopActor = coop::currentActor(); // (a reused slot lost the actor: potions never brewed for clients)
 				return timer;
 			}
 		}

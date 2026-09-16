@@ -44,6 +44,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "game/Missile.h"
 
+#include "coop/Puppets.h"
+
 #include <stddef.h>
 #include <vector>
 
@@ -196,8 +198,10 @@ void ARX_MISSILES_Update() {
 			spawnFireHitParticle(dest, 0);
 			PolyBoomAddScorch(dest);
 			Add3DBoom(dest);
-			doSphericDamage(Sphere(dest, 200.f), 180.f, DAMAGE_AREAHALF, nullptr,
-			                DAMAGE_TYPE_FAKESPELL | DAMAGE_TYPE_FIRE | DAMAGE_TYPE_MAGICAL);
+			if(!coop::npcsAreMirrored()) { // co-op clients fly a copy for the eyes: the host's blast does the damage
+				doSphericDamage(Sphere(dest, 200.f), 180.f, DAMAGE_AREAHALF, nullptr,
+				                DAMAGE_TYPE_FAKESPELL | DAMAGE_TYPE_FIRE | DAMAGE_TYPE_MAGICAL);
+			}
 			continue;
 		}
 		

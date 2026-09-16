@@ -259,6 +259,7 @@ ScriptResult ScriptEvent::send(const EERIE_SCRIPT * es, Entity * sender, Entity 
 		}
 	}
 	coop::ActorScope actorScope(sender, entity);
+	coop::PuppetActorScope puppetActorScope(sender); // an event caused by another player (its spell, its blow): the script acts for that player
 	
 	if(checkInteractiveObject(entity, event.getId(), ret)) {
 		return ret;
@@ -346,6 +347,12 @@ ScriptResult ScriptEvent::send(const EERIE_SCRIPT * es, Entity * sender, Entity 
 					coop::replicatedCommandEnd();
 					context.setTranscript(nullptr);
 					coop::commandReplicated(word, transcript, context);
+				} else if(sync == coop::CommandSync::Mirror) {
+					std::vector<std::string> transcript;
+					context.setTranscript(&transcript);
+					res = command.execute(context);
+					context.setTranscript(nullptr);
+					coop::commandMirrored(word, transcript, context);
 				} else {
 					res = command.execute(context);
 				}

@@ -37,7 +37,7 @@
  */
 namespace coop {
 
-constexpr u32 ProtocolVersion = 16;
+constexpr u32 ProtocolVersion = 17;
 constexpr u16 DefaultPort = 27015;
 constexpr size_t MaxPlayers = 4;
 constexpr size_t MaxNicknameLength = 24;
@@ -69,7 +69,7 @@ enum class MessageType : u16 {
 	PlayerState   = 30, //!< u8 id, then see coop/Puppets.cpp
 
 	// World synchronization, see coop/Replication.cpp
-	EventForward  = 40, //!< C->H: string entity, u16 event id, string event name, u8 n, string params[n], string sender, string senderClass, s32 senderInstance, u8 senderHasInstanceScript
+	EventForward  = 40, //!< C->H: string entity, u16 event id, string event name, u8 n, string params[n], string sender, string senderClass, s32 senderInstance, u8 senderHasInstanceScript, then the sender item's state: u16 n vars (string name, s32 ival, f32 fval, string text) * n, f32 durability, f32 maxDurability, s16 count, s16 poisonous, s16 poisonousCount
 	ScriptCommand = 41, //!< H->C: string entity, u8 n, string words[n]
 	SetGlobal     = 42, //!< H->C: string name, u8 type, (string | s32 | f32)
 	SharedQuest   = 43, //!< both: string quest

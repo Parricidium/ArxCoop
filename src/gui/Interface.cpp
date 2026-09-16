@@ -65,6 +65,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "cinematic/CinematicController.h"
 
 #include "coop/Puppets.h"
+#include "coop/Text.h"
 #include "coop/Qol.h"
 #include "coop/ThirdPerson.h"
 #include "core/Application.h"
@@ -1645,7 +1646,20 @@ void ArxGame::manageEntityDescription() {
 		ss << " " << getLocalised("description_durability") << " "
 		   << std::fixed << std::setw(3) << std::setprecision(0) << temp->durability << "/" << temp->max_durability;
 	}
-	
+
+	// ArxCoop: a locked chest or door says what picking it takes (the scripts' lockpick include:
+	// impossible below "lockpickability" points of Mechanism, 100 = never)
+	if(const SCRIPT_VAR * ability = GetVarAddress(temp->m_variables, "\xA7lockpickability")) {
+		if(GETVarValueLong(temp->m_variables, "\xA7unlock") == 0) {
+			if(ability->ival >= 100) {
+				ss << " - " << coop::tr("coop_lock_unpickable", "serrure impossible \xC3\xA0 crocheter");
+			} else {
+				ss << " - " << coop::tr("coop_lock_needs", "serrure : ") << ability->ival << " "
+				   << coop::tr("coop_lock_mechanism", "de M\xC3\xA9" "canisme requis");
+			}
+		}
+	}
+
 	s32 x = util::to<s32>(120.f * g_sizeRatio.x);
 	s32 y = util::to<s32>(14.f * g_sizeRatio.y);
 	s32 w = util::to<s32>(620.f * g_sizeRatio.x);
