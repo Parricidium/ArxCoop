@@ -19,6 +19,11 @@
 
 #include "game/magic/spells/SpellsLvl06.h"
 
+#include "io/log/Logger.h"
+
+#include "coop/Puppets.h"
+#include "coop/Replication.h"
+
 #include "core/Application.h"
 #include "core/Core.h"
 #include "core/GameTime.h"
@@ -333,9 +338,11 @@ void CreateFieldSpell::Launch() {
 }
 
 void CreateFieldSpell::End() {
-	
+
 	endLightDelayed(m_field.lLightId, 800ms);
-	
+
+	coop::fieldSpellEnded(entities.get(m_caster));
+
 	delete entities.get(m_entity);
 }
 
@@ -345,10 +352,13 @@ void CreateFieldSpell::Update() {
 	if(io) {
 		io->pos = m_field.eSrc;
 		
-		if(isAnyNPCOnPlatform(*io)) {
+		// Co-op: the host decides and tells the clients (their NPCs are mirrors of its own anyway)
+		if(!coop::npcsAreMirrored() && isAnyNPCOnPlatform(*io)) {
+			Entity * caster = entities.get(m_caster);
+			LogInfo << "create_field of " << (caster ? caster->idString() : std::string("?")) << " ends: someone stands on it";
 			requestEnd();
 		}
-		
+
 		m_field.Update(g_gameTime.lastFrameDuration());
 		m_field.Render();
 	}

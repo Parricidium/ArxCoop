@@ -53,6 +53,7 @@
 #include "game/npc/Dismemberment.h"
 #include "game/Spells.h"
 #include "game/magic/Spell.h"
+#include "game/magic/spells/SpellsLvl06.h"
 #include "util/Number.h"
 #include "game/Equipment.h"
 #include "graphics/data/MeshManipulation.h"
@@ -148,15 +149,13 @@ struct PlayerSnapshot {
 	float life = 1.f;   // ratio
 	float hunger = 1.f; // ratio (1 = full)
 	bool inDialogue = false; //!< locked in a cinematic dialogue with an NPC
+	float ignition = 0.f;    //!< on fire (the engine's Entity::ignition of the player)
 	PlatformInstant received;
 };
 
 std::map<PlayerId, PlayerSnapshot> g_remote;
 PlatformInstant g_lastSend;
 
-std::string puppetIdString(PlayerId id) {
-	return EntityId("coop_player", EntityInstance(id + 1)).string();
-}
 
 Entity * findPuppet(PlayerId id) {
 	return entities.getById(puppetIdString(id));
@@ -322,6 +321,16 @@ void applySnapshot(Entity & io, const PlayerSnapshot & state, bool justCreated) 
 
 	for(size_t i = 0; i < SyncedAnimLayers; i++) {
 		applyAnim(io.animlayer[i], state.layers[i]);
+	}
+
+	// Burning follows the player, not what set the puppet alight here (a puppet stayed on fire
+	// forever once a flame had touched it - JD's friend, 16/09): the flames go out when its
+	// player's do, and light and crackle with them
+	if(state.ignition > 0.f) {
+		io.ignition = state.ignition;
+	} else if(io.ignition > 0.f) {
+		io.ignition = 0.f;
+		ManageIgnition_2(io); // releases the light and the sound (ManageIgnition() no longer runs for it)
 	}
 
 }
@@ -659,6 +668,7 @@ void handlePlayerState(PlayerId id, Reader & reader) {
 	state.life = reader.f32_();
 	state.hunger = reader.f32_();
 	state.inDialogue = reader.remaining() ? reader.bool_() : false;
+	state.ignition = reader.remaining() >= sizeof(float) ? reader.f32_() : 0.f;
 	state.received = platform::getTime();
 
 }
@@ -1301,6 +1311,10 @@ EntityHandle attackTarget(const Entity & npc, EntityHandle target) {
 	return best;
 }
 
+std::string puppetIdString(PlayerId id) {
+	return EntityId("coop_player", EntityInstance(id + 1)).string();
+}
+
 Entity * puppetOf(PlayerId id) {
 	return findPuppet(id);
 }
@@ -1386,6 +1400,7 @@ void puppetsSendLocalState() {
 	writer.f32_(player.lifePool.max > 0.f ? player.lifePool.current / player.lifePool.max : 0.f);
 	writer.f32_(player.hunger * 0.01f);
 	writer.bool_(getCinematicSpeech() != nullptr);
+	writer.f32_(std::max(io.ignition, 0.f));
 
 	g_coop.sendToOthers(MessageType::PlayerState, writer);
 	sendEquipmentIfNeeded(false);
@@ -1505,6 +1520,8 @@ void puppetsUpdate() {
 
 bool g_puppetsTestMode = false;
 bool g_puppetsTestLean = false;
+int g_puppetsTestLevel = -1;
+std::string g_puppetsTestTarget;
 
 //! Developer aid: runs one script line in an entity's context (the script stays alive for deferred parts).
 //! The same container on every machine: the first (by id) non-NPC entity with an inventory.
@@ -1668,6 +1685,103 @@ void puppetsTestUpdate() {
 
 	if(g_coop.isHost()) {
 		player.playerflags |= PLAYERFLAGS_INVULNERABILITY; // scripts clear it after the intro
+	}
+
+	// --coop-fieldtest LEVEL[:marker]: the host jumps to that level, both sides then list the
+	// magic fields they have (the persistent ones are cast by markers on game_ready, which the
+	// clients never run: they must get them from the host) and quit
+	if(g_puppetsTestLevel >= 0) {
+		static bool jumped = false;
+		static bool listed = false;
+		static PlatformInstant arrived;
+		if(g_coop.isHost() && !jumped && elapsed > std::chrono::seconds(10)) {
+			jumped = true;
+			std::string line = "teleport -ln " + std::to_string(g_puppetsTestLevel) + " " + g_puppetsTestTarget;
+			LogInfo << "[coop] test: host runs '" << line << "'";
+			Logger::flush();
+			runScriptLine(*entities.player(), line);
+		}
+		if(g_currentArea == AreaId(u32(g_puppetsTestLevel)) && arrived == PlatformInstant()) {
+			arrived = now;
+			LogInfo << "[coop] test: arrived in level " << g_puppetsTestLevel;
+		}
+		if(arrived != PlatformInstant() && !listed && now - arrived > std::chrono::seconds(25)) {
+			listed = true;
+			for(const Spell & spell : spells.ofType(SPELL_CREATE_FIELD)) {
+				const Entity * caster = entities.get(spell.m_caster);
+				const Entity * field = entities.get(static_cast<const CreateFieldSpell &>(spell).m_entity);
+				Vec3f pos = static_cast<const CreateFieldSpell &>(spell).getPosition();
+				LogInfo << "[coop] test: field spell of " << (caster ? caster->idString() : std::string("?"))
+				        << " level " << spell.m_level << " entity " << (field ? field->idString() : std::string("none"))
+				        << " at " << int(pos.x) << "," << int(pos.y) << "," << int(pos.z);
+			}
+			size_t fields = 0;
+			for(const Entity & entity : entities) {
+				if(entity.ioflags & IO_FIELD) {
+					fields++;
+					LogInfo << "[coop] test: field entity " << entity.idString() << " at " << int(entity.pos.x) << ","
+					        << int(entity.pos.y) << "," << int(entity.pos.z) << " show " << int(entity.show)
+					        << " flags " << (entity.ioflags & IO_NOSAVE ? " nosave" : " saved");
+				}
+			}
+			for(const Spell & spell : spells) {
+				const Entity * caster = entities.get(spell.m_caster);
+				LogInfo << "[coop] test: spell " << spell.m_type << " of " << (caster ? caster->idString() : std::string("?"));
+			}
+			LogInfo << "[coop] test: magic fields here: " << fields << ", me at " << int(entities.player()->pos.x)
+			        << "," << int(entities.player()->pos.y) << "," << int(entities.player()->pos.z);
+			Logger::flush();
+			GetSnapShot();
+		}
+		// Skills and burning of a client, as seen by the host
+		static bool skillSet = false;
+		static bool skillChecked = false;
+		static bool fireSet = false;
+		static int fireChecks = 0;
+		if(arrived != PlatformInstant() && g_coop.isClient() && !skillSet && now - arrived > std::chrono::seconds(5)) {
+			skillSet = true;
+			player.m_skill.mecanism = 77.f;
+			entities.player()->ignition = 100.f;
+			LogInfo << "[coop] test: client sets mecanism 77 and catches fire";
+		}
+		if(arrived != PlatformInstant() && g_coop.isHost() && now - arrived > std::chrono::seconds(fireChecks == 0 ? 10 : 22)
+		   && fireChecks < 2) {
+			fireChecks++;
+			for(const auto & entry : g_remote) {
+				if(const Entity * io = findPuppet(entry.first)) {
+					LogInfo << "[coop] test: puppet " << io->idString() << " ignition " << io->ignition
+					        << " (player state says " << entry.second.ignition << ")";
+				}
+			}
+			Logger::flush();
+		}
+		if(arrived != PlatformInstant() && g_coop.isHost() && !skillChecked && now - arrived > std::chrono::seconds(12)) {
+			skillChecked = true;
+			Entity * marker = nullptr;
+			for(Entity & entity : entities) {
+				if(entity.classPath().string().find("system/marker") != std::string::npos) {
+					marker = &entity;
+					break;
+				}
+			}
+			if(marker && !g_remote.empty()) {
+				PlayerId client = g_remote.begin()->first;
+				runScriptLine(*marker, "set @tskill ~^player_skill_mecanism~");
+				float mine = GETVarValueFloat(marker->m_variables, "@tskill");
+				{
+					PlayerActorScope actor(client);
+					runScriptLine(*marker, "set @tskill ~^player_skill_mecanism~");
+				}
+				float theirs = GETVarValueFloat(marker->m_variables, "@tskill");
+				LogInfo << "[coop] test: ^player_skill_mecanism for me " << mine << " (" << player.m_skillFull.mecanism
+				        << "), acting for player " << int(client) << " " << theirs;
+				Logger::flush();
+			}
+		}
+		if(listed && now - arrived > std::chrono::seconds(g_coop.isHost() ? 40 : 30)) {
+			mainApp->quit();
+		}
+		return;
 	}
 
 	// Goblin tracking (NPC sync check)

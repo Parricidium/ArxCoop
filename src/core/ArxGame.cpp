@@ -644,6 +644,14 @@ static void coopTest() {
 }
 ARX_PROGRAM_OPTION("coop-test", "", "Developer: step back, screenshot and quit once in a level", &coopTest)
 
+static void coopFieldTest(const std::string & spec) {
+	coop::g_puppetsTestMode = true;
+	size_t colon = spec.find(':');
+	coop::g_puppetsTestLevel = util::toInt(spec.substr(0, colon)).value_or(-1);
+	coop::g_puppetsTestTarget = (colon == std::string::npos) ? std::string() : spec.substr(colon + 1);
+}
+ARX_PROGRAM_OPTION_ARG("coop-fieldtest", "", "Developer: the host jumps to level LEVEL[:marker], both list their magic fields and quit", &coopFieldTest, "SPEC")
+
 static void coopNickname(const std::string & name) {
 	g_coop.startup.nickname = name;
 }

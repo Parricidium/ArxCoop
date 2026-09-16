@@ -29,6 +29,7 @@
  * synchronized world state.
  */
 #include "coop/Protocol.h"
+#include <string>
 #include "game/GameTypes.h"
 #include "graphics/Color.h"
 #include "math/Rectangle.h"
@@ -80,6 +81,8 @@ PlayerId puppetOwner(const Entity & io);
 
 //! The puppet of a player in this level, or null
 Entity * puppetOf(PlayerId id);
+//! The entity id of a player's puppet (coop_player_N), whether it exists here or not
+std::string puppetIdString(PlayerId id);
 
 //! Host: is a teammate (in this level) within \a limit of \a pos?
 bool teammateWithin(const Vec3f & pos, float limit);
@@ -124,6 +127,8 @@ bool npcsAreMirrored(); //!< True on a client whose world comes from the host
  */
 extern bool g_puppetsTestMode;
 extern bool g_puppetsTestLean; //!< --coop-test: acts as a held "lean left" key
+extern int g_puppetsTestLevel; //!< --coop-fieldtest: level the host jumps to (-1: none)
+extern std::string g_puppetsTestTarget; //!< --coop-fieldtest: arrival marker in that level
 void puppetsTestUpdate();
 
 } // namespace coop

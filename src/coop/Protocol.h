@@ -37,7 +37,7 @@
  */
 namespace coop {
 
-constexpr u32 ProtocolVersion = 15;
+constexpr u32 ProtocolVersion = 16;
 constexpr u16 DefaultPort = 27015;
 constexpr size_t MaxPlayers = 4;
 constexpr size_t MaxNicknameLength = 24;
@@ -107,6 +107,7 @@ enum class MessageType : u16 {
 	InventoryAdd  = 78, //!< H->C: string container, string classPath, s32 instance, s16 count, s32 price: a script put a new item into a container (replaces the "inventory add" replay so that ids match)
 	PlayerSpeech  = 79, //!< like PlayerState: u8 id, string sample: this player's character said a line (the others hear it from the puppet)
 	GiveGold      = 81, //!< C->H->target: u8 from, u8 to, u32 amount (see coop/Qol.cpp)
+	PlayerStats   = 82, //!< C->H: f32 attributes[4], f32 skills[9], f32 life, maxLife, mana, maxMana, hunger, poison, s32 gold, s32 level: the scripts' ^player_* answer for the acting client (see coop/Replication.cpp)
 	PhysicsState  = 80, //!< H->C: u16 n ragdolls (string id, f32 pos[3], u8 active, u16 bones, bones x f32[7] pos + quat xyzw), u16 n objects (string id, f32 pos[3], f32 angle[3], u8 active), see coop/PhysicsSync.cpp
 
 };

@@ -218,7 +218,10 @@ protocol).
 | Items created by scripts inside containers | ✅ | same id everywhere |
 | Handing items between players | ✅ | durability and poison kept |
 | Spells | ✅ | visuals everywhere, damage at the caster |
-| Persistent magic fields ("blue walls") | ✅ | recreated on arrival |
+| Magic traps, NPC spells (fire fields, lightning, fireballs) | ✅ | replayed for the eyes, damage dealt by the host |
+| Persistent magic fields ("blue walls") | ✅ | recreated on arrival, end together |
+| Burning players | ✅ | flames follow the player |
+| Skill checks of the scripts (lockpicking, alchemy, "not skilled enough") | ✅ | with the stats of the player who acts |
 | Level change | ✅ | grouped, led by the host |
 | Save / load | ✅ | host + everybody's character |
 | Joining in progress, reconnecting | ✅ | |
@@ -513,7 +516,10 @@ Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition RT (p
 | Objets créés par script dans un conteneur | ✅ | même identifiant partout |
 | Don d'objet entre joueurs | ✅ | durabilité et poison conservés |
 | Sorts | ✅ | visuels partout, dégâts chez le lanceur |
-| Champs magiques persistants (« murs bleus ») | ✅ | recréés à l'arrivée |
+| Pièges magiques, sorts des PNJ (champs de feu, éclairs, boules de feu) | ✅ | rejoués pour les yeux, dégâts infligés par l'hôte |
+| Champs magiques persistants (« murs bleus ») | ✅ | recréés à l'arrivée, disparaissent ensemble |
+| Joueurs en feu | ✅ | les flammes suivent le joueur |
+| Tests de compétence des scripts (crochetage, alchimie, « pas assez doué ») | ✅ | avec les stats du joueur qui agit |
 | Changement de niveau | ✅ | groupé, mené par l'hôte |
 | Sauvegarde / chargement | ✅ | hôte + perso de chacun |
 | Rejoindre en cours de partie, reconnexion | ✅ | |

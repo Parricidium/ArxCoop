@@ -53,6 +53,7 @@
 #include "gui/Menu.h"
 #include "core/Core.h"
 #include "core/SaveGame.h"
+#include "game/Spells.h"
 #include "graphics/Renderer.h"
 #include "gui/MenuWidgets.h"
 #include "platform/Time.h"
@@ -105,6 +106,27 @@ std::string g_lastDragId;            //!< Carried item last streamed to the othe
 bool g_lastDragInScene = false;
 PlatformInstant g_lastDragSend;
 constexpr PlatformDuration DragSendInterval = std::chrono::milliseconds(50);
+
+/*!
+ * Client: a game message received right behind the host's level state. The level we just
+ * imported is initialised on the next frame (levelInit(): spells, particles and script-spawned
+ * entities are wiped), so what the host sends behind its level state (the persistent magic
+ * fields recast, spawns) would be lost - the field's blue cube stayed, invisible, blocking the
+ * way (JD's friend, 16/09). Kept until the level is initialised.
+ */
+struct DeferredMessage {
+	PlayerId from;
+	MessageType type;
+	std::vector<u8> data;
+};
+std::vector<DeferredMessage> g_deferred;
+
+//! Host: the stats of every client, for the scripts' ^player_* variables (see PlayerStats).
+std::map<PlayerId, PlayerStats> g_remoteStats;
+PlayerStats g_sentStats;             //!< Client: what the host knows of us
+bool g_statsSent = false;
+PlatformInstant g_lastStatsCheck;
+constexpr PlatformDuration StatsCheckInterval = std::chrono::milliseconds(500);
 
 enum class Category {
 	World,  //!< Affects the shared world: executed on the host, replayed on every client
@@ -723,7 +745,94 @@ void applyDamagePlayer(Reader & reader) {
 	g_applyingRemote++;
 	float done = damagePlayer(damage, DamageType::load(type), nullptr);
 	g_applyingRemote--;
+	if((type & DAMAGE_TYPE_FIRE) && done > 0.f && !(entities.player()->ioflags & IO_INVULNERABILITY)) {
+		// Like the engine's fire damage: our character catches fire (and our puppet with it, the
+		// ignition travels with the player state)
+		entities.player()->ignition += done * 0.25f;
+	}
 	LogInfo << "[coop] took " << damage << " damage from the host's world" << (done > 0.f ? "" : " (ignored: invulnerable or dead)");
+}
+
+// Player stats -------------------------------------------------------------------------
+
+PlayerStats localStats() {
+	PlayerStats s;
+	s.strength = player.m_attributeFull.strength;
+	s.dexterity = player.m_attributeFull.dexterity;
+	s.constitution = player.m_attributeFull.constitution;
+	s.mind = player.m_attributeFull.mind;
+	s.stealth = player.m_skillFull.stealth;
+	s.mecanism = player.m_skillFull.mecanism;
+	s.intuition = player.m_skillFull.intuition;
+	s.etheralLink = player.m_skillFull.etheralLink;
+	s.objectKnowledge = player.m_skillFull.objectKnowledge;
+	s.casting = player.m_skillFull.casting;
+	s.projectile = player.m_skillFull.projectile;
+	s.closeCombat = player.m_skillFull.closeCombat;
+	s.defense = player.m_skillFull.defense;
+	s.life = player.lifePool.current;
+	s.maxLife = player.lifePool.max;
+	s.mana = player.manaPool.current;
+	s.maxMana = player.manaPool.max;
+	s.hunger = player.hunger;
+	s.poison = player.poison;
+	s.gold = player.gold;
+	s.level = player.level;
+	return s;
+}
+
+void sendPlayerStatsIfChanged() {
+	if(!g_coop.isClient() || !g_playthroughStarted) {
+		return;
+	}
+	PlatformInstant now = platform::getTime();
+	if(g_statsSent && now - g_lastStatsCheck < StatsCheckInterval) {
+		return;
+	}
+	g_lastStatsCheck = now;
+	PlayerStats stats = localStats();
+	if(g_statsSent && stats == g_sentStats) {
+		return;
+	}
+	g_sentStats = stats;
+	g_statsSent = true;
+	Writer writer;
+	for(float value : { stats.strength, stats.dexterity, stats.constitution, stats.mind,
+	                    stats.stealth, stats.mecanism, stats.intuition, stats.etheralLink, stats.objectKnowledge,
+	                    stats.casting, stats.projectile, stats.closeCombat, stats.defense,
+	                    stats.life, stats.maxLife, stats.mana, stats.maxMana, stats.hunger, stats.poison }) {
+		writer.f32_(value);
+	}
+	writer.s32_(s32(stats.gold));
+	writer.s32_(s32(stats.level));
+	g_coop.sendToHost(MessageType::PlayerStats, writer);
+}
+
+void applyPlayerStats(PlayerId from, Reader & reader) {
+	PlayerStats & s = g_remoteStats[from];
+	s.strength = reader.f32_();
+	s.dexterity = reader.f32_();
+	s.constitution = reader.f32_();
+	s.mind = reader.f32_();
+	s.stealth = reader.f32_();
+	s.mecanism = reader.f32_();
+	s.intuition = reader.f32_();
+	s.etheralLink = reader.f32_();
+	s.objectKnowledge = reader.f32_();
+	s.casting = reader.f32_();
+	s.projectile = reader.f32_();
+	s.closeCombat = reader.f32_();
+	s.defense = reader.f32_();
+	s.life = reader.f32_();
+	s.maxLife = reader.f32_();
+	s.mana = reader.f32_();
+	s.maxMana = reader.f32_();
+	s.hunger = reader.f32_();
+	s.poison = reader.f32_();
+	s.gold = reader.s32_();
+	s.level = reader.s32_();
+	LogDebug("[coop] stats of player " << int(from) << ": mecanism " << s.mecanism << " object knowledge " << s.objectKnowledge
+	         << " casting " << s.casting);
 }
 
 void applyDamageNpc(PlayerId from, Reader & reader) {
@@ -1024,7 +1133,19 @@ void applyDropItem(PlayerId from, Reader & reader) {
 }
 
 void handleGameMessage(PlayerId from, MessageType type, Reader & reader) {
+	if(g_coop.isClient() && g_requestLevelInit && type != MessageType::LevelState) {
+		std::pair<const u8 *, size_t> rest = reader.rest();
+		g_deferred.push_back({ from, type, std::vector<u8>(rest.first, rest.first + rest.second) });
+		reader.skip(rest.second);
+		return;
+	}
 	switch(type) {
+		case MessageType::PlayerStats: {
+			if(g_coop.isHost()) {
+				applyPlayerStats(from, reader);
+			}
+			break;
+		}
 		case MessageType::TakeItem: {
 			applyTakeItem(from, reader);
 			break;
@@ -1179,6 +1300,9 @@ void replicationInit() {
 void playthroughStarted() {
 	g_playthroughStarted = true;
 	g_levelSynced = false;
+	g_deferred.clear();
+	g_statsSent = false; // the host learns our character again (a fresh game or a loaded one)
+	g_remoteStats.clear();
 }
 
 void levelLoadBegin() {
@@ -1250,12 +1374,30 @@ void replicationUpdate() {
 		g_playthroughStarted = false;
 		g_pendingLevelRequests.clear();
 		g_readyClients.clear();
+		g_deferred.clear();
+		g_remoteStats.clear();
+		g_statsSent = false;
 		return;
 	}
 
 	if(inLevel()) {
 		settleThrownItems();
 	}
+
+	if(g_coop.isClient() && !g_requestLevelInit && !g_deferred.empty()) {
+		std::vector<DeferredMessage> queue;
+		queue.swap(g_deferred);
+		LogInfo << "[coop] level initialised: applying " << queue.size() << " messages received behind the level state";
+		for(const DeferredMessage & message : queue) {
+			Reader reader(message.data.data(), message.data.size());
+			try {
+				handleGameMessage(message.from, message.type, reader);
+			} catch(const ReadError & e) {
+				LogWarning << "[coop] bad deferred message " << int(message.type) << ": " << e.what();
+			}
+		}
+	}
+	sendPlayerStatsIfChanged();
 
 	if(g_coop.isHost()) {
 		if(!g_pendingLevelRequests.empty() && inLevel()) {
@@ -1331,6 +1473,46 @@ PuppetActorScope::~PuppetActorScope() {
 	if(m_active) {
 		g_actingPlayer = PlayerId(m_previous);
 	}
+}
+
+bool PlayerStats::operator==(const PlayerStats & o) const {
+	return strength == o.strength && dexterity == o.dexterity && constitution == o.constitution && mind == o.mind
+	       && stealth == o.stealth && mecanism == o.mecanism && intuition == o.intuition && etheralLink == o.etheralLink
+	       && objectKnowledge == o.objectKnowledge && casting == o.casting && projectile == o.projectile
+	       && closeCombat == o.closeCombat && defense == o.defense && life == o.life && maxLife == o.maxLife
+	       && mana == o.mana && maxMana == o.maxMana && hunger == o.hunger && poison == o.poison
+	       && gold == o.gold && level == o.level;
+}
+
+const PlayerStats * actingPlayerStats() {
+	if(!g_coop.isHost() || g_actingPlayer == InvalidPlayerId || g_actingPlayer == g_coop.localId()) {
+		return nullptr;
+	}
+	auto it = g_remoteStats.find(g_actingPlayer);
+	return it == g_remoteStats.end() ? nullptr : &it->second;
+}
+
+void fieldSpellEnded(const Entity * caster) {
+	if(!g_coop.isHost() || g_coop.state() != State::InGame || g_applyingRemote > 0 || g_levelLoading > 0 || !caster) {
+		return;
+	}
+	// The end is a local decision (an NPC walked onto it, its duration ran out): "spellcast -k"
+	// ends the clients' copies, which would otherwise stay and block them. The clients know our
+	// character as our puppet, and a client's own field is cast by "player" there
+	const std::vector<std::string> words = { "-k", "create_field" };
+	if(caster == entities.player()) {
+		sendScriptCommand(InvalidPlayerId, puppetIdString(g_coop.localId()), "spellcast", words);
+	} else if(caster->coopPuppet) {
+		PlayerId owner = puppetOwner(*caster);
+		for(const Player & other : g_coop.players()) {
+			if(other.id != g_coop.localId()) {
+				sendScriptCommand(other.id, other.id == owner ? std::string() : caster->idString(), "spellcast", words);
+			}
+		}
+	} else {
+		sendScriptCommand(InvalidPlayerId, caster->idString(), "spellcast", words);
+	}
+	LogInfo << "[coop] field of " << caster->idString() << " ended: clients told";
 }
 
 EntityInstance instanceBase() {

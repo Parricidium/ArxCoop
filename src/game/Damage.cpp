@@ -415,6 +415,12 @@ float damagePlayer(float dmg, DamageType type, Entity * source) {
 	if(source && source->coopPuppet) {
 		return 0; // another player's spell/attack seen locally: its damage comes through the network
 	}
+	if(source && source != entities.player() && coop::npcsAreMirrored() && !coop::applyingRemote()) {
+		// Same for the spells and blasts of the world (a trap's fire field, an NPC's fireball, a
+		// barrel): they are replayed here for the eyes, the host's copy hits our puppet and that
+		// damage comes through the network - taking it here too doubled it
+		return 0;
+	}
 	
 	if(player.lifePool.current == 0.f) {
 		return 0.f;
@@ -846,6 +852,9 @@ float damageNpc(Entity & npc, float dmg, Entity * source, Spell * spell, DamageT
 	
 	// Co-op: NPCs only live on the host
 	if(coop::npcsAreMirrored()) {
+		if(source && source != entities.player() && !coop::applyingRemote()) {
+			return 0.f; // a spell or blast of the world replayed here for the eyes: the host's copy does the damage
+		}
 		coop::forwardNpcDamage(npc, dmg, type, pos);
 		return dmg;
 	}
