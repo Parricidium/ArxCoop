@@ -48,6 +48,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "coop/Faces.h"
 #include "coop/Puppets.h"
+#include "coop/Roll.h"
 #include "coop/Replication.h"
 
 #include <stddef.h>
@@ -2001,7 +2002,8 @@ static void PlayerMovementIterate(float DeltaTime) {
 			
 			impulse *= scale / glm::length(impulse) * jump_mul;
 		}
-		
+		coop::rollImpulse(impulse); // (dodge roll: its own burst, the crouch animation carries none)
+
 		if(player.jumpphase != NotJumping) {
 			// No Vertical Interpolation
 			entities.player()->_npcdata->vvpos = -99999.f;

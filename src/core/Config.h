@@ -86,6 +86,7 @@ enum ControlAction {
 	CONTROLS_CUST_CAMERA_ZOOM_OUT, //!< co-op mod: third person, camera further
 	CONTROLS_CUST_PING,            //!< co-op mod: "look here" marker for the teammates
 	CONTROLS_CUST_ADMIN,           //!< co-op mod: in-game administration / tools page
+	CONTROLS_CUST_ROLL,            //!< co-op mod: dodge roll (coop/Roll.cpp)
 	NUM_ACTION_KEY
 };
 

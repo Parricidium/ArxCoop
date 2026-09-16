@@ -1679,6 +1679,7 @@ public:
 		addControlRow(CONTROLS_CUST_CAMERA_ZOOM_OUT, "system_menus_options_input_customize_controls_camera_zoom_out", "Caméra plus loin (3e pers.)");
 		addControlRow(CONTROLS_CUST_PING, "system_menus_options_input_customize_controls_ping", "Marqueur « par ici » (coop)");
 		addControlRow(CONTROLS_CUST_ADMIN, "system_menus_options_input_customize_controls_admin", "Administration / outils (coop)");
+		addControlRow(CONTROLS_CUST_ROLL, "system_menus_options_input_customize_controls_roll", "Roulade (esquive)");
 		
 		if(config.input.allowConsole) {
 			addControlRow(CONTROLS_CUST_CONSOLE, "system_menus_options_input_customize_controls_console");

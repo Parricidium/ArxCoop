@@ -59,6 +59,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "coop/Admin.h"
 #include "coop/Qol.h"
 #include "coop/Replication.h"
+#include "coop/Roll.h"
 #include "coop/Session.h"
 #include "coop/ThirdPerson.h"
 #include "ai/Paths.h"
@@ -1495,8 +1496,9 @@ void ArxGame::updateFirstPersonCamera() {
 		return;
 		
 	} else {
-		
+
 		g_playerCamera.angle = player.angle;
+		coop::rollCameraEffect(g_playerCamera.angle); // (dodge roll: the view dips)
 		
 		if(VertexId viewVertex = io->obj->fastaccess.view_attach) {
 			
@@ -1857,6 +1859,7 @@ void ArxGame::updateLevel() {
 	if(!player.m_paralysed) {
 		manageEditorControls();
 
+		coop::rollUpdate();
 		if(!BLOCK_PLAYER_CONTROLS && !coop::dialogueHold()) {
 			managePlayerControls();
 		}
@@ -1922,10 +1925,17 @@ void ArxGame::updateLevel() {
 			AnimationDuration framedelay = toAnimationDuration(g_platformTime.lastFrameDuration());
 			Entity * entity = entities.player();
 			
+			// Co-op mod: our own body somersaults through a dodge roll when it is on screen
+			// (never in first person: the eye follows the head vertex)
+			Anglef bodyAngle = entity->angle;
+			Vec3f bodyPos = entity->pos;
+			if(coop::thirdPersonActive() || EXTERNALVIEW) {
+				coop::rollTumble(coop::rollPhase(), bodyAngle, bodyPos);
+			}
 			EERIEDrawAnimQuatUpdate(entity->obj,
 			                        entity->animlayer.data(),
-			                        entity->angle,
-			                        entity->pos,
+			                        bodyAngle,
+			                        bodyPos,
 			                        framedelay,
 			                        entity,
 			                        true);
