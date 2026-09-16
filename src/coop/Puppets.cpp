@@ -1474,12 +1474,15 @@ bool puppetAimPitch(const Entity & caster, float & pitch) {
 	return true;
 }
 
+extern Entity * g_localTorchDisplay;
+
 void puppetsReset() {
 	for(auto & entry : g_remote) {
 		removePuppet(entry.first);
 	}
 	g_remote.clear();
 	g_npcTargets.clear();
+	g_localTorchDisplay = nullptr; // (gone with the level's entities)
 }
 
 //! Puppets only make sense while actually playing (not in the menu's background level or the intro).
@@ -2780,8 +2783,10 @@ std::string g_localTorchClass;
 
 void localTorchDisplayUpdate() {
 
-	// The copy may have been destroyed with the level
-	if(g_localTorchDisplay && !entities.get(g_localTorchDisplay->index())) {
+	// The copy may have been destroyed with the level: a pointer check only, never a read through
+	// it (reading its index from freed memory could name a live entity of the new level - the
+	// host crashed in destroy() on it after a level change in third person, JD, 16/09)
+	if(g_localTorchDisplay && !ValidIOAddress(g_localTorchDisplay)) {
 		g_localTorchDisplay = nullptr;
 	}
 
