@@ -1038,13 +1038,17 @@ ValueType getSystemVar(const script::Context & context, std::string_view name,
 				return TYPE_TEXT;
 			}
 			
+			// Co-op host: a script processing a client's action (lockpicking, alchemy, "not
+			// skilled enough"...) reads that player's stats, not ours
+			const coop::PlayerStats * acting = coop::actingPlayerStats();
+
 			if(boost::starts_with(name, "^player_life")) {
-				*fcontent = player.Full_life; // TODO why not player.life like everywhere else?
+				*fcontent = acting ? acting->life : player.Full_life; // TODO why not player.life like everywhere else?
 				return TYPE_FLOAT;
 			}
 
 			if(boost::starts_with(name, "^player_mana")) {
-				*fcontent = player.manaPool.current;
+				*fcontent = acting ? acting->mana : player.manaPool.current;
 				return TYPE_FLOAT;
 			}
 			
@@ -1074,92 +1078,92 @@ ValueType getSystemVar(const script::Context & context, std::string_view name,
 			}
 			
 			if(boost::starts_with(name, "^player_gold")) {
-				*fcontent = static_cast<float>(player.gold);
+				*fcontent = acting ? static_cast<float>(acting->gold) : static_cast<float>(player.gold);
 				return TYPE_FLOAT;
 			}
 			
 			if(boost::starts_with(name, "^player_maxlife")) {
-				*fcontent = player.lifePool.max;
+				*fcontent = acting ? acting->maxLife : player.lifePool.max;
 				return TYPE_FLOAT;
 			}
 
 			if(boost::starts_with(name, "^player_maxmana")) {
-				*fcontent = player.manaPool.max;
+				*fcontent = acting ? acting->maxMana : player.manaPool.max;
 				return TYPE_FLOAT;
 			}
 			
 			if(boost::starts_with(name, "^player_attribute_strength")) {
-				*fcontent = player.m_attributeFull.strength;
+				*fcontent = acting ? acting->strength : player.m_attributeFull.strength;
 				return TYPE_FLOAT;
 			}
 			
 			if(boost::starts_with(name, "^player_attribute_dexterity")) {
-				*fcontent = player.m_attributeFull.dexterity;
+				*fcontent = acting ? acting->dexterity : player.m_attributeFull.dexterity;
 				return TYPE_FLOAT;
 			}
 			
 			if(boost::starts_with(name, "^player_attribute_constitution")) {
-				*fcontent = player.m_attributeFull.constitution;
+				*fcontent = acting ? acting->constitution : player.m_attributeFull.constitution;
 				return TYPE_FLOAT;
 			}
 			
 			if(boost::starts_with(name, "^player_attribute_mind")) {
-				*fcontent = player.m_attributeFull.mind;
+				*fcontent = acting ? acting->mind : player.m_attributeFull.mind;
 				return TYPE_FLOAT;
 			}
 			
 			if(boost::starts_with(name, "^player_skill_stealth")) {
-				*fcontent = player.m_skillFull.stealth;
+				*fcontent = acting ? acting->stealth : player.m_skillFull.stealth;
 				return TYPE_FLOAT;
 			}
 			
 			if(boost::starts_with(name, "^player_skill_mecanism")) {
-				*fcontent = player.m_skillFull.mecanism;
+				*fcontent = acting ? acting->mecanism : player.m_skillFull.mecanism;
 				return TYPE_FLOAT;
 			}
 			
 			if(boost::starts_with(name, "^player_skill_intuition")) {
-				*fcontent = player.m_skillFull.intuition;
+				*fcontent = acting ? acting->intuition : player.m_skillFull.intuition;
 				return TYPE_FLOAT;
 			}
 			
 			if(boost::starts_with(name, "^player_skill_etheral_link")) {
-				*fcontent = player.m_skillFull.etheralLink;
+				*fcontent = acting ? acting->etheralLink : player.m_skillFull.etheralLink;
 				return TYPE_FLOAT;
 			}
 			
 			if(boost::starts_with(name, "^player_skill_object_knowledge")) {
-				*fcontent = player.m_skillFull.objectKnowledge;
+				*fcontent = acting ? acting->objectKnowledge : player.m_skillFull.objectKnowledge;
 				return TYPE_FLOAT;
 			}
 			
 			if(boost::starts_with(name, "^player_skill_casting")) {
-				*fcontent = player.m_skillFull.casting;
+				*fcontent = acting ? acting->casting : player.m_skillFull.casting;
 				return TYPE_FLOAT;
 			}
 			
 			if(boost::starts_with(name, "^player_skill_projectile")) {
-				*fcontent = player.m_skillFull.projectile;
+				*fcontent = acting ? acting->projectile : player.m_skillFull.projectile;
 				return TYPE_FLOAT;
 			}
 			
 			if(boost::starts_with(name, "^player_skill_close_combat")) {
-				*fcontent = player.m_skillFull.closeCombat;
+				*fcontent = acting ? acting->closeCombat : player.m_skillFull.closeCombat;
 				return TYPE_FLOAT;
 			}
 			
 			if(boost::starts_with(name, "^player_skill_defense")) {
-				*fcontent = player.m_skillFull.defense;
+				*fcontent = acting ? acting->defense : player.m_skillFull.defense;
 				return TYPE_FLOAT;
 			}
 			
 			if(boost::starts_with(name, "^player_hunger")) {
-				*fcontent = player.hunger;
+				*fcontent = acting ? acting->hunger : player.hunger;
 				return TYPE_FLOAT;
 			}
 			
 			if(boost::starts_with(name, "^player_poison")) {
-				*fcontent = player.poison;
+				*fcontent = acting ? acting->poison : player.poison;
 				return TYPE_FLOAT;
 			}
 			

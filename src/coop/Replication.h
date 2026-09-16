@@ -112,6 +112,29 @@ public:
 	~PlayerActorScope();
 };
 
+/*!
+ * The stats of a player as the scripts read them (^player_skill_mecanism, ^player_attribute_strength,
+ * ^player_life...). Each client sends its own to the host, which answers those variables for the
+ * client whose action a script is processing: lockpicking, alchemy, "not skilled enough" checks
+ * are made with the stats of the player who acts, not the host's.
+ */
+struct PlayerStats {
+	float strength = 0.f, dexterity = 0.f, constitution = 0.f, mind = 0.f;
+	float stealth = 0.f, mecanism = 0.f, intuition = 0.f, etheralLink = 0.f, objectKnowledge = 0.f;
+	float casting = 0.f, projectile = 0.f, closeCombat = 0.f, defense = 0.f;
+	float life = 0.f, maxLife = 0.f, mana = 0.f, maxMana = 0.f, hunger = 0.f, poison = 0.f;
+	long gold = 0;
+	long level = 0;
+	bool operator==(const PlayerStats & o) const;
+	bool operator!=(const PlayerStats & o) const { return !(*this == o); }
+};
+
+//! Host: the stats of the client whose action is being processed, or null (use the local player's).
+const PlayerStats * actingPlayerStats();
+
+//! Host: a persistent magic field cast by a world entity ended (someone stood on it...): the clients end theirs too.
+void fieldSpellEnded(const Entity * caster);
+
 //! Sends a recorded (executed) command to the players that need it.
 void commandReplicated(std::string_view command, const std::vector<std::string> & words,
                        const script::Context & context);

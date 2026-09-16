@@ -2746,8 +2746,8 @@ void ManageIgnition(Entity & io) {
 		
 	} else {
 		
-		if(!io.coopPuppet) { // (co-op hip lamps without a "fire" point keep burning)
-			io.ignition -= g_framedelay * 0.01f;
+		if(!(io.coopPuppet && (io.ioflags & IO_ITEM))) { // (co-op hip lamps without a "fire" point keep burning)
+			io.ignition -= g_framedelay * 0.01f; // (a burning puppet follows its player's ignition, see coop/Puppets.cpp)
 		}
 		
 		if(addParticles && io.obj && !io.obj->facelist.empty()) {
