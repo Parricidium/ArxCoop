@@ -101,6 +101,19 @@ bool g_playthroughStarted = false;         //!< Client: our own character is rea
 int g_levelLoading = 0;                    //!< > 0 while a level is being loaded
 int g_applyingRemote = 0;      //!< > 0 while applying something received from the network
 bool g_creatingProxy = false;  //!< Host: suppress replication while a proxy item initializes
+/*!
+ * Host: a client's item stand-in kept after its event, for the script parts that come later - the
+ * lockpicks are told "interactive again" and "damage" 3 s after the picking, the alchemy
+ * ingredient turns into the potion from a 2 s timer of its own (destroyed at once, the client
+ * kept its ingredient and got nothing - JD's friend, 16/09).
+ */
+struct PendingProxy {
+	EntityHandle handle;
+	std::string id;
+	PlatformInstant until;
+};
+std::vector<PendingProxy> g_pendingProxies;
+constexpr PlatformDuration ProxyGrace = std::chrono::seconds(15);
 std::set<std::string> g_inFlight;    //!< Items we threw and that are still flying
 std::string g_lastDragId;            //!< Carried item last streamed to the others
 bool g_lastDragInScene = false;
@@ -429,6 +442,21 @@ void forwardEvent(Entity * sender, Entity * entity, const ScriptEventName & even
 		writer.string(sender->classPath().string());
 		writer.s32_(sender->instance());
 		writer.bool_(sender->over_script.valid);
+		// The item's state, so that its stand-in on the host behaves like it (a worn set of
+		// lockpicks breaks when it should, a stack is a stack)
+		writer.u16_(u16(std::min<size_t>(sender->m_variables.size(), 0xFFFF)));
+		for(size_t i = 0; i < sender->m_variables.size() && i < 0xFFFF; i++) {
+			const SCRIPT_VAR & var = sender->m_variables[i];
+			writer.string(var.name);
+			writer.s32_(s32(var.ival));
+			writer.f32_(var.fval);
+			writer.string(var.text);
+		}
+		writer.f32_(sender->durability);
+		writer.f32_(sender->max_durability);
+		writer.raw(s16((sender->ioflags & IO_ITEM) ? sender->_itemdata->count : 1));
+		writer.raw(s16(sender->poisonous));
+		writer.raw(s16(sender->poisonous_count));
 	} else {
 		writer.string("player");
 		writer.string("");
@@ -479,6 +507,33 @@ void applyForwardedEvent(PlayerId from, Reader & reader) {
 				proxy->ioflags |= IO_NOSAVE | IO_NO_COLLISIONS;
 				proxy->show = SHOW_FLAG_HIDDEN;
 				sender = proxy;
+				LogInfo << "[coop] stand-in " << proxy->idString() << " for player " << int(from) << "'s item";
+			}
+		}
+		// The real item's state (see forwardEvent), on a fresh stand-in or one kept from a previous event
+		if(sender && sender->coopProxy && reader.remaining() >= sizeof(u16)) {
+			u16 vars = reader.u16_();
+			sender->m_variables.clear();
+			for(u16 i = 0; i < vars; i++) {
+				SCRIPT_VAR var(reader.string());
+				var.ival = reader.s32_();
+				var.fval = reader.f32_();
+				var.text = reader.string();
+				sender->m_variables.push_back(std::move(var));
+			}
+			sender->durability = reader.f32_();
+			sender->max_durability = reader.f32_();
+			s16 count = reader.raw<s16>();
+			if(sender->ioflags & IO_ITEM) {
+				sender->_itemdata->count = count;
+			}
+			sender->poisonous = reader.raw<s16>();
+			sender->poisonous_count = reader.raw<s16>();
+			// A kept stand-in is in use again: keep it a while longer
+			for(PendingProxy & pending : g_pendingProxies) {
+				if(pending.handle == sender->index()) {
+					pending.until = platform::getTime() + ProxyGrace;
+				}
 			}
 		}
 	}
@@ -496,10 +551,39 @@ void applyForwardedEvent(PlayerId from, Reader & reader) {
 			proxy->coopProxy = false; // the script took it: it is part of the world now
 			proxy->ioflags &= ~(IO_NOSAVE | IO_NO_COLLISIONS);
 		} else {
-			proxy->destroy();
+			g_pendingProxies.push_back({ proxy->index(), proxy->idString(), platform::getTime() + ProxyGrace });
 		}
 	}
 
+}
+
+bool hasScriptTimers(const Entity & io) {
+	for(const SCR_TIMER & timer : g_scriptTimers) {
+		if(timer.exist && timer.io == &io) {
+			return true;
+		}
+	}
+	return false;
+}
+
+//! Host: destroys the kept stand-ins once their scripts are done with them (see PendingProxy).
+void expireProxies() {
+	PlatformInstant now = platform::getTime();
+	for(auto it = g_pendingProxies.begin(); it != g_pendingProxies.end(); ) {
+		Entity * io = entities.get(it->handle);
+		if(!io || !io->coopProxy || io->idString() != it->id) {
+			it = g_pendingProxies.erase(it); // gone (level change), or the slot reused
+		} else if(io->owner() || io->show != SHOW_FLAG_HIDDEN) {
+			io->coopProxy = false; // a later script took it: it is part of the world now
+			io->ioflags &= ~(IO_NOSAVE | IO_NO_COLLISIONS);
+			it = g_pendingProxies.erase(it);
+		} else if(now >= it->until && !hasScriptTimers(*io)) {
+			io->destroy();
+			it = g_pendingProxies.erase(it);
+		} else {
+			++it;
+		}
+	}
 }
 
 // Shared state --------------------------------------------------------------------------
@@ -1307,6 +1391,7 @@ void playthroughStarted() {
 
 void levelLoadBegin() {
 	g_levelLoading++;
+	g_pendingProxies.clear();
 }
 
 void levelLoadEnd() {
@@ -1400,6 +1485,9 @@ void replicationUpdate() {
 	sendPlayerStatsIfChanged();
 
 	if(g_coop.isHost()) {
+		if(inLevel()) {
+			expireProxies();
+		}
 		if(!g_pendingLevelRequests.empty() && inLevel()) {
 			for(PlayerId id : g_pendingLevelRequests) {
 				if(g_coop.player(id)) {
@@ -2184,10 +2272,20 @@ CommandSync commandSync(std::string_view command, const script::Context & contex
 		takeOverCutscene(*entity);
 	}
 
-	// Commands in the context of a client's item stand-in belong to that client
+	// Commands in the context of a client's item stand-in belong to that client. The script
+	// itself (if, goto, accept, timers, sendevent...) runs here: only its effects travel
 	if(entity->coopProxy) {
-		return (g_actingPlayer != InvalidPlayerId && g_actingPlayer != g_coop.localId())
-		       ? CommandSync::Redirect : CommandSync::Local;
+		if(g_actingPlayer == InvalidPlayerId || g_actingPlayer == g_coop.localId()
+		   || commandTable().find(std::string(command)) == commandTable().end()) {
+			return CommandSync::Local;
+		}
+		if(command == "set" || command == "inc" || command == "dec" || command == "mul" || command == "div"
+		   || command == "setdurability" || command == "setcount" || command == "setpoisonous") {
+			// The stand-in keeps up with the real item: the script's own tests on it
+			// ("objectlife < 1: break") are made here
+			return CommandSync::Mirror;
+		}
+		return CommandSync::Redirect;
 	}
 
 	if(isPlayerSide(entity)) {
@@ -2244,8 +2342,37 @@ void commandReplicated(std::string_view command, const std::vector<std::string> 
 	const Entity * entity = context.getEntity();
 
 	if(command == "spawn") {
-		if(LASTSPAWNED && ValidIOAddress(LASTSPAWNED)) {
+		if(!words.empty() && util::toLowercase(words[0]) == "fireball") {
+			// A trap's fireball (pressure pads, wall holes): the clients fly the same missile for
+			// the eyes, only ours blasts (Missile.cpp)
+			sendScriptCommand(InvalidPlayerId, entity->idString(), command, words);
+		} else if(LASTSPAWNED && ValidIOAddress(LASTSPAWNED)) {
 			sendSpawn(*LASTSPAWNED);
+		}
+		return;
+	}
+
+	if(command == "spellcast" && !words.empty() && util::toLowercase(words.back()) == "player") {
+		// Aimed at "the player": the one who set it off (or us). Its own machine knows it as
+		// "player", the others as its puppet - replayed as is, every client would be shot at
+		PlayerId actor = g_actingPlayer;
+		if(actor == InvalidPlayerId && (entity->ioflags & IO_NPC)) {
+			// An NPC's own decision (combat): at the player it is fighting
+			const Entity * target = entities.get(entity->targetinfo);
+			if(target && target->coopPuppet) {
+				actor = puppetOwner(*target);
+			}
+		}
+		if(actor == InvalidPlayerId) {
+			actor = g_coop.localId();
+		}
+		for(const Player & other : g_coop.players()) {
+			if(other.id == g_coop.localId()) {
+				continue;
+			}
+			std::vector<std::string> aimed = words;
+			aimed.back() = other.id == actor ? std::string("player") : puppetIdString(actor);
+			sendScriptCommand(other.id, entity->idString(), command, aimed);
 		}
 		return;
 	}
@@ -2308,6 +2435,15 @@ void commandReplicated(std::string_view command, const std::vector<std::string> 
 	sendScriptCommand(InvalidPlayerId, entity->idString(), command, sent);
 }
 
+void commandMirrored(std::string_view command, const std::vector<std::string> & words, const script::Context & context) {
+	const Entity * entity = context.getEntity();
+	if(!entity || g_actingPlayer == InvalidPlayerId) {
+		return;
+	}
+	sendScriptCommand(g_actingPlayer, entity->idString(), command, words);
+	LogInfo << "[coop] mirrored to player " << int(g_actingPlayer) << ": " << entity->idString() << ": " << buildLine(command, words);
+}
+
 void commandRedirected(std::string_view command, script::Context & context) {
 
 	// Read the parameters the way the command would, resolving variables, without executing it
@@ -2337,7 +2473,7 @@ void commandRedirected(std::string_view command, script::Context & context) {
 	const Entity * entity = context.getEntity();
 	std::string entityId = entity ? entity->idString() : std::string();
 	sendScriptCommand(g_actingPlayer, entityId, command, words);
-	LogDebug("[coop] redirected to player " << int(g_actingPlayer) << ": " << buildLine(command, words));
+	LogInfo << "[coop] redirected to player " << int(g_actingPlayer) << ": " << entityId << ": " << buildLine(command, words);
 }
 
 /*!

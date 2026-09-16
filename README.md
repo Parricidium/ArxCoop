@@ -222,6 +222,8 @@ protocol).
 | Persistent magic fields ("blue walls") | ✅ | recreated on arrival, end together |
 | Burning players | ✅ | flames follow the player |
 | Skill checks of the scripts (lockpicking, alchemy, "not skilled enough") | ✅ | with the stats of the player who acts |
+| Using your items on the world (lockpicks wear out, alchemy brews the potion) | ✅ | the host runs the script, the effects reach your item |
+| Locked chests and doors | ✅ | the label says the Mechanism skill needed to pick them |
 | Level change | ✅ | grouped, led by the host |
 | Save / load | ✅ | host + everybody's character |
 | Joining in progress, reconnecting | ✅ | |
@@ -520,6 +522,8 @@ Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition RT (p
 | Champs magiques persistants (« murs bleus ») | ✅ | recréés à l'arrivée, disparaissent ensemble |
 | Joueurs en feu | ✅ | les flammes suivent le joueur |
 | Tests de compétence des scripts (crochetage, alchimie, « pas assez doué ») | ✅ | avec les stats du joueur qui agit |
+| Vos objets utilisés sur le monde (crochets qui s'usent, alchimie qui fabrique la potion) | ✅ | l'hôte joue le script, les effets arrivent sur votre objet |
+| Coffres et portes verrouillés | ✅ | l'étiquette indique le Mécanisme requis pour crocheter |
 | Changement de niveau | ✅ | groupé, mené par l'hôte |
 | Sauvegarde / chargement | ✅ | hôte + perso de chacun |
 | Rejoindre en cours de partie, reconnexion | ✅ | |

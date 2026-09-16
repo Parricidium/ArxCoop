@@ -70,6 +70,7 @@ enum class CommandSync {
 	Local,     //!< Execute normally, nothing to send
 	Replicate, //!< Execute, record the parameters and send them to the other players
 	Redirect,  //!< Do not execute here: send the command to the acting player instead
+	Mirror,    //!< Execute here (a client's item stand-in keeps up with the real item) and send it to the acting player
 };
 
 //! Decides what to do with a script command about to be executed.
@@ -141,6 +142,9 @@ void commandReplicated(std::string_view command, const std::vector<std::string> 
 
 //! Parses the parameters of a command without executing it and sends it to the acting player.
 void commandRedirected(std::string_view command, script::Context & context);
+
+//! Sends an executed command (see CommandSync::Mirror) to the acting player.
+void commandMirrored(std::string_view command, const std::vector<std::string> & words, const script::Context & context);
 
 //! Called by the script variable setters when a global variable changes.
 void globalVariableChanged(std::string_view name, const SCRIPT_VAR & var);
