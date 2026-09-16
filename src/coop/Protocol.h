@@ -37,7 +37,7 @@
  */
 namespace coop {
 
-constexpr u32 ProtocolVersion = 17;
+constexpr u32 ProtocolVersion = 18; // 18: item state (script variables, enchantments...) behind GiveItem/DropItem/StoreItem, halos behind PlayerEquipment
 constexpr u16 DefaultPort = 27015;
 constexpr size_t MaxPlayers = 4;
 constexpr size_t MaxNicknameLength = 24;
@@ -90,19 +90,19 @@ enum class MessageType : u16 {
 	SpeechSkip    = 56, //!< both: (empty) someone skipped the current speech / cutscene
 	Revive        = 57, //!< C->H: u8 target id / H->C: (empty) you are revived
 	TakeItem      = 58, //!< both: string id: this world item is now in someone's inventory
-	DropItem      = 59, //!< both: string id, string classPath, s32 instance, f32 pos[3], f32 angle[3], u8 hasInstanceScript, s16 count, u8 thrown, f32 dir[3]
-	PlayerEquipment = 60, //!< like PlayerState: u8 id, u8 skin, u8 combat, 3 x (string tweak, string skinFrom, string skinTo), string weapon, string shield, string torch
+	DropItem      = 59, //!< both: string id, string classPath, s32 instance, f32 pos[3], f32 angle[3], u8 hasInstanceScript, s16 count, u8 thrown, f32 dir[3], then the item state (coop::writeItemState)
+	PlayerEquipment = 60, //!< like PlayerState: u8 id, u8 skin, u8 combat, 3 x (string tweak, string skinFrom, string skinTo), string weapon, string shield, string torch, then 5 x (u32 haloFlags, f32 rgb[3], f32 radius) for weapon, shield, helmet, armor, leggings
 	DragItem      = 63, //!< both: like DropItem up to hasInstanceScript, then u8 inScene: a world item is being carried around
 	SharedBag     = 64, //!< both: (empty) someone used a backpack: everyone gets the extra inventory
 	TeleportPlayer = 65, //!< both: u8 target, u32 area, f32 pos[3], f32 yaw (a client sends it to the host, which applies or relays)
 	PlayerFace    = 66, //!< like PlayerState: u8 id, u8 mode (see coop/Faces.h), u32 size, JPEG bytes
 	PlayerMarker  = 70, //!< like PlayerState: u8 id, u32 area, f32 pos[3]: "look here" ping
-	GiveItem      = 71, //!< C->H->target: u8 from, u8 to, string classPath, s16 count, f32 durability, f32 maxDurability, s16 poisonous, s16 poisonousCount
+	GiveItem      = 71, //!< C->H->target: u8 from, u8 to, string classPath, s16 count, f32 durability, f32 maxDurability, s16 poisonous, s16 poisonousCount, then the item state (coop::writeItemState)
 	Latency       = 72, //!< H->C: u8 n, (u8 id, u16 ms) * n
 	Sound         = 73, //!< H->C: u8 kind (0 sample, 1 collision), string sample | u8 mat1 u8 mat2, f32 pos[3], f32 pitch, f32 volume
 	AdminGrant    = 75, //!< H->C: u8 kind (0 heal + revive, 1 gold, 2 xp, 3 invulnerability), s32 amount
 	Blood         = 74, //!< like PlayerState: u8 sender, u32 area, u8 targetKind (0 entity, 1 player), string id | u8 player, f32 pos[3], f32 source[3], f32 damages, u8 rgb[3], u8 effects (1 splat + decal, 2 blood)
-	StoreItem     = 76, //!< both: like DropItem up to hasInstanceScript, s16 count, string container, s16 bag, s16 x, s16 y: someone put an item into a chest / merchant
+	StoreItem     = 76, //!< both: like DropItem up to hasInstanceScript, s16 count, string container, s16 bag, s16 x, s16 y, then the item state: someone put an item into a chest / merchant
 	SetCount      = 77, //!< both: string id, s16 count: a stack of a world container changed size (one bought, one taken)
 	InventoryAdd  = 78, //!< H->C: string container, string classPath, s32 instance, s16 count, s32 price: a script put a new item into a container (replaces the "inventory add" replay so that ids match)
 	PlayerSpeech  = 79, //!< like PlayerState: u8 id, string sample: this player's character said a line (the others hear it from the puppet)

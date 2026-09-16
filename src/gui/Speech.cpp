@@ -119,6 +119,9 @@ static void releaseSpeech(Speech & speech) {
 	ARX_SOUND_Stop(speech.sample);
 	speech.sample = audio::SourcedSample();
 	
+	if(!speech.speaker) {
+		return; // already released: a script run by endSpeech() re-entered the speech system
+	}
 	arx_assert(ValidIOAddress(speech.speaker));
 	
 	if(speech.speaker->animlayer[2].cur_anim) {
@@ -128,6 +131,12 @@ static void releaseSpeech(Speech & speech) {
 	
 	speech.speaker = nullptr;
 	
+}
+
+//! Drops the entries released by releaseSpeech() / endSpeech(): a fresh scan, safe after a script
+//! has added, cleared or reset speeches.
+static void removeReleasedSpeech() {
+	util::unordered_remove_if(g_speech, [](const Speech & speech) { return !speech.speaker; });
 }
 
 void ARX_SPEECH_ReleaseIOSpeech(const Entity & entity) {
@@ -179,8 +188,13 @@ static void endSpeech(Speech & speech) {
 void ARX_SPEECH_ClearIOSpeech(const Entity & entity) {
 	
 	if(auto it = getSpeechItForEntity(entity); it != g_speech.end()) {
+		// endSpeech() resumes the speech's script, which can speak again (ARX_SPEECH_AddSpeech),
+		// clear or reset speeches: g_speech may have been reallocated, shrunk or reordered, so
+		// neither `it` nor its index is valid any more. The released entries (this one and any
+		// nested one) are dropped by a fresh scan instead of an erase at `it`. Crashed the co-op
+		// host on a second dialogue takeover with its own line still playing (JD, 16/09).
 		endSpeech(*it);
-		util::unordered_erase(g_speech, it);
+		removeReleasedSpeech();
 	}
 	
 }
@@ -284,7 +298,17 @@ void ARX_SPEECH_Update() {
 		ARX_CONVERSATION_CheckAcceleratedSpeech();
 	}
 	
-	for(Speech & speech : g_speech) {
+	// Ending a speech resumes its script, and a "speak" line there adds a speech (the vector may
+	// reallocate) or clears the speaker's current one (unordered_erase moves the last entry
+	// down): no reference may be held across it. Index loop, entry re-fetched each time,
+	// entries released by such a nested call (speaker null) skipped. Crashed the co-op host
+	// on a second dialogue takeover with its own line still playing (JD, 16/09).
+	for(size_t i = 0; i < g_speech.size(); i++) {
+		
+		Speech & speech = g_speech[i];
+		if(!speech.speaker) {
+			continue;
+		}
 		
 		arx_assert(ValidIOAddress(speech.speaker));
 		
@@ -308,13 +332,13 @@ void ARX_SPEECH_Update() {
 		
 		// checks finished speech
 		if(now >= speech.time_creation + speech.duration) {
-			endSpeech(speech);
+			endSpeech(g_speech[i]); // (may add or erase entries: nothing below uses the reference)
 		}
 		
 	}
 	
-	util::unordered_remove_if(g_speech, [](const Speech & speech) { return !speech.speaker; });
-	
+	removeReleasedSpeech();
+
 	if(!cinematicBorder.isActive() || cinematicBorder.CINEMA_DECAL < 100.f) {
 		return;
 	}
@@ -400,8 +424,8 @@ void ARX_SPEECH_Update() {
 Speech * getCinematicSpeech() {
 	
 	for(Speech & speech : g_speech) {
-		if(speech.cine.type != ARX_CINE_SPEECH_NONE) {
-			return &speech;
+		if(speech.speaker && speech.cine.type != ARX_CINE_SPEECH_NONE) {
+			return &speech; // (a released entry, speaker null, is never the cinematic one)
 		}
 	}
 	

@@ -36,6 +36,7 @@
 #include "math/Vector.h"
 
 class Entity;
+struct IO_HALO;
 
 namespace coop {
 
@@ -78,6 +79,9 @@ EntityHandle attackTarget(const Entity & npc, EntityHandle target);
 
 //! Owner of a puppet entity, or InvalidPlayerId.
 PlayerId puppetOwner(const Entity & io);
+
+//! Halo of a puppet's worn helmet (0), armor (1) or leggings (2) when it glows, else null (AnimationRender.cpp).
+IO_HALO * puppetSlotHalo(const Entity & puppet, unsigned slot);
 
 //! The puppet of a player in this level, or null
 Entity * puppetOf(PlayerId id);

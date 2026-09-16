@@ -265,6 +265,7 @@ bool giveItemToPuppet(Entity & item, const Entity & puppet) {
 	writer.f32_(item.max_durability);
 	writer.raw<s16>(item.poisonous);
 	writer.raw<s16>(item.poisonous_count);
+	writeItemState(writer, captureItemState(item)); // what its scripts made of it: a scroll's spell, an enchantment, its name
 	if(g_coop.isHost()) {
 		g_coop.sendTo(to, MessageType::GiveItem, writer);
 	} else {
@@ -272,7 +273,7 @@ bool giveItemToPuppet(Entity & item, const Entity & puppet) {
 	}
 	notification_add(trs("coop_given_to", "Donn\xC3\xA9 \xC3\xA0 ") + nameOf(to));
 	ARX_SOUND_PlayInterface(g_snd.INVSTD);
-	item.destroy();
+	itemHandedOver(item); // (hidden, not destroyed: its number stays taken, see Replication.h)
 	return true;
 }
 
@@ -288,6 +289,7 @@ void handleGiveItem(PlayerId from, Reader & reader) {
 	float maxDurability = reader.f32_();
 	s16 poisonous = reader.raw<s16>();
 	s16 poisonousCount = reader.raw<s16>();
+	ItemState state = readItemState(reader);
 	if(g_coop.isHost() && to != g_coop.localId()) {
 		if(g_coop.player(to)) {
 			Writer writer;
@@ -299,6 +301,7 @@ void handleGiveItem(PlayerId from, Reader & reader) {
 			writer.f32_(maxDurability);
 			writer.raw<s16>(poisonous);
 			writer.raw<s16>(poisonousCount);
+			writeItemState(writer, state);
 			g_coop.sendTo(to, MessageType::GiveItem, writer);
 		}
 		return;
@@ -306,19 +309,48 @@ void handleGiveItem(PlayerId from, Reader & reader) {
 	if(to != g_coop.localId() || !entities.player()) {
 		return;
 	}
-	Entity * item = AddItem(res::path::load(classPath), -1, IO_IMMEDIATELOAD);
+	res::path path = res::path::load(classPath);
+	Entity * item = nullptr;
+	bool fresh = true;
+	if(state.present && state.instance > 0) {
+		std::string id = EntityId(path.filename(), state.instance).string();
+		if(Entity * existing = entities.getById(id)) {
+			// Our hidden copy of the world item the giver had taken (hideTakenItem): it is the
+			// item, with its instance script and its INIT already done
+			if((existing->ioflags & IO_ITEM) && existing->_itemdata && (existing->ioflags & IO_NOSAVE)
+			   && existing->show == SHOW_FLAG_MEGAHIDE && !existing->coopPuppet && !existing->coopProxy) {
+				item = existing;
+				fresh = false;
+				item->ioflags &= ~IO_NOSAVE; // ours now: its later drop must be shared again
+				item->show = SHOW_FLAG_IN_SCENE;
+			}
+		} else {
+			// Same id as the original: its instance script keeps resolving on a later give / drop,
+			// and the others' stale copy under that id is found again when we drop it
+			item = AddItem(path, state.instance, IO_IMMEDIATELOAD);
+		}
+	}
+	if(!item) {
+		item = AddItem(path, -1, IO_IMMEDIATELOAD);
+	}
 	if(!item || !item->_itemdata) {
 		LogWarning << "[coop] cannot create the given item " << classPath;
 		return;
+	}
+	if(fresh) {
+		initItemCopy(*item, state); // AddItem() only sends LOAD: without INIT the copy had no type, stats, name nor spell
+		if(!ValidIOAddress(item)) {
+			return;
+		}
+	} else {
+		applyItemState(state, *item);
 	}
 	item->_itemdata->count = std::max<s16>(1, count);
 	item->durability = durability;
 	item->max_durability = maxDurability;
 	item->poisonous = poisonous;
 	item->poisonous_count = poisonousCount;
-	if(!giveToPlayer(item)) {
-		PutInFrontOfPlayer(item); // inventory full: it lands at our feet
-	}
+	giveToPlayer(item); // (inventory full: giveToPlayer() itself puts it at our feet)
 	notification_add(nameOf(sender) + trs("coop_gives_you", " vous donne : ") + std::string(getLocalised(item->locname, item->className())));
 	LogInfo << "[coop] received " << classPath << " x" << count << " from " << nameOf(sender);
 	ARX_SOUND_PlayInterface(g_snd.INVSTD);

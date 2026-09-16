@@ -55,6 +55,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "core/Core.h"
 
 #include "game/Damage.h"
+#include "coop/Puppets.h"
 #include "game/Equipment.h"
 #include "game/EntityManager.h"
 #include "game/NPC.h"
@@ -901,13 +902,20 @@ struct HaloInfo {
 };
 
 static void pushSlotHalo(HaloInfo & haloInfo, EquipmentSlot slot, VertexSelectionId selection) {
-	
+
 	if(Entity * item = entities.get(player.equiped[slot])) {
 		if(item->halo.flags & HALO_ACTIVE) {
 			haloInfo.push(HaloRenderInfo(&item->halo, selection));
 		}
 	}
-	
+
+}
+
+//! Co-op: the enchanted armour of another player, on its puppet (the pieces are mesh tweaks there).
+static void pushPuppetHalo(HaloInfo & haloInfo, const Entity & puppet, unsigned slot, VertexSelectionId selection) {
+	if(IO_HALO * halo = coop::puppetSlotHalo(puppet, slot)) {
+		haloInfo.push(HaloRenderInfo(halo, selection));
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -1078,6 +1086,10 @@ static void Cedric_RenderObject(EERIE_3DOBJ * eobj, Skeleton * obj, Entity * io,
 			pushSlotHalo(haloInfo, EQUIP_SLOT_HELMET,   eobj->fastaccess.sel_head);
 			pushSlotHalo(haloInfo, EQUIP_SLOT_ARMOR,    eobj->fastaccess.sel_chest);
 			pushSlotHalo(haloInfo, EQUIP_SLOT_LEGGINGS, eobj->fastaccess.sel_leggings);
+		} else if(use_io->coopPuppet) {
+			pushPuppetHalo(haloInfo, *use_io, 0, eobj->fastaccess.sel_head);
+			pushPuppetHalo(haloInfo, *use_io, 1, eobj->fastaccess.sel_chest);
+			pushPuppetHalo(haloInfo, *use_io, 2, eobj->fastaccess.sel_leggings);
 		}
 	
 		if(use_io->halo.flags & HALO_ACTIVE) {

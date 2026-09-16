@@ -118,6 +118,10 @@ void HealSpell::Update() {
 	m_particles.Update(g_gameTime.lastFrameDuration());
 	m_particles.Render();
 	
+	if(m_flags & SPELLCAST_FLAG_NODAMAGE) {
+		return; // the effect only (co-op: a teammate got back up)
+	}
+	
 	for(Entity & npc : entities.inScene(IO_NPC)) {
 		
 		if(!(npc.gameFlags & GFLAG_ISINTREATZONE) || npc._npcdata->lifePool.current <= 0.f) {
