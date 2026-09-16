@@ -216,7 +216,9 @@ protocol).
 | Ground items (pick up, drop, throw, carry) | ✅ | |
 | Chests, merchants, corpses (store, sell, buy, stacks, coins) | ✅ | |
 | Items created by scripts inside containers | ✅ | same id everywhere |
-| Handing items between players | ✅ | durability and poison kept |
+| Handing items between players | ✅ | the item itself: enchantment, name, price, a scroll's spell, durability, poison |
+| Enchanted weapons and armour | ✅ | stats travel with the item (give, drop, chest); the glow shows on the other players |
+| Scrolls (found, given, dropped) | ✅ | keep their spell everywhere |
 | Spells | ✅ | visuals everywhere, damage at the caster |
 | Magic traps, NPC spells (fire fields, lightning, fireballs) | ✅ | replayed for the eyes, damage dealt by the host |
 | Persistent magic fields ("blue walls") | ✅ | recreated on arrival, end together |
@@ -516,7 +518,9 @@ Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition RT (p
 | Objets au sol (prise, dépôt, lancer, transport) | ✅ | |
 | Coffres, marchands, cadavres (dépôt, vente, achat, piles, pièces) | ✅ | |
 | Objets créés par script dans un conteneur | ✅ | même identifiant partout |
-| Don d'objet entre joueurs | ✅ | durabilité et poison conservés |
+| Don d'objet entre joueurs | ✅ | l'objet lui-même : enchantement, nom, prix, sort d'un parchemin, durabilité, poison |
+| Armes et armures enchantées | ✅ | les stats voyagent avec l'objet (don, dépôt, coffre) ; l'aura se voit chez les autres |
+| Parchemins (trouvés, donnés, lâchés) | ✅ | gardent leur sort partout |
 | Sorts | ✅ | visuels partout, dégâts chez le lanceur |
 | Pièges magiques, sorts des PNJ (champs de feu, éclairs, boules de feu) | ✅ | rejoués pour les yeux, dégâts infligés par l'hôte |
 | Champs magiques persistants (« murs bleus ») | ✅ | recréés à l'arrivée, disparaissent ensemble |

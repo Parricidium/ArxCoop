@@ -26,6 +26,7 @@
 
 #include "coop/Protocol.h"
 #include "game/EntityId.h"
+#include "game/Item.h"
 #include "script/Script.h"
 
 class Entity;
@@ -136,6 +137,45 @@ const PlayerStats * actingPlayerStats();
 //! Host: a persistent magic field cast by a world entity ended (someone stood on it...): the clients end theirs too.
 void fieldSpellEnded(const Entity * caster);
 
+/*!
+ * What makes an item this particular item beyond its class: the script variables its scripts
+ * wrote (a chest scroll's spell name / circle set by the chest's TRANSMUTE, "enchanted"...), its
+ * instance script, enchantments (IO_EQUIPITEM), price, name, halo and wear. Appended to
+ * GiveItem, DropItem and StoreItem so that a copy made on another machine from class + instance,
+ * or the stale hidden copy of a world item that spent time in a player's inventory, gets them.
+ */
+struct ItemState {
+	bool present = false;         //!< false: the message ended before it, or not an item
+	EntityInstance instance = -1; //!< the original's instance (its instance script directory)
+	bool hasInstanceScript = false;
+	SCRIPT_VARIABLES variables;
+	bool hasEquip = false;
+	IO_EQUIPITEM equip;
+	s32 price = 0;
+	std::string locname;
+	u32 haloFlags = 0;            //!< Entity::halo_native (the offset is never set by scripts, not carried)
+	float haloColor[3] = { 0.f, 0.f, 0.f };
+	float haloRadius = 0.f;
+	float durability = 0.f;
+	float maxDurability = 0.f;
+	s16 poisonous = 0;
+	s16 poisonousCount = 0;
+};
+ItemState captureItemState(const Entity & item);
+void writeItemState(Writer & writer, const ItemState & state);
+//! Reads the trailing item state; present = false when nothing is left in the message.
+ItemState readItemState(Reader & reader);
+//! Existing entity (our stale copy of it): enchantments, price, name, halo, wear, variables.
+void applyItemState(const ItemState & state, Entity & item);
+/*!
+ * Fresh AddItem() copy of another player's item: its instance script (looked up by the
+ * original's instance), INIT, the original's variables, INITEND (which derives the name, icon
+ * and price from them), then applyItemState(). Runs as "applying remote" so that the host does
+ * not replicate the INIT of an entity the clients do not have. The item may be destroyed by its
+ * own INIT: check ValidIOAddress() afterwards.
+ */
+void initItemCopy(Entity & item, const ItemState & state);
+
 //! Sends a recorded (executed) command to the players that need it.
 void commandReplicated(std::string_view command, const std::vector<std::string> & words,
                        const script::Context & context);
@@ -212,6 +252,12 @@ void speechSkipped();
 
 //! A world item went into the local player's hands: it leaves the shared world everywhere else.
 void itemTaken(const Entity & item);
+/*!
+ * We handed this item to another player: kept hidden here (like a world item another player
+ * took) rather than destroyed, so that its instance number is not given to a new item while the
+ * receiver's copy still carries it - and found again under that id if the receiver drops it.
+ */
+void itemHandedOver(Entity & item);
 
 //! Client: an entity of ours (inventory, equipment) that a level state from the host must not replace.
 bool keptOverLevelState(const Entity & io);

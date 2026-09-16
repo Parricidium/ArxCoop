@@ -1058,16 +1058,25 @@ void writeItemPlacement(Writer & writer, const ItemPlacement & placement) {
 }
 
 //! The world item another player is handling, created on the spot if we do not have it yet.
-Entity * placedItem(const ItemPlacement & placement, bool create) {
+//! With a state (DropItem / StoreItem), a fresh copy is initialised like the original, and the
+//! stale hidden copy of an item that spent time in that player's inventory gets what its scripts
+//! wrote there (an enchantment, a transmuted scroll...).
+Entity * placedItem(const ItemPlacement & placement, bool create, const ItemState & state = ItemState()) {
 	Entity * item = entities.getById(placement.id);
+	bool created = false;
 	if(!item && create) {
 		item = AddItem(placement.classPath, placement.instance, IO_IMMEDIATELOAD);
 		if(item) {
-			item->scriptload = 1;
-			if(placement.hasInstanceScript) {
-				loadInstanceScript(*item);
+			ItemState init = state;
+			if(!init.present) {
+				init.instance = placement.instance; // same id here: the instance script is its own
+				init.hasInstanceScript = placement.hasInstanceScript;
 			}
-			SendInitScriptEvent(item);
+			initItemCopy(*item, init);
+			created = true;
+			if(!ValidIOAddress(item)) {
+				return nullptr; // destroyed by its own INIT
+			}
 		}
 	}
 	if(!item || isPlayerSide(item)) {
@@ -1076,6 +1085,9 @@ Entity * placedItem(const ItemPlacement & placement, bool create) {
 	removeFromInventories(item);
 	if(create) {
 		item->ioflags &= ~IO_NOSAVE; // back in the shared world
+		if(!created) {
+			applyItemState(state, *item); // our stale copy: what its owner's scripts did to it
+		}
 	}
 	item->pos = placement.pos;
 	item->angle = placement.angle;
@@ -1121,6 +1133,7 @@ void settleThrownItems() {
 		writer.f32_(0.f);
 		writer.f32_(0.f);
 		writer.f32_(0.f);
+		writeItemState(writer, captureItemState(*item));
 		g_coop.sendToOthers(MessageType::DropItem, writer);
 		LogInfo << "[coop] my thrown " << item->idString() << " came to rest at " << int(item->pos.x) << "," << int(item->pos.y) << "," << int(item->pos.z)
 		        << " (pbox " << int(item->obj->pbox->active) << ")";
@@ -1185,8 +1198,9 @@ void applyDropItem(PlayerId from, Reader & reader) {
 	s16 count = reader.raw<s16>();
 	bool thrown = reader.bool_();
 	Vec3f direction = reader.vec3<Vec3f>();
+	ItemState state = readItemState(reader);
 	g_applyingRemote++;
-	if(Entity * item = placedItem(placement, true)) {
+	if(Entity * item = placedItem(placement, true, state)) {
 		item->show = SHOW_FLAG_IN_SCENE;
 		if((item->ioflags & IO_ITEM) && count > 0) {
 			item->_itemdata->count = count;
@@ -1212,6 +1226,7 @@ void applyDropItem(PlayerId from, Reader & reader) {
 		writer.f32_(direction.x);
 		writer.f32_(direction.y);
 		writer.f32_(direction.z);
+		writeItemState(writer, state);
 		g_coop.broadcast(MessageType::DropItem, writer, from);
 	}
 }
@@ -1376,6 +1391,182 @@ void handleGameMessage(PlayerId from, MessageType type, Reader & reader) {
 }
 
 } // anonymous namespace
+
+// Item state (variables, instance script, enchantments, price, name, halo, wear) ----------
+
+ItemState captureItemState(const Entity & item) {
+	ItemState state;
+	if(!(item.ioflags & IO_ITEM) || !item._itemdata) {
+		return state;
+	}
+	state.present = true;
+	state.instance = item.instance();
+	state.hasInstanceScript = item.over_script.valid;
+	state.variables = item.m_variables;
+	if(item._itemdata->equipitem) {
+		state.hasEquip = true;
+		state.equip = *item._itemdata->equipitem;
+	}
+	state.price = s32(item._itemdata->price);
+	state.locname = item.locname;
+	state.haloFlags = u32(item.halo_native.flags);
+	state.haloColor[0] = item.halo_native.color.r;
+	state.haloColor[1] = item.halo_native.color.g;
+	state.haloColor[2] = item.halo_native.color.b;
+	state.haloRadius = item.halo_native.radius;
+	state.durability = item.durability;
+	state.maxDurability = item.max_durability;
+	state.poisonous = item.poisonous;
+	state.poisonousCount = item.poisonous_count;
+	return state;
+}
+
+void writeItemState(Writer & writer, const ItemState & state) {
+	if(!state.present) {
+		return; // nothing appended: the reader sees the end of the message
+	}
+	writer.s32_(state.instance);
+	writer.bool_(state.hasInstanceScript);
+	writer.u16_(u16(std::min<size_t>(state.variables.size(), 0xFFFF)));
+	for(size_t i = 0; i < state.variables.size() && i < 0xFFFF; i++) {
+		const SCRIPT_VAR & var = state.variables[i];
+		writer.string(var.name);
+		writer.s32_(s32(var.ival));
+		writer.f32_(var.fval);
+		writer.string(var.text);
+	}
+	writer.bool_(state.hasEquip);
+	if(state.hasEquip) {
+		for(size_t i = 0; i < IO_EQUIPITEM_ELEMENT_Number; i++) {
+			const IO_EQUIPITEM_ELEMENT & element = state.equip.elements[i];
+			writer.f32_(element.value);
+			writer.u8_(u8(element.flags));
+			writer.u8_(u8(element.special));
+		}
+	}
+	writer.s32_(state.price);
+	writer.string(state.locname);
+	writer.u32_(state.haloFlags);
+	writer.f32_(state.haloColor[0]);
+	writer.f32_(state.haloColor[1]);
+	writer.f32_(state.haloColor[2]);
+	writer.f32_(state.haloRadius);
+	writer.f32_(state.durability);
+	writer.f32_(state.maxDurability);
+	writer.raw<s16>(state.poisonous);
+	writer.raw<s16>(state.poisonousCount);
+}
+
+ItemState readItemState(Reader & reader) {
+	ItemState state;
+	if(reader.remaining() == 0) {
+		return state; // sent without the item state (admin give: a fresh class item)
+	}
+	state.present = true;
+	state.instance = reader.s32_();
+	state.hasInstanceScript = reader.bool_();
+	u16 vars = reader.u16_();
+	for(u16 i = 0; i < vars; i++) {
+		SCRIPT_VAR var(reader.string());
+		var.ival = reader.s32_();
+		var.fval = reader.f32_();
+		var.text = reader.string();
+		state.variables.push_back(std::move(var));
+	}
+	state.hasEquip = reader.bool_();
+	if(state.hasEquip) {
+		for(size_t i = 0; i < IO_EQUIPITEM_ELEMENT_Number; i++) {
+			IO_EQUIPITEM_ELEMENT & element = state.equip.elements[i];
+			element.value = reader.f32_();
+			element.flags = EquipmentModifierFlags::load(reader.u8_());
+			element.special = EquipmentModifiedSpecialType(reader.u8_());
+		}
+	}
+	state.price = reader.s32_();
+	state.locname = reader.string();
+	state.haloFlags = reader.u32_();
+	state.haloColor[0] = reader.f32_();
+	state.haloColor[1] = reader.f32_();
+	state.haloColor[2] = reader.f32_();
+	state.haloRadius = reader.f32_();
+	state.durability = reader.f32_();
+	state.maxDurability = reader.f32_();
+	state.poisonous = reader.raw<s16>();
+	state.poisonousCount = reader.raw<s16>();
+	return state;
+}
+
+void applyItemState(const ItemState & state, Entity & item) {
+	if(!state.present || !(item.ioflags & IO_ITEM) || !item._itemdata) {
+		return;
+	}
+	if(!state.variables.empty()) {
+		item.m_variables = state.variables; // "enchanted", the reagent, a scroll's spell: the copy IS the item
+	}
+	delete item._itemdata->equipitem;
+	item._itemdata->equipitem = nullptr;
+	if(state.hasEquip) {
+		item._itemdata->equipitem = new IO_EQUIPITEM;
+		*item._itemdata->equipitem = state.equip;
+	}
+	item._itemdata->price = state.price;
+	if(!state.locname.empty()) {
+		item.locname = state.locname;
+	}
+	item.halo_native.flags = HaloFlags::load(state.haloFlags);
+	item.halo_native.color = Color3f(state.haloColor[0], state.haloColor[1], state.haloColor[2]);
+	item.halo_native.radius = state.haloRadius;
+	ARX_HALO_SetToNative(&item); // (also resets a temporary spell halo on it: fine for a ground / given item)
+	item.durability = state.durability;
+	item.max_durability = state.maxDurability;
+	item.poisonous = state.poisonous;
+	item.poisonous_count = state.poisonousCount;
+}
+
+void initItemCopy(Entity & item, const ItemState & state) {
+	g_applyingRemote++;
+	if(state.hasInstanceScript && !item.over_script.valid) {
+		// The original's instance script (scroll_generic_0012/scroll_generic.asl: the spell of
+		// that scroll, note_0003/note.asl: its text), by the original's instance: the copy may
+		// carry another number
+		EntityInstance instance = state.instance > 0 ? state.instance : item.instance();
+		res::path dir = item.classPath().parent() / EntityId(item.className(), instance).string();
+		if(PakDirectory * directory = g_resources->getDirectory(dir)) {
+			loadScript(item.over_script, directory->getFile(item.className() + ".asl"));
+		}
+	}
+	// INIT sets the class defaults, the original's variables go over them, INITEND derives what
+	// depends on them (a chest scroll's name, icon and price come from its spell name / circle
+	// set by the chest's TRANSMUTE, which only ever ran on the host), like SendInitScriptEvent()
+	EntityHandle handle = item.index();
+	item.scriptload = 1;
+	item.m_disabledEvents = 0;
+	if(item.script.valid) {
+		ScriptEvent::send(&item.script, nullptr, &item, SM_INIT);
+	}
+	if(entities.get(handle) == &item) {
+		item.mainevent = SM_MAIN;
+		if(item.over_script.valid) {
+			ScriptEvent::send(&item.over_script, nullptr, &item, SM_INIT);
+		}
+	}
+	if(entities.get(handle) == &item) {
+		if(!state.variables.empty()) {
+			item.m_variables = state.variables;
+		}
+		if(item.script.valid) {
+			ScriptEvent::send(&item.script, nullptr, &item, SM_INITEND);
+		}
+	}
+	if(entities.get(handle) == &item && item.over_script.valid) {
+		ScriptEvent::send(&item.over_script, nullptr, &item, SM_INITEND);
+	}
+	if(entities.get(handle) == &item) {
+		item.gameFlags &= ~GFLAG_NEEDINIT;
+		applyItemState(state, item);
+	}
+	g_applyingRemote--;
+}
 
 void replicationInit() {
 	g_coop.onGameMessage = handleGameMessage;
@@ -1770,6 +1961,10 @@ bool loadSavedCoopCharacter() {
 	return true;
 }
 
+void itemHandedOver(Entity & item) {
+	hideTakenItem(item);
+}
+
 void itemTaken(const Entity & item) {
 	if(!g_coop.isActive() || g_coop.state() != State::InGame || g_applyingRemote > 0 || !(item.ioflags & IO_ITEM)
 	   || item.coopProxy || (item.ioflags & IO_NOSAVE)) {
@@ -1791,6 +1986,7 @@ void itemDropped(const Entity & item, bool thrown, const Vec3f & direction) {
 	writer.f32_(direction.x);
 	writer.f32_(direction.y);
 	writer.f32_(direction.z);
+	writeItemState(writer, captureItemState(item));
 	g_coop.sendToOthers(MessageType::DropItem, writer);
 	if(thrown) {
 		g_inFlight.insert(item.idString()); // everyone simulates the flight, we say where it lands
@@ -1862,6 +2058,7 @@ ContainerDropScope::~ContainerDropScope() {
 		writer.raw<s16>(pos.bag);
 		writer.raw<s16>(pos.x);
 		writer.raw<s16>(pos.y);
+		writeItemState(writer, captureItemState(*item));
 		g_coop.sendToOthers(MessageType::StoreItem, writer);
 		LogInfo << "[coop] stored " << item->idString() << " x" << item->_itemdata->count << " in " << container->idString()
 		        << " at " << pos.bag << "/" << pos.x << "," << pos.y;
@@ -1891,10 +2088,11 @@ void applyStoreItem(PlayerId from, Reader & reader) {
 	s16 bag = reader.raw<s16>();
 	s16 x = reader.raw<s16>();
 	s16 y = reader.raw<s16>();
+	ItemState state = readItemState(reader);
 	Entity * container = entities.getById(containerId);
 	if(container && container->inventory && !isPlayerSide(container)) {
 		g_applyingRemote++;
-		if(Entity * item = placedItem(placement, true)) {
+		if(Entity * item = placedItem(placement, true, state)) {
 			if((item->ioflags & IO_ITEM) && count > 0) {
 				item->_itemdata->count = count;
 			}
@@ -1927,6 +2125,7 @@ void applyStoreItem(PlayerId from, Reader & reader) {
 		writer.raw<s16>(bag);
 		writer.raw<s16>(x);
 		writer.raw<s16>(y);
+		writeItemState(writer, state);
 		g_coop.broadcast(MessageType::StoreItem, writer, from);
 	}
 }

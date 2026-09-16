@@ -312,11 +312,13 @@ bool adminGiveItem(PlayerId id, std::string_view className, long count) {
 			setStatus(trs("coop_admin_cannot_create", "impossible de cr\xC3\xA9" "er ") + classPath.string());
 			return false;
 		}
+		initItemCopy(*item, ItemState()); // a fresh class item: INIT / INITEND like every other AddItem() of the engine
+		if(!ValidIOAddress(item)) {
+			return false;
+		}
 		long maxCount = item->_itemdata->maxcount > 0 ? long(item->_itemdata->maxcount) : count;
 		item->_itemdata->count = s16(std::min(count, maxCount));
-		if(!giveToPlayer(item)) {
-			PutInFrontOfPlayer(item);
-		}
+		giveToPlayer(item);
 	} else if(g_coop.player(id)) {
 		Writer writer;
 		writer.u8_(g_coop.localId());

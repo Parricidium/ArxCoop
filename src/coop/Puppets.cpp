@@ -54,6 +54,7 @@
 #include "game/Spells.h"
 #include "game/magic/Spell.h"
 #include "game/magic/spells/SpellsLvl06.h"
+#include "game/magic/Precast.h"
 #include "util/Number.h"
 #include "game/Equipment.h"
 #include "graphics/data/MeshManipulation.h"
@@ -91,10 +92,12 @@
 #include "graphics/Renderer.h"
 #include "gui/MenuWidgets.h"
 #include "physics/Physics.h"
+#include "physics/Collisions.h"
 #include "script/Script.h"
 #include "script/ScriptEvent.h"
 
 extern Entity * LASTSPAWNED;
+extern bool GLOBAL_MAGIC_MODE;
 
 namespace coop {
 
@@ -124,15 +127,29 @@ struct TweakInfo {
 	bool operator==(const TweakInfo & o) const { return file == o.file && skinFrom == o.skinFrom && skinTo == o.skinTo; }
 };
 
+//! Halo of an equipped piece (enchanted, or a reagent mixed in): the only visible mark of an enchantment.
+struct GlowInfo {
+	u32 flags = 0; //!< HaloFlags of the item's halo_native
+	Color3f color = Color3f::black;
+	float radius = 0.f;
+	bool active() const { return (flags & HALO_ACTIVE) != 0; }
+	bool operator==(const GlowInfo & o) const {
+		return flags == o.flags && color.r == o.color.r && color.g == o.color.g && color.b == o.color.b && radius == o.radius;
+	}
+};
+
 struct EquipmentState {
 	u8 skin = 0;
 	bool combat = false;
 	TweakInfo helmet, armor, leggings;
 	std::string weapon, shield;
 	std::string torch; //!< class of the lit torch / lamp, empty when none
+	GlowInfo weaponGlow, shieldGlow, helmetGlow, armorGlow, leggingsGlow;
 	bool operator==(const EquipmentState & o) const {
 		return skin == o.skin && combat == o.combat && helmet == o.helmet && armor == o.armor && leggings == o.leggings
-		       && weapon == o.weapon && shield == o.shield && torch == o.torch;
+		       && weapon == o.weapon && shield == o.shield && torch == o.torch
+		       && weaponGlow == o.weaponGlow && shieldGlow == o.shieldGlow && helmetGlow == o.helmetGlow
+		       && armorGlow == o.armorGlow && leggingsGlow == o.leggingsGlow;
 	}
 	bool operator!=(const EquipmentState & o) const { return !(*this == o); }
 };
@@ -150,6 +167,7 @@ struct PlayerSnapshot {
 	float hunger = 1.f; // ratio (1 = full)
 	bool inDialogue = false; //!< locked in a cinematic dialogue with an NPC
 	float ignition = 0.f;    //!< on fire (the engine's Entity::ignition of the player)
+	IO_HALO slotHalo[3];     //!< helmet, armor, leggings glow, drawn on the puppet's mesh (puppetSlotHalo)
 	PlatformInstant received;
 };
 
@@ -376,6 +394,49 @@ TweakInfo tweakOf(EquipmentSlot slot) {
 	return info;
 }
 
+GlowInfo glowOf(EquipmentSlot slot) {
+	GlowInfo glow;
+	if(Entity * item = entities.get(player.equiped[slot]); item && (item->halo_native.flags & HALO_ACTIVE)) {
+		glow.flags = u32(item->halo_native.flags);
+		glow.color = item->halo_native.color;
+		glow.radius = item->halo_native.radius;
+	}
+	return glow;
+}
+
+void writeGlow(Writer & writer, const GlowInfo & glow) {
+	writer.u32_(glow.flags);
+	writer.f32_(glow.color.r);
+	writer.f32_(glow.color.g);
+	writer.f32_(glow.color.b);
+	writer.f32_(glow.radius);
+}
+
+void readGlow(Reader & reader, GlowInfo & glow) {
+	glow.flags = reader.u32_();
+	glow.color.r = reader.f32_();
+	glow.color.g = reader.f32_();
+	glow.color.b = reader.f32_();
+	glow.radius = reader.f32_();
+}
+
+IO_HALO haloOf(const GlowInfo & glow) {
+	IO_HALO halo;
+	halo.flags = HaloFlags::load(glow.flags);
+	halo.color = glow.color;
+	halo.radius = glow.radius;
+	return halo;
+}
+
+//! The display items of a puppet are created without a script: give them the real item's halo.
+void applyGlow(Entity * item, const GlowInfo & glow) {
+	if(!item || !glow.active()) {
+		return;
+	}
+	item->halo_native = haloOf(glow);
+	ARX_HALO_SetToNative(item);
+}
+
 EquipmentState localEquipment() {
 	EquipmentState state;
 	state.skin = player.skin;
@@ -383,6 +444,11 @@ EquipmentState localEquipment() {
 	state.helmet = tweakOf(EQUIP_SLOT_HELMET);
 	state.armor = tweakOf(EQUIP_SLOT_ARMOR);
 	state.leggings = tweakOf(EQUIP_SLOT_LEGGINGS);
+	state.weaponGlow = glowOf(EQUIP_SLOT_WEAPON);
+	state.shieldGlow = glowOf(EQUIP_SLOT_SHIELD);
+	state.helmetGlow = glowOf(EQUIP_SLOT_HELMET);
+	state.armorGlow = glowOf(EQUIP_SLOT_ARMOR);
+	state.leggingsGlow = glowOf(EQUIP_SLOT_LEGGINGS);
 	if(Entity * item = entities.get(player.equiped[EQUIP_SLOT_WEAPON])) {
 		state.weapon = item->classPath().string();
 	}
@@ -428,6 +494,11 @@ void sendEquipmentIfNeeded(bool force) {
 	writer.string(state.weapon);
 	writer.string(state.shield);
 	writer.string(state.torch);
+	writeGlow(writer, state.weaponGlow);
+	writeGlow(writer, state.shieldGlow);
+	writeGlow(writer, state.helmetGlow);
+	writeGlow(writer, state.armorGlow);
+	writeGlow(writer, state.leggingsGlow);
 	g_coop.sendToOthers(MessageType::PlayerEquipment, writer);
 }
 
@@ -442,6 +513,13 @@ void handlePlayerEquipment(PlayerId id, Reader & reader) {
 	state.weapon = reader.string();
 	state.shield = reader.string();
 	state.torch = reader.string();
+	if(reader.remaining() > 0) { // the glow suffix
+		readGlow(reader, state.weaponGlow);
+		readGlow(reader, state.shieldGlow);
+		readGlow(reader, state.helmetGlow);
+		readGlow(reader, state.armorGlow);
+		readGlow(reader, state.leggingsGlow);
+	}
 	if(state != snap.equipment) {
 		snap.equipment = state;
 		snap.equipmentApplied = false;
@@ -635,12 +713,18 @@ void applyEquipment(Entity & io, const EquipmentState & state) {
 	applyTweakTo(&io, state.armor, TWEAK_TORSO, "chest");
 	applyTweakTo(&io, state.leggings, TWEAK_LEGS, "leggings");
 	if(!state.weapon.empty()) {
-		attachPuppetItem(io, state.weapon, state.combat ? "primary_attach" : "weapon_attach", "primary_attach");
+		applyGlow(attachPuppetItem(io, state.weapon, state.combat ? "primary_attach" : "weapon_attach", "primary_attach"), state.weaponGlow);
 	}
 	if(!state.shield.empty()) {
-		attachPuppetItem(io, state.shield, "shield_attach", "shield_attach");
+		applyGlow(attachPuppetItem(io, state.shield, "shield_attach", "shield_attach"), state.shieldGlow);
 	}
 	attachTorch(io, state.torch);
+	// Worn pieces are mesh tweaks, not entities: their halo is drawn by the renderer from the snapshot
+	if(auto it = g_remote.find(puppetOwner(io)); it != g_remote.end()) {
+		it->second.slotHalo[0] = haloOf(state.helmetGlow);
+		it->second.slotHalo[1] = haloOf(state.armorGlow);
+		it->second.slotHalo[2] = haloOf(state.leggingsGlow);
+	}
 	applySkin(*io.obj, state.skin, puppetOwner(io));
 	ARX_INTERACTIVE_HideGore(&io, false);
 	EERIE_Object_Precompute_Fast_Access(io.obj);
@@ -749,6 +833,11 @@ void reviveLocalPlayer() {
 	HERO_SHOW_1ST = -1;
 	if(entities.player()) {
 		entities.player()->animlayer[0].cur_anim = nullptr; // back to the normal stance
+		// The healing spell's light, particles and chime around us - a visual only (NODAMAGE: it
+		// heals nobody, the life is set above); the others see it on our puppet (SpellCast)
+		ARX_SPELLS_Launch(SPELL_HEAL, *entities.player(),
+		                  SPELLCAST_FLAG_NOMANA | SPELLCAST_FLAG_NOCHECKCANCAST | SPELLCAST_FLAG_NOANIM | SPELLCAST_FLAG_NODAMAGE,
+		                  1, entities.player(), std::chrono::milliseconds(3500));
 	}
 	LogInfo << "[coop] back on my feet";
 }
@@ -1182,8 +1271,28 @@ std::vector<TeammateInfo> teammates() {
 	return result;
 }
 
+//! Our own inventory / equipped item (its scripts run here, not on the host).
+static bool ownedByLocalPlayer(const Entity & io) {
+	if(isEquippedByPlayer(&io)) {
+		return true;
+	}
+	for(const Entity * owner = io.owner(); owner; owner = owner->owner()) {
+		if(owner == entities.player()) {
+			return true;
+		}
+	}
+	return false;
+}
+
 void spellCast(unsigned spell, float level, unsigned flags, const Entity * target, long long durationUs) {
 	if(!puppetsAllowed() || g_applyingRemoteSpell > 0 || (flags & SPELLCAST_FLAG_PRECAST)) {
+		return;
+	}
+	if(spell == SPELL_ENCHANT_WEAPON && target && target != entities.player() && ownedByLocalPlayer(*target)) {
+		// The enchantment is the item's own script, run here on our inventory item; the spell has
+		// no effect of its own to replay (SpellsLvl08.cpp). Sent with the item's id, the host ran
+		// its stale hidden copy's script as us ("player_wrong"...). A world item (ground, chest)
+		// is still sent: there the host's replay is what enchants it.
 		return;
 	}
 	Writer writer;
@@ -1313,6 +1422,18 @@ EntityHandle attackTarget(const Entity & npc, EntityHandle target) {
 
 std::string puppetIdString(PlayerId id) {
 	return EntityId("coop_player", EntityInstance(id + 1)).string();
+}
+
+IO_HALO * puppetSlotHalo(const Entity & puppet, unsigned slot) {
+	if(slot >= 3 || !puppet.coopPuppet) {
+		return nullptr;
+	}
+	auto it = g_remote.find(puppetOwner(puppet));
+	if(it == g_remote.end()) {
+		return nullptr;
+	}
+	IO_HALO & halo = it->second.slotHalo[slot];
+	return (halo.flags & HALO_ACTIVE) ? &halo : nullptr;
 }
 
 Entity * puppetOf(PlayerId id) {
@@ -1733,6 +1854,22 @@ void puppetsTestUpdate() {
 			Logger::flush();
 			GetSnapShot();
 		}
+		// A speech ending while our own line still plays, whose script then speaks for us (the
+		// host crashed on that: ARX_SPEECH_Update's loop vs the erase of our line)
+		static bool speechTested = false;
+		if(arrived != PlatformInstant() && g_coop.isHost() && !speechTested && now - arrived > std::chrono::seconds(2)) {
+			speechTested = true;
+			if(Speech * mine = ARX_SPEECH_AddSpeech(*entities.player(), "player_off_impossible", ANIM_TALK_NEUTRAL, 0)) {
+				mine->duration = std::chrono::seconds(20);
+			}
+			for(Entity & entity : entities.inScene(IO_NPC)) {
+				if(entity != *entities.player() && !entity.coopPuppet && entity.anims[ANIM_TALK_NEUTRAL]) {
+					runScriptLine(entity, "speak [human_guard_misc] speak -p [player_off_impossible] nop");
+					LogInfo << "[coop] test: " << entity.idString() << " speaks, then makes us speak (speech loop check)";
+					break;
+				}
+			}
+		}
 		// Skills and burning of a client, as seen by the host
 		static bool skillSet = false;
 		static bool skillChecked = false;
@@ -1846,7 +1983,139 @@ void puppetsTestUpdate() {
 				Logger::flush();
 			}
 		}
-		if(listed && now - arrived > std::chrono::seconds(g_coop.isHost() ? 40 : 32)) {
+		// Items handed over / dropped keep what their scripts made of them: a chest scroll's spell
+		// (the client then uses it and levitates), an enchanted sword's stats and glow
+		static int itemStep = 0;
+		auto varText = [](const Entity & io, const char * name) {
+			return std::string(GETVarValueText(io.m_variables, std::string("\xA3") + name));
+		};
+		auto varLong = [](const Entity & io, const char * name) {
+			return GETVarValueLong(io.m_variables, std::string("\xA7") + name);
+		};
+		static PlatformInstant itemStepTime;
+		if(arrived != PlatformInstant() && g_coop.isHost() && itemStep == 0 && now - arrived > std::chrono::seconds(30)
+		   && !g_remote.empty() && findPuppet(g_remote.begin()->first)) { // (waits for the client to be in)
+			itemStep = 1;
+			itemStepTime = now;
+			PlayerId client = g_remote.begin()->first;
+			Entity * puppet = findPuppet(client);
+			for(int i = 0; i < 2 && puppet; i++) {
+				Entity * scroll = AddItem("graph/obj3d/interactive/items/magic/scroll_generic/scroll_generic", -1, IO_IMMEDIATELOAD);
+				if(!scroll) {
+					break;
+				}
+				initItemCopy(*scroll, ItemState());
+				ScriptParameters params("5");
+				params.push_back("levitate");
+				SendIOScriptEvent(nullptr, scroll, ScriptEventName("transmute"), params);
+				LogInfo << "[coop] test: host made " << scroll->idString() << " spell " << varText(*scroll, "spellname")
+				        << " circle " << varLong(*scroll, "circle") << " name " << scroll->locname;
+				if(i == 0) {
+					giveToPlayer(scroll);
+					giveItemToPuppet(*scroll, *puppet); // handed over
+				} else {
+					scroll->pos = puppet->pos + Vec3f(60.f, 0.f, 0.f);
+					scroll->show = SHOW_FLAG_IN_SCENE;
+					scroll->requestRoomUpdate = true;
+					itemDropped(*scroll); // dropped at its feet
+				}
+			}
+			Logger::flush();
+		}
+		bool gotScroll = false;
+		for(const Entity & entity : entities) {
+			if(entity.className() == "scroll_generic" && entity.instance() < 10000 && IsInPlayerInventory(const_cast<Entity *>(&entity))) {
+				gotScroll = true;
+			}
+		}
+		if(arrived != PlatformInstant() && g_coop.isClient() && itemStep == 0 && now - arrived > std::chrono::seconds(34) && gotScroll) {
+			itemStep = 1;
+			itemStepTime = now;
+			Entity * mine = nullptr;
+			for(Entity & entity : entities) {
+				if(entity.className() == "scroll_generic" && entity.instance() < 10000) {
+					LogInfo << "[coop] test: client has scroll " << entity.idString() << " spell " << varText(entity, "spellname")
+					        << " circle " << varLong(entity, "circle") << " name " << entity.locname
+					        << " " << (IsInPlayerInventory(&entity) ? "in inventory" : "on the ground");
+					if(IsInPlayerInventory(&entity)) {
+						mine = &entity;
+					}
+				}
+			}
+			Logger::flush();
+			if(mine) {
+				// Out in the open first (the shop's ceiling would end the levitation at once, like in the original)
+				if(const Entity * host = findPuppet(PlayerId(0))) {
+					ARX_INTERACTIVE_Teleport(entities.player(), host->pos + Vec3f(120.f, 0.f, 0.f));
+				}
+				Cylinder cyl = player.physics.cyl;
+				cyl.height = player.levitateHeight();
+				cyl.origin = player.basePosition();
+				LogInfo << "[coop] test: client uses " << mine->idString() << " at " << int(player.pos.x) << "," << int(player.pos.y) << "," << int(player.pos.z)
+				        << " headroom " << CheckAnythingInCylinder(cyl, entities.player()) << " magic mode " << GLOBAL_MAGIC_MODE
+				        << " mana " << player.manaPool.current;
+				Logger::flush();
+				SendIOScriptEvent(entities.player(), mine, SM_INVENTORYUSE);
+				LogInfo << "[coop] test: client used the scroll, precast slots " << g_precast.size();
+				Logger::flush();
+				ARX_SPELLS_Precast_Launch(PrecastHandle(0));
+				LogInfo << "[coop] test: precast launched";
+			}
+			Logger::flush();
+		}
+		if(arrived != PlatformInstant() && g_coop.isClient() && itemStep == 1 && now - itemStepTime > std::chrono::seconds(4)) {
+			itemStep = 2;
+			itemStepTime = now;
+			{
+				Cylinder cyl = player.physics.cyl;
+				cyl.height = player.levitateHeight();
+				cyl.origin = player.basePosition();
+				LogInfo << "[coop] test: client levitate " << player.levitate << " cylinder height " << player.physics.cyl.height
+				        << " spell " << (spells.getSpellByCaster(EntityHandle_Player, SPELL_LEVITATE) ? "active" : "none")
+				        << " headroom " << CheckAnythingInCylinder(cyl, entities.player()) << " magic mode " << GLOBAL_MAGIC_MODE
+				        << " at " << int(player.pos.x) << "," << int(player.pos.y) << "," << int(player.pos.z);
+			}
+			// An enchanted sword for the host: garlic mixed in, Enchant Weapon cast on it
+			Entity * sword = AddItem("graph/obj3d/interactive/items/weapons/short_sword/short_sword", -1, IO_IMMEDIATELOAD);
+			Entity * garlic = AddItem("graph/obj3d/interactive/items/provisions/garlic/garlic", -1, IO_IMMEDIATELOAD);
+			if(sword && garlic) {
+				initItemCopy(*sword, ItemState());
+				initItemCopy(*garlic, ItemState());
+				giveToPlayer(sword);
+				giveToPlayer(garlic);
+				SendIOScriptEvent(garlic, sword, SM_COMBINE, ScriptParameters(garlic->idString()));
+				ARX_SPELLS_Launch(SPELL_ENCHANT_WEAPON, *entities.player(), SPELLCAST_FLAG_NOCHECKCANCAST | SPELLCAST_FLAG_NOMANA,
+				                  8, sword, GameDuration::ofRaw(-1));
+				LogInfo << "[coop] test: client enchanted " << sword->idString() << " enchanted=" << varLong(*sword, "enchanted")
+				        << " dexterity+" << (sword->_itemdata->equipitem ? sword->_itemdata->equipitem->elements[IO_EQUIPITEM_ELEMENT_DEXTERITY].value : -1.f)
+				        << " price " << sword->_itemdata->price << " halo " << bool(sword->halo_native.flags & HALO_ACTIVE);
+				if(Entity * puppet = findPuppet(g_remote.begin()->first)) {
+					giveItemToPuppet(*sword, *puppet);
+				}
+			}
+			Logger::flush();
+		}
+		bool gotSword = false;
+		for(const Entity & entity : entities) {
+			if(entity.className() == "short_sword" && IsInPlayerInventory(const_cast<Entity *>(&entity))) {
+				gotSword = true;
+			}
+		}
+		if(arrived != PlatformInstant() && g_coop.isHost() && itemStep == 1 && (gotSword || now - itemStepTime > std::chrono::seconds(60))) {
+			itemStep = 2;
+			itemStepTime = now;
+			for(Entity & entity : entities) {
+				if(entity.className() == "short_sword" && IsInPlayerInventory(&entity)) {
+					LogInfo << "[coop] test: host received " << entity.idString() << " enchanted=" << varLong(entity, "enchanted")
+					        << " dexterity+" << (entity._itemdata->equipitem ? entity._itemdata->equipitem->elements[IO_EQUIPITEM_ELEMENT_DEXTERITY].value : -1.f)
+					        << " price " << entity._itemdata->price << " halo " << bool(entity.halo_native.flags & HALO_ACTIVE)
+					        << " name " << entity.locname;
+				}
+			}
+			Logger::flush();
+		}
+		if(listed && ((itemStep == 2 && now - itemStepTime > std::chrono::seconds(g_coop.isHost() ? 6 : 3))
+		              || now - arrived > std::chrono::seconds(150))) {
 			mainApp->quit();
 		}
 		return;
@@ -2225,9 +2494,19 @@ void puppetsTestUpdate() {
 	} else if(step >= 3 && elapsed > std::chrono::seconds(84) && g_coop.isHost() && !hostThrowDone) {
 		hostThrowDone = true;
 		// The host throws one of its own inventory items too
-		if(Entity * item = AddItem("graph/obj3d/interactive/items/provisions/mushroom/food_mushroom", -1, IO_IMMEDIATELOAD)) {
+		Entity * item = AddItem("graph/obj3d/interactive/items/provisions/mushroom/food_mushroom", -1, IO_IMMEDIATELOAD);
+		if(item) {
 			SendInitScriptEvent(item);
-			giveToPlayer(item);
+			std::string id = item->idString();
+			giveToPlayer(item); // (may merge into a stack we already hold - the one a client gave us - and delete it)
+			item = entities.getById(id);
+			for(Entity & entity : entities) {
+				if(!item && entity.className() == "food_mushroom" && IsInPlayerInventory(&entity)) {
+					item = &entity; // the stack it merged into
+				}
+			}
+		}
+		if(item) {
 			removeFromInventories(item);
 			item->pos = entities.player()->pos + Vec3f(0.f, -100.f, 0.f);
 			item->show = SHOW_FLAG_ON_PLAYER;
@@ -2374,15 +2653,26 @@ void puppetsTestUpdate() {
 					break; // the slot view is stale now
 				}
 			}
-			if(Entity * potion = AddItem("graph/obj3d/interactive/items/magic/potion_life/potion_life", -1, IO_IMMEDIATELOAD)) {
+			Entity * potion = AddItem("graph/obj3d/interactive/items/magic/potion_life/potion_life", -1, IO_IMMEDIATELOAD);
+			if(potion) {
 				SendInitScriptEvent(potion);
-				giveToPlayer(potion);
+				std::string id = potion->idString();
+				giveToPlayer(potion); // (may merge into a stack we hold - one given by the host - and delete it)
+				potion = entities.getById(id);
+				for(Entity & entity : entities) {
+					if(!potion && entity.className() == "potion_life" && IsInPlayerInventory(&entity)) {
+						potion = &entity; // the stack it merged into
+					}
+				}
+			}
+			if(potion) {
+				std::string id = potion->idString();
 				{
 					coop::ContainerDropScope scope(*chest, potion);
 					removeFromInventories(potion);
-					chest->inventory->insert(potion);
+					chest->inventory->insert(potion); // (may merge into the chest's stack and delete it)
 				}
-				LogInfo << "[coop] test: client stored " << potion->idString();
+				LogInfo << "[coop] test: client stored " << id;
 			}
 			logContainer("client after", *chest);
 		}
