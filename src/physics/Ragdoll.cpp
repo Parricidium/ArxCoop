@@ -18,6 +18,8 @@
  */
 
 #include "physics/Ragdoll.h"
+#include "game/npc/Dismemberment.h"
+#include "physics/LooseObjects.h"
 
 #include <algorithm>
 #include <cmath>
@@ -462,10 +464,22 @@ void onEntityDied(Entity & io, Entity * killer) {
 std::string serializeRagdolls() {
 
 	JPH::PhysicsSystem * world = system();
-	if(!world || g_ragdolls.empty()) {
+	if(!world) {
 		return std::string();
 	}
-
+	bool anyMember = false;
+	for(const Entity & io : entities.inScene()) {
+		std::string npcId;
+		DismembermentFlag flag;
+		if(ARX_NPC_IsCutMember(io, npcId, flag)) {
+			anyMember = true;
+			break;
+		}
+	}
+	if(g_ragdolls.empty() && !anyMember) {
+		return std::string();
+	}
+	
 	SaveWriter out;
 	out.data.append(SaveMagic, sizeof(SaveMagic));
 	out.write(JPH::uint32(g_ragdolls.size()));
@@ -485,6 +499,27 @@ std::string serializeRagdolls() {
 			out.write(pos.x), out.write(pos.y), out.write(pos.z);
 			out.write(rotation.GetX()), out.write(rotation.GetY()), out.write(rotation.GetZ()), out.write(rotation.GetW());
 		}
+	}
+
+	// Co-op mod: the severed parts lying around (corpse pieces, see ARX_NPC_SpawnCutMember),
+	// where they are now (their entity follows the body while it moves)
+	std::vector<const Entity *> members;
+	for(const Entity & io : entities.inScene()) {
+		std::string npcId;
+		DismembermentFlag flag;
+		if(ARX_NPC_IsCutMember(io, npcId, flag)) {
+			members.push_back(&io);
+		}
+	}
+	out.write(JPH::uint32(members.size()));
+	for(const Entity * io : members) {
+		std::string npcId;
+		DismembermentFlag flag = FLAG_CUT_HEAD;
+		ARX_NPC_IsCutMember(*io, npcId, flag);
+		out.write(std::string_view(npcId));
+		out.write(JPH::uint8(flag));
+		out.write(io->pos.x), out.write(io->pos.y), out.write(io->pos.z);
+		out.write(io->angle.getPitch()), out.write(io->angle.getYaw()), out.write(io->angle.getRoll());
 	}
 
 	return out.data;
@@ -556,6 +591,38 @@ void restoreRagdolls(std::string_view buffer) {
 
 	if(restored > 0) {
 		LogInfo << "Jolt: restored " << restored << " ragdolls";
+	}
+
+	// Co-op mod: the corpse pieces, spawned again from their NPC's cut and put where they lay
+	// (saves from before this section end here: nothing to read)
+	if(in.failed || in.pos >= in.data.size()) {
+		return;
+	}
+	JPH::uint32 members = in.read<JPH::uint32>();
+	size_t placed = 0;
+	for(JPH::uint32 n = 0; n < members && !in.failed; n++) {
+		std::string npcId = in.readString();
+		DismembermentFlag flag = DismembermentFlag(in.read<JPH::uint8>());
+		Vec3f pos;
+		pos.x = in.read<float>(), pos.y = in.read<float>(), pos.z = in.read<float>();
+		float pitch = in.read<float>();
+		float yaw = in.read<float>();
+		float roll = in.read<float>();
+		if(in.failed) {
+			LogWarning << "Jolt: truncated corpse piece save data";
+			break;
+		}
+		Entity * npc = entities.getById(npcId);
+		if(!npc || !(npc->ioflags & IO_NPC) || !(npc->_npcdata->cuts & flag)) {
+			continue; // the NPC is gone or whole again
+		}
+		if(Entity * member = ARX_NPC_SpawnCutMember(*npc, flag)) {
+			placeLooseObject(*member, pos, Anglef(pitch, yaw, roll));
+			placed++;
+		}
+	}
+	if(placed > 0) {
+		LogInfo << "Jolt: placed " << placed << " corpse pieces";
 	}
 }
 

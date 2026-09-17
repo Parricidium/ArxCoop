@@ -39,4 +39,16 @@ void ARX_NPC_TryToCutSomething(Entity * target, const Vec3f * pos);
 //! Co-op client: mirrors the host's cut flags, spawning the members that fell off there.
 void ARX_NPC_ApplyRemoteCuts(Entity & npc, DismembermentFlags cuts);
 
+/*!
+ * Co-op mod: a severed part is a corpse piece that stays (the engine blew it up in gore after
+ * 300 ms): an entity named after its NPC and the cut ("goblin_base_cut_head_0006"), the same on
+ * every machine, simulated by the host like any loose object and saved with the level's
+ * ragdolls. Spawns (launches) the part of \a npc for \a flag, or returns the one already
+ * there; null when the NPC has no such part.
+ */
+Entity * ARX_NPC_SpawnCutMember(Entity & npc, DismembermentFlag flag);
+
+//! Is \a io such a corpse piece? Then its NPC's id and the cut are filled in.
+bool ARX_NPC_IsCutMember(const Entity & io, std::string & npcId, DismembermentFlag & flag);
+
 #endif // ARX_GAME_NPC_DISMEMBERMENT_H

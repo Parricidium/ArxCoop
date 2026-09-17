@@ -18,6 +18,7 @@
  */
 
 #include "game/npc/Dismemberment.h"
+#include "game/EntityId.h"
 
 #include <string_view>
 #include <boost/algorithm/string.hpp>
@@ -65,22 +66,49 @@ MaterialId getGoreMaterial(const EERIE_3DOBJ & object) {
 /*!
  * \brief Spawns a body part from NPC
  */
-static void ARX_NPC_SpawnMember(Entity * ioo, VertexSelectionId num) {
-	
-	if(!ioo) {
-		return;
+static DismembermentFlags GetCutFlag(std::string_view str);
+static VertexSelectionId GetCutSelection(Entity * io, DismembermentFlag flag);
+
+//! The selection name of a cut ("cut_head"...), see GetCutFlag
+static std::string_view cutName(DismembermentFlag flag) {
+	switch(flag) {
+		case FLAG_CUT_HEAD:  return "cut_head";
+		case FLAG_CUT_TORSO: return "cut_torso";
+		case FLAG_CUT_LARM:  return "cut_larm";
+		case FLAG_CUT_RARM:  return "cut_rarm";
+		case FLAG_CUT_LLEG:  return "cut_lleg";
+		case FLAG_CUT_RLEG:  return "cut_rleg";
 	}
-	
+	return std::string_view();
+}
+
+//! Co-op mod: the class path of the corpse piece of \a npc for the selection \a name
+static res::path cutMemberClass(const Entity & npc, std::string_view name) {
+	return npc.classPath().parent() / (npc.className() + "_" + std::string(name));
+}
+
+static Entity * ARX_NPC_SpawnMember(Entity * ioo, VertexSelectionId num) {
+
+	if(!ioo) {
+		return nullptr;
+	}
+
 	EERIE_3DOBJ * from = ioo->obj;
 	if(!from || !num) {
-		return;
+		return nullptr;
 	}
-	
+
+	// Co-op mod: one piece per cut, named after the NPC (the same id on every machine)
+	res::path classPath = cutMemberClass(*ioo, from->selections[num].name);
+	if(Entity * existing = entities.getById(EntityId(classPath, ioo->instance()).string())) {
+		return existing;
+	}
+
 	EERIE_3DOBJ * nouvo = new EERIE_3DOBJ;
 	if(!nouvo) {
-		return;
+		return nullptr;
 	}
-	
+
 	MaterialId gore = getGoreMaterial(*from);
 	
 	size_t nvertex = from->selections[num].selected.size();
@@ -193,22 +221,23 @@ static void ARX_NPC_SpawnMember(Entity * ioo, VertexSelectionId num) {
 	nouvo->linked.clear();
 	nouvo->originalMaterials.clear();
 	
-	Entity * io = new Entity("noname", EntityInstance(0));
-	
+	Entity * io = new Entity(classPath, ioo->instance());
+
 	io->_itemdata = new IO_ITEMDATA();
-	
+
 	io->ioflags = IO_ITEM | IO_NOSAVE | IO_MOVABLE;
 	io->script.valid = false;
 	io->script.data.clear();
 	io->gameFlags |= GFLAG_NO_PHYS_IO_COL;
-	
+
 	EERIE_COLLISION_Cylinder_Create(io);
 	EERIE_PHYSICS_BOX_Create(nouvo);
 	if(!nouvo->pbox) {
 		delete nouvo;
-		return;
+		delete io;
+		return nullptr;
 	}
-	
+
 	io->infracolor = Color3f::blue * 0.8f;
 	io->collision = COLLIDE_WITH_PLAYER;
 	io->m_icon = nullptr;
@@ -218,8 +247,9 @@ static void ARX_NPC_SpawnMember(Entity * ioo, VertexSelectionId num) {
 	io->angle = ioo->angle;
 	
 	io->gameFlags = ioo->gameFlags;
+	io->gameFlags &= ~GFLAG_INTERACTIVITY; // (co-op mod: a corpse piece, nothing to pick or talk to)
 	io->halo = ioo->halo;
-	
+
 	io->angle.setPitch(Random::getf(340.f, 380.f));
 	io->angle.setYaw(Random::getf(0.f, 360.f));
 	io->angle.setRoll(0);
@@ -233,14 +263,42 @@ static void ARX_NPC_SpawnMember(Entity * ioo, VertexSelectionId num) {
 	io->rubber = 0.6f;
 	
 	io->no_collide = ioo->index();
-	
-	io->gameFlags |= GFLAG_GOREEXPLODE;
+
+	// Co-op mod: no GFLAG_GOREEXPLODE - the piece stays where it lands (NPC.cpp blew it up in
+	// blood after 300 ms), simulated by the host and saved with the level's ragdolls
 	io->animBlend.lastanimtime = g_gameTime.now();
 	io->soundtime = 0;
 	io->soundcount = 0;
-	
+
 	EERIE_PHYSICS_BOX_Launch(io->obj, io->pos, io->angle, vector, io);
-	
+
+	return io;
+}
+
+Entity * ARX_NPC_SpawnCutMember(Entity & npc, DismembermentFlag flag) {
+	if(!(npc.ioflags & IO_NPC) || !npc.obj) {
+		return nullptr;
+	}
+	VertexSelectionId selection = GetCutSelection(&npc, flag);
+	return selection ? ARX_NPC_SpawnMember(&npc, selection) : nullptr;
+}
+
+bool ARX_NPC_IsCutMember(const Entity & io, std::string & npcId, DismembermentFlag & flag) {
+	if(!(io.ioflags & IO_ITEM) || !(io.ioflags & IO_NOSAVE) || io.script.valid) {
+		return false;
+	}
+	const std::string & name = io.className();
+	size_t cut = name.rfind("_cut_");
+	if(cut == std::string::npos) {
+		return false;
+	}
+	DismembermentFlags flags = GetCutFlag(std::string_view(name).substr(cut + 1));
+	if(!flags) {
+		return false;
+	}
+	flag = DismembermentFlag(DismembermentFlags::Type(flags));
+	npcId = EntityId(name.substr(0, cut), io.instance()).string();
+	return true;
 }
 
 
@@ -257,7 +315,7 @@ static DismembermentFlags GetCutFlag(std::string_view str) {
 		return FLAG_CUT_LARM;
 	}
 	if(str == "cut_rarm") {
-		return FLAG_CUT_HEAD;
+		return FLAG_CUT_RARM;
 	}
 	if(str == "cut_lleg") {
 		return FLAG_CUT_LLEG;
