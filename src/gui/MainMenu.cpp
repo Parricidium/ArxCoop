@@ -1406,13 +1406,23 @@ public:
 		reserveBottom();
 		
 		{
-			std::string label(getLocalised("system_menus_options_input_customize_controls"));
+			// Co-op mod: the game's own keys on their two pages, the keys the mod adds on a third one
+			// (all of them on the vanilla pages overflowed the frame)
+			std::string label(getLocalised("coop_controls_vanilla", "Touches du jeu (vanilla)"));
 			label += "…";
 			auto txt = std::make_unique<TextWidget>(hFontMenu, label);
 			txt->setTargetPage(Page_OptionsInputCustomizeKeys1);
 			addCenter(std::move(txt), false);
 		}
-		
+
+		{
+			std::string label(getLocalised("coop_controls_rt", "Ajouts RT / coop"));
+			label += "…";
+			auto txt = std::make_unique<TextWidget>(hFontMenu, label);
+			txt->setTargetPage(Page_OptionsInputCustomizeKeys3);
+			addCenter(std::move(txt), false);
+		}
+
 		addCenter(std::make_unique<Spacer>(hFontMenu->getLineHeight() / 2));
 		
 		{
@@ -1672,15 +1682,7 @@ public:
 		addControlRow(CONTROLS_CUST_LOOKDOWN,     "system_menus_options_input_customize_controls_look_down");
 		
 		addControlRow(CONTROLS_CUST_MINIMAP,      "system_menus_options_input_customize_controls_minimap");
-		addControlRow(CONTROLS_CUST_THIRDPERSON,  "system_menus_options_input_customize_controls_third_person", "Vue 1re / 3e personne");
-		addControlRow(CONTROLS_CUST_CAMERA_ORBIT, "system_menus_options_input_customize_controls_camera_orbit", "Caméra libre (3e pers.)");
-		addControlRow(CONTROLS_CUST_SWAP_SHOULDER, "system_menus_options_input_customize_controls_swap_shoulder", "Changer d'épaule");
-		addControlRow(CONTROLS_CUST_CAMERA_ZOOM_IN, "system_menus_options_input_customize_controls_camera_zoom_in", "Caméra plus près (3e pers.)");
-		addControlRow(CONTROLS_CUST_CAMERA_ZOOM_OUT, "system_menus_options_input_customize_controls_camera_zoom_out", "Caméra plus loin (3e pers.)");
-		addControlRow(CONTROLS_CUST_PING, "system_menus_options_input_customize_controls_ping", "Marqueur « par ici » (coop)");
-		addControlRow(CONTROLS_CUST_ADMIN, "system_menus_options_input_customize_controls_admin", "Administration / outils (coop)");
-		addControlRow(CONTROLS_CUST_ROLL, "system_menus_options_input_customize_controls_roll", "Roulade (esquive)");
-		
+
 		if(config.input.allowConsole) {
 			addControlRow(CONTROLS_CUST_CONSOLE, "system_menus_options_input_customize_controls_console");
 		}
@@ -1766,8 +1768,54 @@ public:
 	
 };
 
+//! Co-op mod: the keys the mod adds (third person, camera, co-op tools, dodge roll)
+class ControlOptionsMenuPage3 final : public ControlOptionsPage {
+
+public:
+
+	ControlOptionsMenuPage3()
+		: ControlOptionsPage(Page_OptionsInputCustomizeKeys3)
+	{ }
+
+	void init() override {
+
+		reserveBottom();
+
+		{
+			auto txt = std::make_unique<TextWidget>(hFontMenu, getLocalised("coop_controls_rt", "Ajouts RT / coop"));
+			txt->setEnabled(false);
+			addCenter(std::move(txt));
+		}
+		addCenter(std::make_unique<Spacer>(hFontMenu->getLineHeight() / 2));
+
+		addControlRow(CONTROLS_CUST_THIRDPERSON,     "system_menus_options_input_customize_controls_third_person", "Vue 1re / 3e personne");
+		addControlRow(CONTROLS_CUST_CAMERA_ORBIT,    "system_menus_options_input_customize_controls_camera_orbit", "Caméra libre (3e pers.)");
+		addControlRow(CONTROLS_CUST_SWAP_SHOULDER,   "system_menus_options_input_customize_controls_swap_shoulder", "Changer d'épaule");
+		addControlRow(CONTROLS_CUST_CAMERA_ZOOM_IN,  "system_menus_options_input_customize_controls_camera_zoom_in", "Caméra plus près (3e pers.)");
+		addControlRow(CONTROLS_CUST_CAMERA_ZOOM_OUT, "system_menus_options_input_customize_controls_camera_zoom_out", "Caméra plus loin (3e pers.)");
+		addControlRow(CONTROLS_CUST_ROLL,            "system_menus_options_input_customize_controls_roll", "Roulade (esquive)");
+		addControlRow(CONTROLS_CUST_PING,            "system_menus_options_input_customize_controls_ping", "Marqueur « par ici » (coop)");
+		addControlRow(CONTROLS_CUST_ADMIN,           "system_menus_options_input_customize_controls_admin", "Administration / outils (coop)");
+
+		addBackButton(Page_OptionsInput);
+
+		{
+			std::string_view label = getLocalised("system_menus_options_input_customize_default");
+			auto txt = std::make_unique<TextWidget>(hFontMenu, label);
+			txt->clicked = [this](Widget * /* widget */) {
+				resetActionKeys();
+			};
+			addCorner(std::move(txt), BottomCenter);
+		}
+
+		reinitActionKeys();
+
+	}
+
+};
+
 class QuitConfirmMenuPage final : public MenuPage {
-	
+
 public:
 	
 	QuitConfirmMenuPage()
@@ -1830,7 +1878,8 @@ void MainMenu::initWindowPages() {
 	m_window->add(std::make_unique<InputOptionsMenuPage>());
 	m_window->add(std::make_unique<ControlOptionsMenuPage1>());
 	m_window->add(std::make_unique<ControlOptionsMenuPage2>());
-	
+	m_window->add(std::make_unique<ControlOptionsMenuPage3>());
+
 	m_window->add(std::make_unique<QuitConfirmMenuPage>());
 	m_window->add(std::make_unique<LocalizationMenuPage>());
 	m_window->add(createCoopMenuPage());

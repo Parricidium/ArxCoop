@@ -43,7 +43,8 @@ enum MENUSTATE {
 	Page_OptionsInput,
 	Page_OptionsInputCustomizeKeys1,
 	Page_OptionsInputCustomizeKeys2,
-	Page_QuitConfirm,
+	Page_OptionsInputCustomizeKeys3, //!< co-op mod: the keys the mod adds (RT / co-op), on their own page
+Page_QuitConfirm,
 	Page_Localization,
 	Page_Coop,
 	Page_CoopHost,
