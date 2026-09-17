@@ -171,8 +171,8 @@ struct PlayerSnapshot {
 	bool inDialogue = false; //!< locked in a cinematic dialogue with an NPC
 	float ignition = 0.f;    //!< on fire (the engine's Entity::ignition of the player)
 	float roll = 0.f;        //!< dodge roll progress, 0 = none (coop/Roll.cpp)
-	float rollTurn = 0.f;    //!< degrees the roll's direction is off the facing (0 forward, 180 back)
-	IO_HALO slotHalo[3];     //!< helmet, armor, leggings glow, drawn on the puppet's mesh (puppetSlotHalo)
+	float rollYaw = 0.f;     //!< yaw of the roll's direction (player.angle convention)
+IO_HALO slotHalo[3];     //!< helmet, armor, leggings glow, drawn on the puppet's mesh (puppetSlotHalo)
 	PlatformInstant received;
 };
 
@@ -759,8 +759,8 @@ void handlePlayerState(PlayerId id, Reader & reader) {
 	state.inDialogue = reader.remaining() ? reader.bool_() : false;
 	state.ignition = reader.remaining() >= sizeof(float) ? reader.f32_() : 0.f;
 	state.roll = reader.remaining() >= sizeof(float) ? reader.f32_() : 0.f;
-	state.rollTurn = reader.remaining() >= sizeof(float) ? reader.f32_() : 0.f;
-	state.received = platform::getTime();
+	state.rollYaw = reader.remaining() >= sizeof(float) ? reader.f32_() : 0.f;
+state.received = platform::getTime();
 
 }
 
@@ -1493,12 +1493,12 @@ float puppetRollPhase(const Entity & puppet) {
 	return it == g_remote.end() ? 0.f : it->second.roll;
 }
 
-float puppetRollTurn(const Entity & puppet) {
+float puppetRollYaw(const Entity & puppet) {
 	if(!puppet.coopPuppet) {
 		return 0.f;
 	}
 	auto it = g_remote.find(puppetOwner(puppet));
-	return it == g_remote.end() ? 0.f : it->second.rollTurn;
+	return it == g_remote.end() ? 0.f : it->second.rollYaw;
 }
 
 IO_HALO * puppetSlotHalo(const Entity & puppet, unsigned slot) {
@@ -1661,7 +1661,7 @@ void puppetsSendLocalState() {
 	writer.bool_(getCinematicSpeech() != nullptr);
 	writer.f32_(std::max(io.ignition, 0.f));
 	writer.f32_(rollPhase());
-	writer.f32_(rollTurn());
+	writer.f32_(rollDirectionYaw());
 
 	g_coop.sendToOthers(MessageType::PlayerState, writer);
 	sendEquipmentIfNeeded(false);
@@ -2054,8 +2054,8 @@ void puppetsTestUpdate() {
 					GetSnapShot();
 					const Entity * puppet = findPuppet(entry.first);
 					Vec3f rel = puppet ? puppet->pos - player.pos : Vec3f(0.f);
-					LogInfo << "[coop] test: puppet " << int(entry.first) << " roll phase " << entry.second.roll << " turn "
-					        << entry.second.rollTurn << " (snapshot), host yaw " << player.angle.getYaw() << ", puppet "
+					LogInfo << "[coop] test: puppet " << int(entry.first) << " roll phase " << entry.second.roll << " direction yaw "
+					        << entry.second.rollYaw << " (snapshot), host yaw " << player.angle.getYaw() << ", puppet "
 					        << glm::dot(rel, angleToVectorXZ(player.angle.getYaw())) << " ahead and "
 					        << glm::dot(rel, angleToVectorXZ(player.angle.getYaw() + 90.f)) << " to the left of the host";
 					Logger::flush();
