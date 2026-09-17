@@ -19,6 +19,7 @@
 
 #include "game/npc/Dismemberment.h"
 #include "game/EntityId.h"
+#include "io/log/Logger.h"
 
 #include <string_view>
 #include <boost/algorithm/string.hpp>
@@ -271,6 +272,8 @@ static Entity * ARX_NPC_SpawnMember(Entity * ioo, VertexSelectionId num) {
 	io->soundcount = 0;
 
 	EERIE_PHYSICS_BOX_Launch(io->obj, io->pos, io->angle, vector, io);
+	LogInfo << "[coop] corpse piece " << io->idString() << " off at " << int(io->pos.x) << "," << int(io->pos.y) << "," << int(io->pos.z)
+	        << " (box active " << int(io->obj->pbox->active) << ")";
 
 	return io;
 }
