@@ -225,6 +225,8 @@ protocol).
 | Arrows stuck in the world | ✅ | 70% stay planted where they hit (30% break), seen by everybody with a "pick up" label; picking one up refills the quiver you carry (up to its capacity), or becomes one |
 | Dodge roll (Z key, "Roulade" in the controls) | ✅ | in the direction of the movement keys, short invulnerability, seen on the other players |
 | Severed parts (dismemberment) | ✅ | stay on the ground as corpse pieces, host physics, same spot everywhere, saved with the level's corpses |
+| Water ripples (Options RT) | ✅ | rings and wakes from what moves in the water, simulated on every machine from the same positions |
+| Blood trails (Options RT) | ✅ | bloody footprints after stepping in blood, on every machine from the same positions |
 | Magic traps, NPC spells (fire fields, lightning, fireballs) | ✅ | replayed for the eyes, damage dealt by the host |
 | Persistent magic fields ("blue walls") | ✅ | recreated on arrival, end together |
 | Burning players | ✅ | flames follow the player |
@@ -532,6 +534,8 @@ Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition RT (p
 | Flèches plantées dans le décor | ✅ | 70 % restent plantées là où elles touchent (30 % se brisent), visibles par tous avec l'étiquette « ramasser » ; en ramasser une remplit le carquois qu'on porte (jusqu'à sa capacité), ou en devient un |
 | Roulade (touche Z, « Roulade » dans les contrôles) | ✅ | dans le sens des touches de déplacement, courte invulnérabilité, vue par les autres joueurs |
 | Morceaux tranchés (démembrement) | ✅ | restent au sol comme des morceaux de cadavre, physique de l'hôte, même endroit partout, enregistrés avec les cadavres du niveau |
+| Rides sur l'eau (Options RT) | ✅ | ronds et sillages de ce qui bouge dans l'eau, simulés sur chaque machine à partir des mêmes positions |
+| Traces de sang (Options RT) | ✅ | empreintes de pas ensanglantées après avoir marché dans le sang, sur chaque machine à partir des mêmes positions |
 | Pièges magiques, sorts des PNJ (champs de feu, éclairs, boules de feu) | ✅ | rejoués pour les yeux, dégâts infligés par l'hôte |
 | Champs magiques persistants (« murs bleus ») | ✅ | recréés à l'arrivée, disparaissent ensemble |
 | Joueurs en feu | ✅ | les flammes suivent le joueur |
