@@ -2446,7 +2446,87 @@ void puppetsTestUpdate() {
 			}
 			Logger::flush();
 		}
-		if(listed && ((itemStep == 4 && now - itemStepTime > std::chrono::seconds(g_coop.isHost() ? 8 : 3))
+		// Severed parts: the host spawns a goblin, kills it, cuts its head off; the piece must exist on
+		// both sides with the host's position, and survive a save/restore of the level's physics block
+		static int cutStep = 0;
+		static PlatformInstant cutStepTime;
+		static std::string cutMemberId;
+		if(arrived != PlatformInstant() && g_coop.isHost() && itemStep == 4 && cutStep == 0 && now - itemStepTime > std::chrono::seconds(1)) {
+			cutStep = 1;
+			cutStepTime = now;
+			// A goblin of the level (it exists on the client too: a spawn from test code would not),
+			// brought next to us
+			if(Entity * goblin = entities.getById("goblin_base_0021")) {
+				Vec3f at = player.pos + angleToVectorXZ(player.angle.getYaw()) * 150.f;
+				at.y = player.pos.y + 130.f;
+				ARX_INTERACTIVE_Teleport(goblin, at, true);
+				LogInfo << "[coop] test: host brought " << goblin->idString() << " (dead " << IsDeadNPC(*goblin) << ") next to it";
+			} else {
+				LogInfo << "[coop] test: no goblin_base_0021 here";
+			}
+			Logger::flush();
+		}
+		if(g_coop.isHost() && cutStep == 1 && now - cutStepTime > std::chrono::milliseconds(1500)) {
+			cutStep = 2;
+			cutStepTime = now;
+			Entity * goblin = entities.getById("goblin_base_0021");
+			if(goblin) {
+				// (a second on screen: its vertices are placed, the piece starts from the real neck)
+				damageNpc(*goblin, 100000.f, entities.player(), nullptr, DAMAGE_TYPE_METAL, nullptr);
+				ARX_NPC_ApplyRemoteCuts(*goblin, FLAG_CUT_HEAD);
+				if(Entity * member = ARX_NPC_SpawnCutMember(*goblin, FLAG_CUT_HEAD)) {
+					cutMemberId = member->idString();
+					LogInfo << "[coop] test: host cut " << goblin->idString() << " (dead " << IsDeadNPC(*goblin) << ") at "
+					        << int(goblin->pos.x) << "," << int(goblin->pos.y) << "," << int(goblin->pos.z) << ": piece "
+					        << cutMemberId << " at " << int(member->pos.x) << "," << int(member->pos.y) << "," << int(member->pos.z);
+				} else {
+					LogInfo << "[coop] test: host cut " << goblin->idString() << " but no piece was spawned";
+				}
+			} else {
+				LogInfo << "[coop] test: host found no live goblin to cut";
+			}
+			Logger::flush();
+		}
+		if(g_coop.isHost() && cutStep == 2 && now - cutStepTime > std::chrono::seconds(4)) {
+			cutStep = 3;
+			cutStepTime = now;
+			Entity * member = entities.getById(cutMemberId);
+			if(member) {
+				Vec3f before = member->pos;
+				Anglef angle = member->angle;
+				std::string blob = physics::serializeRagdolls();
+				member->destroy();
+				physics::restoreRagdolls(blob);
+				Entity * again = entities.getById(cutMemberId);
+				LogInfo << "[coop] test: host piece rested at " << int(before.x) << "," << int(before.y) << "," << int(before.z)
+				        << " yaw " << int(angle.getYaw()) << "; physics block " << blob.size() << " bytes; after restore: "
+				        << (again ? "placed at " + std::to_string(int(again->pos.x)) + "," + std::to_string(int(again->pos.y)) + "," + std::to_string(int(again->pos.z)) + " yaw " + std::to_string(int(again->angle.getYaw())) : std::string("MISSING"));
+			} else {
+				LogInfo << "[coop] test: host piece " << cutMemberId << " is gone";
+			}
+			Logger::flush();
+		}
+		if(g_coop.isClient() && itemStep == 4) {
+			static PlatformInstant clientPieceSeen;
+			static bool clientPieceLogged = false;
+			for(Entity & io : entities.inScene()) {
+				std::string npcId;
+				DismembermentFlag flag;
+				if(!ARX_NPC_IsCutMember(io, npcId, flag)) {
+					continue;
+				}
+				if(clientPieceSeen == PlatformInstant()) {
+					clientPieceSeen = now;
+					LogInfo << "[coop] test: client sees piece " << io.idString() << " of " << npcId << " at " << int(io.pos.x) << "," << int(io.pos.y) << "," << int(io.pos.z);
+				} else if(!clientPieceLogged && now - clientPieceSeen > std::chrono::seconds(4)) {
+					clientPieceLogged = true;
+					LogInfo << "[coop] test: client piece " << io.idString() << " rests at " << int(io.pos.x) << "," << int(io.pos.y) << "," << int(io.pos.z)
+					        << " yaw " << int(io.angle.getYaw()) << " show " << int(io.show);
+					Logger::flush();
+				}
+			}
+		}
+		if(listed && ((itemStep == 4 && now - itemStepTime > std::chrono::seconds(g_coop.isHost() ? 14 : 12))
 		              || now - arrived > std::chrono::seconds(175))) {
 			mainApp->quit();
 		}

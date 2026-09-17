@@ -679,6 +679,21 @@ void removeLooseObject(Entity & io) {
 	}
 }
 
+void placeLooseObject(Entity & io, const Vec3f & pos, const Anglef & angle) {
+	if(isMirrorMode()) {
+		mirrorLooseObject(io, pos, angle, false);
+		return;
+	}
+	auto loose = g_loose.find(&io);
+	if(loose != g_loose.end()) {
+		removeLooseBody(loose);
+	}
+	io.pos = io.lastpos = pos;
+	io.angle = angle;
+	io.requestRoomUpdate = true;
+	settleEngineBox(io);
+}
+
 void clearLooseObjects() {
 	clearMirroredObjects();
 	while(!g_loose.empty()) {

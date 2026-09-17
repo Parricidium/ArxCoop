@@ -68,6 +68,12 @@ void updateLooseObjects();
 //! Drop the bodies of an entity being destroyed
 void removeLooseObject(Entity & io);
 
+/*!
+ * Put an object at rest at \a pos / \a angle (restored from a save): its body, if any, is
+ * dropped and the engine's box put to rest, or in mirror mode the state is simply shown.
+ */
+void placeLooseObject(Entity & io, const Vec3f & pos, const Anglef & angle);
+
 //! Remove every body (level unload)
 void clearLooseObjects();
 
