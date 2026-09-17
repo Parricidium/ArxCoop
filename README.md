@@ -224,6 +224,7 @@ protocol).
 | Arrows | ✅ | the same arrow leaves every copy of the archer (position, speed, drop); damage on the archer's side, through the host |
 | Arrows stuck in the world | ✅ | 70% stay planted where they hit (30% break), seen by everybody with a "pick up" label; picking one up refills the quiver you carry (up to its capacity), or becomes one |
 | Dodge roll (Z key, "Roulade" in the controls) | ✅ | in the direction of the movement keys, short invulnerability, seen on the other players |
+| Severed parts (dismemberment) | ✅ | stay on the ground as corpse pieces, host physics, same spot everywhere, saved with the level's corpses |
 | Magic traps, NPC spells (fire fields, lightning, fireballs) | ✅ | replayed for the eyes, damage dealt by the host |
 | Persistent magic fields ("blue walls") | ✅ | recreated on arrival, end together |
 | Burning players | ✅ | flames follow the player |
@@ -530,6 +531,7 @@ Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition RT (p
 | Flèches | ✅ | la même flèche part de chaque copie de l'archer (position, vitesse, chute) ; dégâts du côté de l'archer, via l'hôte |
 | Flèches plantées dans le décor | ✅ | 70 % restent plantées là où elles touchent (30 % se brisent), visibles par tous avec l'étiquette « ramasser » ; en ramasser une remplit le carquois qu'on porte (jusqu'à sa capacité), ou en devient un |
 | Roulade (touche Z, « Roulade » dans les contrôles) | ✅ | dans le sens des touches de déplacement, courte invulnérabilité, vue par les autres joueurs |
+| Morceaux tranchés (démembrement) | ✅ | restent au sol comme des morceaux de cadavre, physique de l'hôte, même endroit partout, enregistrés avec les cadavres du niveau |
 | Pièges magiques, sorts des PNJ (champs de feu, éclairs, boules de feu) | ✅ | rejoués pour les yeux, dégâts infligés par l'hôte |
 | Champs magiques persistants (« murs bleus ») | ✅ | recréés à l'arrivée, disparaissent ensemble |
 | Joueurs en feu | ✅ | les flammes suivent le joueur |
