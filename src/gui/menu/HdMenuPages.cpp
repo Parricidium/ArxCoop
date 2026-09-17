@@ -78,6 +78,7 @@ void applyHdPreset(int preset) {
 			config.video.reflections = 0.f;
 			config.video.water = 0.f;
 			config.video.waterRipples = false;
+			config.video.bloodTrails = false;
 			config.video.lava = 0.f;
 			config.video.softParticles = false;
 			break;
@@ -97,6 +98,7 @@ void applyHdPreset(int preset) {
 			config.video.reflections = 0.f;
 			config.video.water = 1.f;
 			config.video.waterRipples = true;
+			config.video.bloodTrails = true;
 			config.video.lava = 1.f;
 			config.video.softParticles = true;
 			break;
@@ -117,6 +119,7 @@ void applyHdPreset(int preset) {
 			config.video.reflections = 1.f;
 			config.video.water = 1.f;
 			config.video.waterRipples = true;
+			config.video.bloodTrails = true;
 			config.video.lava = 1.f;
 			config.video.softParticles = true;
 			break;
@@ -137,6 +140,7 @@ void applyHdPreset(int preset) {
 			config.video.reflections = 1.f;
 			config.video.water = 1.f;
 			config.video.waterRipples = true;
+			config.video.bloodTrails = true;
 			config.video.lava = 1.f;
 			config.video.softParticles = true;
 			break;
@@ -157,6 +161,7 @@ void applyHdPreset(int preset) {
 			config.video.reflections = 1.f;
 			config.video.water = 1.f;
 			config.video.waterRipples = true;
+			config.video.bloodTrails = true;
 			config.video.lava = 1.f;
 			config.video.softParticles = true;
 			break;
@@ -220,6 +225,7 @@ public:
 		, m_normalMaps(nullptr)
 		, m_water(nullptr)
 		, m_waterRipples(nullptr)
+		, m_bloodTrails(nullptr)
 		, m_parallax(nullptr)
 		, m_reflections(nullptr)
 		, m_softParticles(nullptr)
@@ -364,6 +370,18 @@ public:
 				customChanged();
 			};
 			m_waterRipples = cb.get();
+			addCenter(std::move(cb));
+		}
+
+		// Blood trails: footprints after stepping in blood
+		{
+			auto cb = std::make_unique<CheckboxWidget>(checkboxSize(), hFontMenu,
+			                                           hdText("system_menus_options_hd_blood_trails", "Traces de sang (pas)"));
+			cb->stateChanged = [this](bool checked) {
+				config.video.bloodTrails = checked;
+				customChanged();
+			};
+			m_bloodTrails = cb.get();
 			addCenter(std::move(cb));
 		}
 
@@ -537,6 +555,7 @@ private:
 	SliderWidget * m_normalMaps;
 	SliderWidget * m_water;
 	CheckboxWidget * m_waterRipples;
+	CheckboxWidget * m_bloodTrails;
 	SliderWidget * m_parallax;
 	SliderWidget * m_reflections;
 	CheckboxWidget * m_softParticles;
@@ -614,6 +633,9 @@ private:
 		}
 		if(m_waterRipples) {
 			m_waterRipples->setChecked(config.video.waterRipples && config.video.water > 0.f);
+		}
+		if(m_bloodTrails) {
+			m_bloodTrails->setChecked(config.video.bloodTrails);
 		}
 
 	}

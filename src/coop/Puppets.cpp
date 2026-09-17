@@ -84,6 +84,7 @@
 #include "io/Screenshot.h"
 #include "io/log/Logger.h"
 #include "physics/Projectile.h"
+#include "graphics/effects/Decal.h"
 #include "scene/Tiles.h"
 #include "graphics/particle/ParticleEffects.h"
 #include "io/resource/ResourcePath.h"
@@ -2453,6 +2454,7 @@ void puppetsTestUpdate() {
 		static int cutStep = 0;
 		static PlatformInstant cutStepTime;
 		static std::string cutMemberId;
+		static Vec3f bloodPool;
 		if(arrived != PlatformInstant() && g_coop.isHost() && itemStep == 4 && cutStep == 0 && now - itemStepTime > std::chrono::seconds(1)) {
 			cutStep = 1;
 			cutStepTime = now;
@@ -2476,6 +2478,11 @@ void puppetsTestUpdate() {
 				// (a second on screen: its vertices are placed, the piece starts from the real neck)
 				damageNpc(*goblin, 100000.f, entities.player(), nullptr, DAMAGE_TYPE_METAL, nullptr);
 				ARX_NPC_ApplyRemoteCuts(*goblin, FLAG_CUT_HEAD);
+				// A pool of blood at its feet (the kill from test code spawns none), for the footprints
+				bloodPool = goblin->pos;
+				PolyBoomAddSplat(Sphere(bloodPool + Vec3f(0.f, -5.f, 0.f), 35.f), Color3f(0.6f, 0.05f, 0.05f), 0);
+				PolyBoomAddSplat(Sphere(bloodPool + Vec3f(20.f, -5.f, 15.f), 30.f), Color3f(0.6f, 0.05f, 0.05f), 0);
+				LogInfo << "[coop] test: blood pool at " << int(goblin->pos.x) << "," << int(goblin->pos.y) << "," << int(goblin->pos.z) << ", decals " << PolyBoomCount();
 				if(Entity * member = ARX_NPC_SpawnCutMember(*goblin, FLAG_CUT_HEAD)) {
 					cutMemberId = member->idString();
 					LogInfo << "[coop] test: host cut " << goblin->idString() << " (dead " << IsDeadNPC(*goblin) << ") at "
@@ -2505,6 +2512,25 @@ void puppetsTestUpdate() {
 				        << (again ? "placed at " + std::to_string(int(again->pos.x)) + "," + std::to_string(int(again->pos.y)) + "," + std::to_string(int(again->pos.z)) + " yaw " + std::to_string(int(again->angle.getYaw())) : std::string("MISSING"));
 			} else {
 				LogInfo << "[coop] test: host piece " << cutMemberId << " is gone";
+			}
+			Logger::flush();
+		}
+		static bool bloodWalked = false;
+		if(g_coop.isHost() && cutStep == 2 && !bloodWalked && now - cutStepTime > std::chrono::milliseconds(600)) {
+			bloodWalked = true;
+			// Blood trails: walk through the goblin's fresh blood, then away from it, as steps
+			Entity * goblin = entities.getById("goblin_base_0021");
+			if(goblin) {
+				// (from the pool where it died: the corpse itself may have been flung away by the blow)
+				size_t before = PolyBoomCount();
+				Vec3f dir = glm::normalize(Vec3f(player.pos.x - bloodPool.x, 0.f, player.pos.z - bloodPool.z));
+				for(int i = 0; i < 12; i++) {
+					Vec3f step = bloodPool + dir * (float(i) * 22.f) + Vec3f(0.f, -10.f, 0.f);
+					ARX_NPC_NeedStepSound(entities.player(), step);
+				}
+				LogInfo << "[coop] test: host walked through the blood of " << goblin->idString() << ": " << (PolyBoomCount() - before)
+				        << " footprints (" << before << " decals before)";
+				GetSnapShot();
 			}
 			Logger::flush();
 		}

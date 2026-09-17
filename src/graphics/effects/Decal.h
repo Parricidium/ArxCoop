@@ -53,11 +53,21 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "graphics/Color.h"
 #include "math/Types.h"
 
+class Entity;
+
 void PolyBoomClear();
 size_t PolyBoomCount();
 
 void PolyBoomAddScorch(const Vec3f & pos);
+//! \a flags: 1 = at the sphere's height, 2 = on water, 4 = a footprint (small, short, leaves the others alone)
 void PolyBoomAddSplat(const Sphere & sp, const Color3f & col, long flags);
+
+/*!
+ * ArxModern: blood trails. A step of \a io at \a pos (ARX_NPC_NeedStepSound): stepping in a
+ * fresh blood stain wets the feet, the next steps leave shrinking red footprints. Each machine
+ * does it from the positions it sees: nothing to synchronise in co-op.
+ */
+void PolyBoomFootstep(Entity * io, const Vec3f & pos);
 
 void PolyBoomDraw();
 

@@ -48,6 +48,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include <array>
 #include <type_traits>
+#include <unordered_map>
 
 #include "animation/AnimationRender.h"
 
@@ -58,6 +59,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "core/TimeTypes.h"
 
 #include "game/Entity.h"
+#include "game/EntityManager.h"
 #include "game/Player.h"
 #include "game/Spells.h"
 
@@ -69,6 +71,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "graphics/particle/ParticleTextures.h"
 #include "graphics/texture/TextureStage.h"
 #include "platform/profiler/Profiler.h"
+#include "io/log/Logger.h"
 
 #include "scene/Light.h"
 #include "scene/Interactive.h"
@@ -89,6 +92,7 @@ struct Decal {
 	Color3f rgb;
 	DecalType type = DecalType(0);
 	bool fastdecay = false;
+	bool footprint = false; //!< ArxModern: a bloody footprint (nothing to step in)
 	TextureContainer * material = nullptr;
 	EERIEPOLY * polygon = nullptr;
 	ShortGameDuration elapsed;
@@ -101,6 +105,15 @@ static_assert(std::is_trivially_copyable_v<Decal>);
 static const size_t MAX_POLYBOOM = 4000;
 static std::vector<Decal> g_decals;
 
+struct BloodyFeet {
+	float strength = 0.f; //!< how much blood is left on them (a footprint takes a fifth)
+	Color3f rgb = Color3f::red;
+	Vec3f lastStep = Vec3f(0.f);
+	bool right = false;   //!< the foot of the next print
+};
+
+std::unordered_map<const Entity *, BloodyFeet> g_bloodyFeet;
+
 static const float BOOM_RADIUS = 420.f;
 
 size_t PolyBoomCount() {
@@ -108,7 +121,8 @@ size_t PolyBoomCount() {
 }
 
 void PolyBoomClear() {
-	g_decals.clear();
+	g_bloodyFeet.clear();
+g_decals.clear();
 }
 
 void PolyBoomAddScorch(const Vec3f & poss) {
@@ -158,16 +172,17 @@ void PolyBoomAddScorch(const Vec3f & poss) {
 }
 
 void PolyBoomAddSplat(const Sphere & sp, const Color3f & col, long flags) {
-	
-	if(g_decals.size() > (MAX_POLYBOOM / 4) - 30 || (g_decals.size() > 250 && sp.radius < 10)) {
+
+	bool footprint = (flags & 4) != 0;
+	if(g_decals.size() > (MAX_POLYBOOM / 4) - 30 || (g_decals.size() > 250 && sp.radius < 10 && !footprint)) {
 		return;
 	}
-	
+
 	float splatsize = 90;
 	float size = std::min(sp.radius, 40.f) * 0.75f;
 	switch(config.video.levelOfDetail) {
 		case 2: {
-			if(g_decals.size() > 160) {
+			if(g_decals.size() > 160 && !footprint) { // (a few footprints always fit)
 				return;
 			}
 			splatsize = 90;
@@ -175,7 +190,7 @@ void PolyBoomAddSplat(const Sphere & sp, const Color3f & col, long flags) {
 			break;
 		}
 		case 1: {
-			if(g_decals.size() > 60) {
+			if(g_decals.size() > 60 && !footprint) {
 				return;
 			}
 			splatsize = 60;
@@ -183,7 +198,7 @@ void PolyBoomAddSplat(const Sphere & sp, const Color3f & col, long flags) {
 			break;
 		}
 		default: {
-			if(g_decals.size() > 10) {
+			if(g_decals.size() > 10 && !footprint) {
 				return;
 			}
 			splatsize = 30;
@@ -207,11 +222,16 @@ void PolyBoomAddSplat(const Sphere & sp, const Color3f & col, long flags) {
 	TheoricalSplat.v[3].p = sp.origin + Vec3f(splatsize, 0.f, -splatsize);
 	
 	Vec3f RealSplatStart = toXZ(sp.origin) + toXZ(-size);
-	
-	for(Decal & decal : g_decals) {
-		decal.fastdecay = true;
+
+	if(!footprint) { // (a footprint does not hurry the stains it comes from)
+		for(Decal & decal : g_decals) {
+			decal.fastdecay = true;
+		}
 	}
-	
+	if(footprint) {
+		splatsize = 16.f;
+	}
+
 	for(auto tile : g_tiles->tilesAround(g_tiles->getTile(sp.origin), 3)) {
 		for(EERIEPOLY & polygon : tile.intersectingPolygons()) {
 			
@@ -247,19 +267,27 @@ void PolyBoomAddSplat(const Sphere & sp, const Color3f & col, long flags) {
 			if(!oki || g_decals.size() >= MAX_POLYBOOM) {
 				continue;
 			}
+			if(footprint && !PointIn2DPolyXZ(&TheoricalSplat, polygon.center.x, polygon.center.z)) {
+				continue; // (a print stays on the polygons it is really on: fine meshes would take dozens)
+			}
 			
 			Decal & decal = g_decals.emplace_back();
+			decal.footprint = footprint;
 			
 			if(flags & 2) {
 				decal.type = WaterDecal;
 				decal.material = g_particleTextures.water_splat[Random::get(0, 2)];
 				decal.duration = 1500ms;
+			} else if(footprint) {
+				decal.type = BloodDecal;
+				decal.material = g_particleTextures.bloodsplat[Random::get(0, 5)];
+				decal.duration = 9s;
 			} else {
 				decal.type = BloodDecal;
 				decal.material = g_particleTextures.bloodsplat[Random::get(0, 5)];
-				decal.duration = 400ms * size;
+				decal.duration = 400ms * size * (config.video.bloodTrails ? 2 : 1); // (stains last a while longer with the trails)
 			}
-			
+
 			decal.polygon = &polygon;
 			decal.rgb = col;
 			
@@ -275,8 +303,77 @@ void PolyBoomAddSplat(const Sphere & sp, const Color3f & col, long flags) {
 	
 }
 
+// Blood trails (ArxModern) ----------------------------------------------------------------
+
+namespace {
+
+//! Freshness (1 = just spilled, 0 = none) of the blood under \a pos, and its colour
+float bloodUnder(const Vec3f & pos, Color3f & rgb) {
+	float fresh = 0.f;
+	for(const Decal & decal : g_decals) {
+		if(decal.type != BloodDecal || decal.footprint || !decal.polygon || decal.duration <= 0) {
+			continue;
+		}
+		if(!closerThan(getXZ(decal.polygon->center), getXZ(pos), 80.f) || glm::abs(decal.polygon->center.y - pos.y) > 80.f) {
+			continue;
+		}
+		if(!PointIn2DPolyXZ(decal.polygon, pos.x, pos.z) && !closerThan(getXZ(decal.polygon->center), getXZ(pos), 25.f)) {
+			continue;
+		}
+		float t = 1.f - decal.elapsed / decal.duration;
+		if(t > fresh) {
+			fresh = t;
+			rgb = decal.rgb;
+		}
+	}
+	return fresh;
+}
+
+} // anonymous namespace
+
+void PolyBoomFootstep(Entity * io, const Vec3f & pos) {
+
+	if(!io || !config.video.bloodTrails || (io->ioflags & IO_ITEM)) {
+		return;
+	}
+
+	BloodyFeet & feet = g_bloodyFeet[io];
+	Color3f rgb;
+	float fresh = bloodUnder(pos, rgb);
+
+	if(fresh > 0.25f) {
+		// Stepping in it: the feet take its colour, the freshest of what is there
+		if(fresh > feet.strength) {
+			feet.strength = fresh;
+			feet.rgb = rgb;
+		}
+		feet.lastStep = pos;
+		return;
+	}
+	if(feet.strength <= 0.05f) {
+		feet.lastStep = pos;
+		return;
+	}
+
+	// A print beside the path (alternating feet), fading with what is left on them
+	Vec2f dir = getXZ(pos - feet.lastStep);
+	if(arx::length2(dir) < 1.f) {
+		return; // (not walking: the same spot again)
+	}
+	dir = glm::normalize(dir);
+	Vec2f side(-dir.y, dir.x);
+	float offset = (feet.right ? 7.f : -7.f) * (io == entities.player() ? 1.f : 0.8f);
+	feet.right = !feet.right;
+	Vec3f at = pos + Vec3f(side.x * offset, 0.f, side.y * offset);
+	Sphere print(at, 14.f + 8.f * feet.strength);
+	PolyBoomAddSplat(print, feet.rgb * (0.35f + 0.65f * feet.strength), 4);
+	feet.strength -= 0.2f;
+	feet.lastStep = pos;
+
+}
+
 void PolyBoomDraw() {
-	
+
 	ARX_PROFILE_FUNC();
 	
 	ShortGameDuration delta = g_gameTime.lastFrameDuration();
@@ -342,7 +439,8 @@ void PolyBoomDraw() {
 			
 			case BloodDecal: {
 				
-				float alpha = glm::clamp(t * 1.5f, 0.f, 1.f);
+				// (a footprint stays a red mark rather than the black of fresh blood: lighter blend)
+				float alpha = decal.footprint ? glm::clamp(t * 0.7f, 0.f, 0.7f) : glm::clamp(t * 1.5f, 0.f, 1.f);
 				for(size_t i = 0; i < nbvert; i++) {
 					vertices[i].p = decal.polygon->v[i].p;
 					vertices[i].uv = (decal.uv[i] - 0.5f) * std::max(1.f, t * 2.f - 0.5f) + 0.5f;
