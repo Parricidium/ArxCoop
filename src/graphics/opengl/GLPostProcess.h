@@ -20,6 +20,8 @@
 #ifndef ARX_GRAPHICS_OPENGL_GLPOSTPROCESS_H
 #define ARX_GRAPHICS_OPENGL_GLPOSTPROCESS_H
 
+#include <glm/glm.hpp>
+
 #include "graphics/opengl/OpenGLUtil.h"
 
 class GLShaderPipeline;
@@ -46,7 +48,11 @@ public:
 		float darkness = 0.f;  //!< 0..1, crushes the dark end of the image (the unlit places)
 		float volumetric = 0.f; //!< 0..1, density of the volumetric haze (0 = off)
 		float volumetricLight = 1.f; //!< strength of the light scattered by the haze
-		bool volumetricShadows = true; //!< trace the shadows of the light shafts (ray tracing only)
+		//! ArxModern RT: 0 = off, 3 = traced occlusion and indirect light, 4 = also the static shadows (post_trace.frag)
+		int traceMode = 0;
+		float bounce = 1.f;      //!< strength of the traced indirect light
+		float staticMix = 0.25f; //!< 0..1, how much of the original static lighting is kept in the traced static shadows
+bool volumetricShadows = true; //!< trace the shadows of the light shafts (ray tracing only)
 		int debugView = 0;     //!< 1 = ambient occlusion buffer, 2 = bloom buffer, 3 = the haze
 	};
 
@@ -69,6 +75,14 @@ public:
 	[[nodiscard]] bool isInScene() const { return m_inScene; }
 	//! Whether the haze program was built with the ray tracing code (init() again when this must change)
 	[[nodiscard]] bool traced() const noexcept { return m_traced; }
+	//! Whether the scene buffer carries the G-buffer of the traced lighting (init() again when this must change)
+	[[nodiscard]] bool gbuffer() const noexcept { return m_gbuffer; }
+	/*!
+	 * The G-buffer outputs of the main program only mean something for the lit, opaque draws:
+	 * the renderer switches them on around those and off around everything else (blended
+	 * particles and decals, the water and reflection passes). No-op without a G-buffer.
+	 */
+	void setGBufferWrites(bool enable);
 
 	/*!
 	 * Copy the scene as rendered so far into the textures below (for passes that read the
@@ -125,8 +139,44 @@ private:
 	GLint m_uVolumeShadows;
 	GLint m_uVolumeLightShadow;
 	bool m_traced;
+	// Traced lighting (post_trace.frag): the G-buffer written with the scene, the accumulated
+	// outputs (two textures, ping-pong for the history) and their blurred copies
+	bool m_gbuffer;
+	bool m_gbufferWrites;
+	GLuint m_gbufferBuffer[3];  //!< normal, albedo, static light (multisampled like the scene)
+	GLuint m_gbufferTexture[3]; //!< their resolved copies
+	GLuint m_traceProgram;
+	GLuint m_traceBlurProgram;
+	GLint m_uTraceProjection;
+	GLint m_uTraceInvView;
+	GLint m_uTracePrevViewProj;
+	GLint m_uTraceCameraPos;
+	GLint m_uTraceFullSize;
+	GLint m_uTraceFrame;
+	GLint m_uTraceReset;
+	GLint m_uTraceStatic;
+	GLint m_uTraceAoRadius;
+	GLint m_uTraceLightCount;
+	GLint m_uTraceDynamicLightCount;
+	GLint m_uTraceLightPos;
+	GLint m_uTraceLightColor;
+	GLint m_uTraceBlurDirection;
+	GLint m_uFinalTraceMode;
+	GLint m_uFinalBounce;
+	GLint m_uFinalStaticMix;
+	GLint m_uFinalTraceSize;
+	GLint m_uFinalProjection;
+	GLint m_uFinalFogRange;
+	GLuint m_traceFramebuffer[2];
+	GLuint m_traceTexture[2][2];     //!< [history][A, B]
+	GLuint m_traceBlurFramebuffer[2];
+	GLuint m_traceBlurTexture[2][2]; //!< [pass][A, B]
+	int m_traceIndex;
+	int m_traceFrame;
+	bool m_traceReset;
+	glm::mat4 m_prevViewProj;
 	GLint m_uFinalDebug;
-	GLint m_uExtractThreshold;
+GLint m_uExtractThreshold;
 	GLint m_uBlurDirection;
 	GLint m_uFinalBloom;
 	GLint m_uFinalFxaa;

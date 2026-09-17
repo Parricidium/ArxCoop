@@ -229,10 +229,6 @@ public:
 		, m_parallax(nullptr)
 		, m_reflections(nullptr)
 		, m_softParticles(nullptr)
-		, m_raytracing(nullptr)
-		, m_darkness(nullptr)
-		, m_volumetric(nullptr)
-		, m_volumetricLight(nullptr)
 		, m_antialiasing(nullptr)
 	{ }
 
@@ -428,75 +424,11 @@ public:
 			addCenter(std::move(cycle));
 		}
 
-		// Ambiance: how dark the unlit places are (independent of the quality presets)
+		// The ray tracing and the mood of the levels: on their own page (this one is full)
 		{
-			auto cycle = std::make_unique<CycleTextWidget>(sliderSize(), hFontMenu,
-			                                               hdText("system_menus_options_hd_darkness", "Ambiance"));
-			cycle->addEntry(hdText("system_menus_options_hd_darkness_normal", "Normale"));
-			cycle->addEntry(hdText("system_menus_options_hd_darkness_dark", "Sombre"));
-			cycle->addEntry(hdText("system_menus_options_hd_darkness_darker", "Obscure"));
-			cycle->valueChanged = [](int pos, std::string_view /* string */) {
-				config.video.darkness = float(pos) * 0.5f;
-				if(pos > 0) {
-					config.video.postprocess = true;
-				}
-				applyHdSettings();
-			};
-			m_darkness = cycle.get();
-			addCenter(std::move(cycle));
-		}
-
-		// Volumetric haze (independent of the quality presets)
-		{
-			auto cycle = std::make_unique<CycleTextWidget>(sliderSize(), hFontMenu,
-			                                               hdText("system_menus_options_hd_volumetric", "Brume volumétrique"));
-			cycle->addEntry(hdText("system_menus_options_hd_volumetric_off", "Désactivée"));
-			cycle->addEntry(hdText("system_menus_options_hd_volumetric_light", "Légère"));
-			cycle->addEntry(hdText("system_menus_options_hd_volumetric_dense", "Dense"));
-			cycle->addEntry(hdText("system_menus_options_hd_volumetric_thick", "Épaisse"));
-			cycle->valueChanged = [](int pos, std::string_view /* string */) {
-				const float densities[4] = { 0.f, 0.5f, 1.f, 2.f };
-				config.video.volumetric = densities[std::clamp(pos, 0, 3)];
-				if(pos > 0) {
-					config.video.postprocess = true;
-				}
-				applyHdSettings();
-			};
-			m_volumetric = cycle.get();
-			addCenter(std::move(cycle));
-		}
-
-		// Strength of the light shafts in the haze (and so of the volumetric shadows), slider 0..10
-		{
-			auto slider = std::make_unique<SliderWidget>(sliderSize(), hFontMenu,
-			                                             hdText("system_menus_options_hd_volumetric_light", "Rais de lumière"));
-			slider->valueChanged = [](int value) {
-				config.video.volumetricLight = float(value) * 0.25f; // 4 = default
-				applyHdSettings();
-			};
-			m_volumetricLight = slider.get();
-			addCenter(std::move(slider));
-		}
-
-		// Ray tracing (independent of the quality presets, needs OpenGL 4.3)
-		if(GRenderer->hasRayTracing()) {
-			auto cycle = std::make_unique<CycleTextWidget>(sliderSize(), hFontMenu,
-			                                               hdText("system_menus_options_hd_raytracing", "Ray tracing"));
-			cycle->addEntry(hdText("system_menus_options_hd_raytracing_off", "Désactivé"));
-			cycle->addEntry(hdText("system_menus_options_hd_raytracing_reflections", "Reflets"));
-			cycle->addEntry(hdText("system_menus_options_hd_raytracing_shadows", "Reflets + ombres"));
-			cycle->valueChanged = [](int pos, std::string_view /* string */) {
-				config.video.raytracing = pos;
-				if(pos > 0) {
-					config.video.postprocess = true;
-					if(config.video.reflections <= 0.f) {
-						config.video.reflections = 1.f;
-					}
-				}
-				applyHdSettings();
-			};
-			m_raytracing = cycle.get();
-			addCenter(std::move(cycle));
+			auto txt = std::make_unique<TextWidget>(hFontMenu, hdText("system_menus_options_hd_raytracing_page", "Ray tracing et ambiance..."));
+			txt->setTargetPage(Page_OptionsHd2);
+			addCenter(std::move(txt));
 		}
 
 		// Soft particles
@@ -560,10 +492,6 @@ private:
 	SliderWidget * m_reflections;
 	CheckboxWidget * m_softParticles;
 	CycleTextWidget * m_antialiasing;
-	CycleTextWidget * m_raytracing;
-	CycleTextWidget * m_darkness;
-	CycleTextWidget * m_volumetric;
-	SliderWidget * m_volumetricLight;
 
 	//! An individual setting changed: the modern pipeline is needed, apply and show "custom"
 	void customChanged() {
@@ -582,6 +510,8 @@ private:
 		}
 		if(m_lighting) {
 			m_lighting->setChecked(config.video.pipeline != "fixed" && config.video.lighting == "pixel");
+			// The ray tracing builds on the per-pixel lighting: forced on, greyed out
+			m_lighting->setEnabled(config.video.raytracing <= 0);
 		}
 		if(m_shadows) {
 			int pos = (config.video.shadows >= 4) ? 3 : (config.video.shadows >= 2) ? 2 : (config.video.shadows >= 1) ? 1 : 0;
@@ -599,19 +529,6 @@ private:
 		}
 		if(m_antialiasing) {
 			m_antialiasing->setValue(!config.video.postprocess ? 0 : config.video.smaa ? 2 : config.video.fxaa ? 1 : 0);
-		}
-		if(m_raytracing) {
-			m_raytracing->setValue(std::clamp(config.video.raytracing, 0, 2));
-		}
-		if(m_darkness) {
-			m_darkness->setValue(std::clamp(int(config.video.darkness * 2.f + 0.5f), 0, 2));
-		}
-		if(m_volumetric) {
-			float v = config.video.volumetric;
-			m_volumetric->setValue((v >= 1.5f) ? 3 : (v >= 0.75f) ? 2 : (v > 0.f) ? 1 : 0);
-		}
-		if(m_volumetricLight) {
-			m_volumetricLight->setValue(std::clamp(int(config.video.volumetricLight * 4.f + 0.5f), 0, 10));
 		}
 		if(m_softParticles) {
 			m_softParticles->setChecked(config.video.postprocess && config.video.softParticles);
@@ -641,6 +558,180 @@ private:
 	}
 
 };
+
+//! ArxModern RT: the ray tracing modes and the mood of the levels, on their own page
+class HdRayTracingMenuPage final : public MenuPage {
+
+public:
+
+	HdRayTracingMenuPage()
+		: MenuPage(Page_OptionsHd2)
+		, m_raytracing(nullptr)
+		, m_bounce(nullptr)
+		, m_staticMix(nullptr)
+		, m_darkness(nullptr)
+		, m_volumetric(nullptr)
+		, m_volumetricLight(nullptr)
+	{ }
+
+	void init() override {
+
+		reserveBottom();
+
+		// Ambiance: how dark the unlit places are (independent of the quality presets)
+		{
+			auto cycle = std::make_unique<CycleTextWidget>(sliderSize(), hFontMenu,
+			                                               hdText("system_menus_options_hd_darkness", "Ambiance"));
+			cycle->addEntry(hdText("system_menus_options_hd_darkness_normal", "Normale"));
+			cycle->addEntry(hdText("system_menus_options_hd_darkness_dark", "Sombre"));
+			cycle->addEntry(hdText("system_menus_options_hd_darkness_darker", "Obscure"));
+			cycle->valueChanged = [](int pos, std::string_view /* string */) {
+				config.video.darkness = float(pos) * 0.5f;
+				if(pos > 0) {
+					config.video.postprocess = true;
+				}
+				applyHdSettings();
+			};
+			m_darkness = cycle.get();
+			addCenter(std::move(cycle));
+		}
+
+		// Volumetric haze (independent of the quality presets)
+		{
+			auto cycle = std::make_unique<CycleTextWidget>(sliderSize(), hFontMenu,
+			                                               hdText("system_menus_options_hd_volumetric", "Brume volumétrique"));
+			cycle->addEntry(hdText("system_menus_options_hd_volumetric_off", "Désactivée"));
+			cycle->addEntry(hdText("system_menus_options_hd_volumetric_light", "Légère"));
+			cycle->addEntry(hdText("system_menus_options_hd_volumetric_dense", "Dense"));
+			cycle->addEntry(hdText("system_menus_options_hd_volumetric_thick", "Épaisse"));
+			cycle->valueChanged = [](int pos, std::string_view /* string */) {
+				const float densities[4] = { 0.f, 0.5f, 1.f, 2.f };
+				config.video.volumetric = densities[std::clamp(pos, 0, 3)];
+				if(pos > 0) {
+					config.video.postprocess = true;
+				}
+				applyHdSettings();
+			};
+			m_volumetric = cycle.get();
+			addCenter(std::move(cycle));
+		}
+
+		// Strength of the light shafts in the haze (and so of the volumetric shadows), slider 0..10
+		{
+			auto slider = std::make_unique<SliderWidget>(sliderSize(), hFontMenu,
+			                                             hdText("system_menus_options_hd_volumetric_light", "Rais de lumière"));
+			slider->valueChanged = [](int value) {
+				config.video.volumetricLight = float(value) * 0.25f; // 4 = default
+				applyHdSettings();
+			};
+			m_volumetricLight = slider.get();
+			addCenter(std::move(slider));
+		}
+
+		// Ray tracing (independent of the quality presets, needs OpenGL 4.3)
+		if(GRenderer->hasRayTracing()) {
+			auto cycle = std::make_unique<CycleTextWidget>(sliderSize(), hFontMenu,
+			                                               hdText("system_menus_options_hd_raytracing", "Ray tracing"));
+			cycle->addEntry(hdText("system_menus_options_hd_raytracing_off", "Désactivé"));
+			cycle->addEntry(hdText("system_menus_options_hd_raytracing_reflections", "Reflets"));
+			cycle->addEntry(hdText("system_menus_options_hd_raytracing_shadows", "Reflets + ombres"));
+			cycle->addEntry(hdText("system_menus_options_hd_raytracing_lighting", "+ occlusion, lumière indirecte"));
+			cycle->addEntry(hdText("system_menus_options_hd_raytracing_full", "Complet (lumières fixes aussi)"));
+			cycle->valueChanged = [this](int pos, std::string_view /* string */) {
+				config.video.raytracing = pos;
+				if(pos > 0) {
+					// Everything traced builds on the per-pixel lighting and the post-processing
+					config.video.postprocess = true;
+					if(config.video.pipeline == "fixed") {
+						config.video.pipeline = "auto";
+					}
+					config.video.lighting = "pixel";
+					if(config.video.reflections <= 0.f) {
+						config.video.reflections = 1.f;
+					}
+				}
+				applyHdSettings();
+				refresh();
+			};
+			m_raytracing = cycle.get();
+			addCenter(std::move(cycle));
+
+			// Strength of the traced indirect light (modes 3 and 4), slider 0..10 = 0..2
+			auto slider = std::make_unique<SliderWidget>(sliderSize(), hFontMenu,
+			                                             hdText("system_menus_options_hd_raytracing_bounce", "Lumière indirecte"));
+			slider->valueChanged = [](int value) {
+				config.video.raytracingBounce = float(value) * 0.2f;
+				applyHdSettings();
+			};
+			m_bounce = slider.get();
+			addCenter(std::move(slider));
+
+			// Share of the original static lighting kept under the traced static shadows (mode 4)
+			auto mix = std::make_unique<CycleTextWidget>(sliderSize(), hFontMenu,
+			                                             hdText("system_menus_options_hd_raytracing_static_mix", "Éclairage d'origine conservé"));
+			mix->addEntry("0 %");
+			mix->addEntry("25 %");
+			mix->addEntry("50 %");
+			mix->addEntry("75 %");
+			mix->valueChanged = [](int pos, std::string_view /* string */) {
+				config.video.raytracingStaticMix = float(std::clamp(pos, 0, 3)) * 0.25f;
+				applyHdSettings();
+			};
+			m_staticMix = mix.get();
+			addCenter(std::move(mix));
+		}
+
+		addBackButton(Page_OptionsHd);
+
+		refresh();
+	}
+
+	void focus() override {
+		MenuPage::focus();
+		refresh();
+	}
+
+private:
+
+	CycleTextWidget * m_raytracing;
+	SliderWidget * m_bounce;
+	CycleTextWidget * m_staticMix;
+	CycleTextWidget * m_darkness;
+	CycleTextWidget * m_volumetric;
+	SliderWidget * m_volumetricLight;
+
+	//! Update the widgets from the configuration
+	void refresh() {
+
+		if(m_raytracing) {
+			m_raytracing->setValue(std::clamp(config.video.raytracing, 0, 4));
+		}
+		if(m_bounce) {
+			m_bounce->setValue(std::clamp(int(std::lround(config.video.raytracingBounce * 5.f)), 0, 10));
+			m_bounce->setEnabled(config.video.raytracing >= 3);
+		}
+		if(m_staticMix) {
+			m_staticMix->setValue(std::clamp(int(std::lround(config.video.raytracingStaticMix * 4.f)), 0, 3));
+			m_staticMix->setEnabled(config.video.raytracing >= 4);
+		}
+		if(m_darkness) {
+			m_darkness->setValue(std::clamp(int(config.video.darkness * 2.f + 0.5f), 0, 2));
+		}
+		if(m_volumetric) {
+			float v = config.video.volumetric;
+			m_volumetric->setValue((v >= 1.5f) ? 3 : (v >= 0.75f) ? 2 : (v > 0.f) ? 1 : 0);
+		}
+		if(m_volumetricLight) {
+			m_volumetricLight->setValue(std::clamp(int(config.video.volumetricLight * 4.f + 0.5f), 0, 10));
+		}
+
+	}
+
+};
+
+std::unique_ptr<MenuPage> createHdRayTracingMenuPage() {
+	return std::make_unique<HdRayTracingMenuPage>();
+}
 
 std::unique_ptr<MenuPage> createHdOptionsMenuPage() {
 	return std::make_unique<HdOptionsMenuPage>();

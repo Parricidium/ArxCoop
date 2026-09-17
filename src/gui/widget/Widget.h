@@ -53,6 +53,7 @@ Page_QuitConfirm,
 	Page_CoopAdmin,
 	Page_CoopOptions,
 	Page_OptionsHd, // ArxModern
+	Page_OptionsHd2, // ArxModern RT: ray tracing and mood
 };
 
 enum WidgetType {

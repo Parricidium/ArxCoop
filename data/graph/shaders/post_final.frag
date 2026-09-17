@@ -20,7 +20,23 @@ uniform float u_ao;       // ambient occlusion strength (0 disables)
 uniform float u_darkness;
 uniform int u_fxaa;
 uniform vec2 u_invSize;
-uniform int u_debug;      // 1 = show the ambient occlusion buffer, 2 = the bloom buffer
+uniform int u_debug;      // 1 = show the ambient occlusion buffer, 2 = the bloom buffer, 3 = the haze,
+                          // 4 = the indirect light, 5 = the traced occlusion, 6 = the static shadow factor
+
+// Traced lighting (post_trace.frag, half size): A = (indirect light / 4, occlusion),
+// B = (static shadow factor / 2, view depth / 16384, ...). u_traceMode: 0 = off, 3 = occlusion
+// and indirect light, 4 = also the static shadows. Composed with the G-buffer of the scene.
+uniform sampler2D u_traceA;
+uniform sampler2D u_traceB;
+uniform sampler2D u_albedo;
+uniform sampler2D u_static;
+uniform sampler2D u_depth;
+uniform int u_traceMode;
+uniform float u_bounce;     // strength of the indirect light
+uniform float u_staticMix;  // 0..1, how much of the original static lighting is kept in the static shadows
+uniform ivec2 u_traceSize;  // size of the traced buffers
+uniform vec4 u_projection;  // (proj[0][0], proj[1][1], Q, Q * near)
+uniform vec2 u_fogRange;    // start, end (end <= 0: no fog)
 
 in vec2 v_uv;
 out vec4 fragColor;
@@ -32,12 +48,84 @@ float luma(vec3 c) {
 	return dot(c, vec3(0.299, 0.587, 0.114));
 }
 
+const float TraceGiScale = 4.0;
+const float TraceDepthScale = 16384.0;
+const float TraceUpsampleSharpness = 30.0; // weight = exp(-relative depth difference * this)
+const float TraceBakedAmbient = 0.12;      // the ambient assumed in the level's precomputed lighting, replaced by the traced light
+
+float linearDepth(vec2 uv) {
+	float zNdc = texture(u_depth, uv).r * 2.0 - 1.0;
+	return u_projection.w / (u_projection.z - zNdc);
+}
+
+// The traced buffers at this pixel: the four nearest half-size texels, weighted by how well
+// their depth matches this pixel's (the lighting of a wall must not smear over the floor edge)
+void traceAt(vec2 uv, out vec4 a, out vec4 b) {
+	float depth = linearDepth(uv);
+	vec2 p = uv * vec2(u_traceSize) - 0.5;
+	vec2 f = fract(p);
+	ivec2 base = ivec2(floor(p));
+	vec4 sumA = vec4(0.0);
+	float sumFactor = 0.0;
+	float total = 0.0;
+	vec4 nearestA = vec4(0.0, 0.0, 0.0, 1.0);
+	float nearestFactor = 0.5;
+	float nearestDiff = 1e30;
+	for(int j = 0; j < 2; j++) {
+		for(int i = 0; i < 2; i++) {
+			ivec2 t = clamp(base + ivec2(i, j), ivec2(0), u_traceSize - 1);
+			vec4 tb = texelFetch(u_traceB, t, 0);
+			vec4 ta = texelFetch(u_traceA, t, 0);
+			float diff = abs(tb.g * TraceDepthScale - depth) / (depth + 1e-3);
+			float w = ((i == 0) ? (1.0 - f.x) : f.x) * ((j == 0) ? (1.0 - f.y) : f.y) * exp(-diff * TraceUpsampleSharpness);
+			sumA += ta * w;
+			sumFactor += tb.r * w;
+			total += w;
+			if(diff < nearestDiff) {
+				nearestDiff = diff;
+				nearestA = ta;
+				nearestFactor = tb.r;
+			}
+		}
+	}
+	if(total > 1e-4) {
+		a = sumA / total;
+		b = vec4(sumFactor / total, 0.0, 0.0, 1.0);
+	} else {
+		a = nearestA;
+		b = vec4(nearestFactor, 0.0, 0.0, 1.0);
+	}
+}
+
 vec3 sceneAt(vec2 uv) {
 	vec3 c = texture(u_scene, uv).rgb;
-	if(u_ao > 0.0) {
+	if(u_traceMode >= 3) {
+		vec4 a, b;
+		traceAt(uv, a, b);
+		if(u_ao > 0.0) {
+			c *= mix(1.0, a.a, u_ao);
+		}
+		vec3 albedo = texture(u_albedo, uv).rgb;
+		vec3 staticLight = texture(u_static, uv).rgb;
+		// The traced indirect light stands in for the flat ambient the level's precomputed
+		// lighting carries: that much is taken out of the static light (no more than there is)
+		// and the traced light put in its place - the corners darken, the surfaces facing
+		// something lit brighten, and the whole does not simply get brighter
+		vec3 added = albedo * ((a.rgb * TraceGiScale - min(staticLight, vec3(TraceBakedAmbient))) * u_bounce);
+		if(u_traceMode >= 4) {
+			// The static lighting scaled by the traced shadow factor (only the static part: the
+			// torches and spells keep their own, shadowed, light)
+			added += albedo * staticLight * ((b.r * 2.0 - 1.0) * (1.0 - u_staticMix));
+		}
+		if(u_fogRange.y > 0.0) {
+			// What the scene shows here is already fogged: so is what is added to it
+			added *= clamp((u_fogRange.y - linearDepth(uv)) / (u_fogRange.y - u_fogRange.x), 0.0, 1.0);
+		}
+		c = max(c + added, 0.0);
+	} else if(u_ao > 0.0) {
 		c *= mix(1.0, texture(u_aoTexture, uv).r, u_ao);
 	}
-	if(u_volumetric != 0) {
+if(u_volumetric != 0) {
 		vec4 haze = texture(u_volumeTexture, uv);
 		c = c * haze.a + haze.rgb;
 	}
@@ -188,6 +276,17 @@ void main() {
 		return;
 	} else if(u_debug == 3) {
 		fragColor = vec4(texture(u_volumeTexture, v_uv).rgb * 4.0, 1.0);
+		return;
+	} else if(u_debug >= 4 && u_debug <= 6) {
+		vec4 a, b;
+		traceAt(v_uv, a, b);
+		if(u_debug == 4) {
+			fragColor = vec4(a.rgb * TraceGiScale * 2.0, 1.0);
+		} else if(u_debug == 5) {
+			fragColor = vec4(vec3(a.a), 1.0);
+		} else {
+			fragColor = vec4(vec3(b.r * 2.0 * 0.5), 1.0);
+		}
 		return;
 	}
 	vec3 c = (u_fxaa != 0) ? fxaa(v_uv) : sceneAt(v_uv);

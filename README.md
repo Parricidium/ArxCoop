@@ -115,17 +115,24 @@ Ultra* and individual settings, applied live): the *Off* preset gives exactly th
   what is really there, including what is off screen or behind you (the screen-space reflections faded
   at the edges and could not show that). *Reflections + shadows*: every torch, candle and spell casts
   soft shadows through the level, computed per pixel by tracing rays to the flame (the shadow maps then
-  only handle the characters and objects). Off by default; purely local — players with and without
-  ray tracing play together. Measured cost of *Reflections + shadows*: about +1.5 ms per frame at
-  720p, +5 ms at 1440p.
+  only handle the characters and objects). *+ occlusion, indirect light*: the ambient occlusion is
+  traced through the level instead of guessed from the screen, and traced indirect light replaces the
+  flat ambient baked into the levels (a torch-lit wall lights the room back, coloured floors tint the
+  walls, unreached nooks darken; *Indirect light* slider). *Full (static lights too)*: the level's fixed
+  lights cast soft per-pixel traced shadows where the original only had per-vertex lighting (*Original
+  lighting kept* 0..75% to balance it). Each step replaces the classic technique (SSAO, level shadow
+  maps, flat ambient), nothing stacks; the lighting pass runs at half resolution, checkerboarded, one
+  ray per pixel accumulated over the frames (`post_trace.frag`). Off by default; purely local — players
+  with and without ray tracing play together. Measured cost of *Reflections + shadows*: about +1.5 ms
+  per frame at 720p, +5 ms at 1440p; the two lighting steps add +1.2 / +1.6 ms at 1440p.
 - **Modding**: the shaders are plain files in `Graph\shaders\` (`legacy`, `shadow`, `water`, `lava`,
-  `reflect`, `reflect_rt`, `rt_common.glsl`, `post_*`), reloaded in game with **F7**.
+  `reflect`, `reflect_rt`, `rt_common.glsl`, `post_*` including `post_trace`), reloaded in game with **F7**.
 
 Requirements: OpenGL 3.0 (2008 or later hardware; 4.3 for the ray tracing); measured cost of the
 *High* preset: about one extra millisecond per frame in 720p. `[video]` keys in `userdata\cfg.ini`:
 `pipeline`, `lighting`, `shadows`, `shadow_resolution`, `postprocess`, `bloom`, `fxaa`, `smaa`,
 `ambient_occlusion`, `normal_maps`, `parallax`, `specular`, `reflections`, `soft_particles`, `water`,
-`lava`, `physics`, `raytracing` (0 / 1 / 2), `darkness` (0 / 0.5 / 1), `volumetric` (0 / 0.5 / 1 / 2), `volumetric_light` (0..2.5, 1 = default).
+`lava`, `physics`, `raytracing` (0 / 1 / 2 / 3 / 4), `raytracing_bounce` (0..2, 1 = default), `raytracing_static_mix` (0..1), `darkness` (0 / 0.5 / 1), `volumetric` (0 / 0.5 / 1 / 2), `volumetric_light` (0..2.5, 1 = default).
 
 Not the RT edition: the classic zip has none of this and cannot play with the RT one (different network
 protocol).
@@ -428,17 +435,26 @@ d'origine.
   et murs brillants reflètent ce qui est vraiment là, y compris hors écran ou derrière vous (les reflets
   écran s'effaçaient aux bords et ne pouvaient pas le montrer). *Reflets + ombres* : chaque torche,
   bougie et sort projette des ombres douces à travers le niveau, calculées par pixel en lançant des
-  rayons vers la flamme (les shadow maps ne servent plus qu'aux personnages et objets). Désactivé par
-  défaut ; purement local — les joueurs avec et sans ray tracing jouent ensemble. Coût mesuré de
-  *Reflets + ombres* : environ +1,5 ms par image en 720p, +5 ms en 1440p.
+  rayons vers la flamme (les shadow maps ne servent plus qu'aux personnages et objets). *+ occlusion,
+  lumière indirecte* : l'occlusion ambiante est tracée dans le niveau au lieu d'être devinée à l'écran,
+  et une lumière indirecte tracée remplace l'ambiance uniforme cuite dans les niveaux (un mur éclairé
+  par une torche renvoie sa lumière dans la pièce, les sols colorés teintent les murs, les recoins que
+  rien n'atteint s'assombrissent ; curseur *Lumière indirecte*). *Complet (lumières fixes aussi)* : les
+  lumières fixes du niveau projettent des ombres douces tracées par pixel là où l'original n'avait qu'un
+  éclairage par sommet (*Éclairage d'origine conservé* 0..75 % pour doser). Chaque cran remplace la
+  technique classique (SSAO, shadow maps du décor, ambiance uniforme), rien ne se cumule ; la passe
+  d'éclairage tourne en demi-résolution, en damier, un rayon par pixel accumulé sur les images
+  (`post_trace.frag`). Désactivé par défaut ; purement local — les joueurs avec et sans ray tracing
+  jouent ensemble. Coût mesuré de *Reflets + ombres* : environ +1,5 ms par image en 720p, +5 ms en
+  1440p ; les deux crans d'éclairage ajoutent +1,2 / +1,6 ms en 1440p.
 - **Modding** : les shaders sont des fichiers dans `Graph\shaders\` (`legacy`, `shadow`, `water`,
-  `lava`, `reflect`, `reflect_rt`, `rt_common.glsl`, `post_*`), rechargés en jeu avec **F7**.
+  `lava`, `reflect`, `reflect_rt`, `rt_common.glsl`, `post_*` dont `post_trace`), rechargés en jeu avec **F7**.
 
 Prérequis : OpenGL 3.0 (matériel de 2008 ou plus récent ; 4.3 pour le ray tracing) ; coût mesuré du
 préréglage *Élevée* : environ une milliseconde de plus par image en 720p. Clés `[video]` de
 `userdata\cfg.ini` : `pipeline`, `lighting`, `shadows`, `shadow_resolution`, `postprocess`, `bloom`,
 `fxaa`, `smaa`, `ambient_occlusion`, `normal_maps`, `parallax`, `specular`, `reflections`,
-`soft_particles`, `water`, `lava`, `physics`, `raytracing` (0 / 1 / 2), `darkness` (0 / 0.5 / 1), `volumetric` (0 / 0.5 / 1 / 2), `volumetric_light` (0..2.5, 1 = default).
+`soft_particles`, `water`, `lava`, `physics`, `raytracing` (0 / 1 / 2 / 3 / 4), `raytracing_bounce` (0..2, 1 = default), `raytracing_static_mix` (0..1), `darkness` (0 / 0.5 / 1), `volumetric` (0 / 0.5 / 1 / 2), `volumetric_light` (0..2.5, 1 = default).
 
 Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition RT (protocole réseau différent).
 

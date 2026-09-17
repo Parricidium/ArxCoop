@@ -76,8 +76,36 @@ GLPostProcess::GLPostProcess(GLShaderPipeline * pipeline)
 	, m_uVolumeShadows(-1)
 	, m_uVolumeLightShadow(-1)
 	, m_traced(false)
+	, m_gbuffer(false)
+	, m_gbufferWrites(false)
+	, m_traceProgram(0)
+	, m_traceBlurProgram(0)
+	, m_uTraceProjection(-1)
+	, m_uTraceInvView(-1)
+	, m_uTracePrevViewProj(-1)
+	, m_uTraceCameraPos(-1)
+	, m_uTraceFullSize(-1)
+	, m_uTraceFrame(-1)
+	, m_uTraceReset(-1)
+	, m_uTraceStatic(-1)
+	, m_uTraceAoRadius(-1)
+	, m_uTraceLightCount(-1)
+	, m_uTraceDynamicLightCount(-1)
+	, m_uTraceLightPos(-1)
+	, m_uTraceLightColor(-1)
+	, m_uTraceBlurDirection(-1)
+	, m_uFinalTraceMode(-1)
+	, m_uFinalBounce(-1)
+	, m_uFinalStaticMix(-1)
+	, m_uFinalTraceSize(-1)
+	, m_uFinalProjection(-1)
+	, m_uFinalFogRange(-1)
+	, m_traceIndex(0)
+	, m_traceFrame(0)
+	, m_traceReset(true)
+	, m_prevViewProj(1.f)
 	, m_uFinalDebug(-1)
-	, m_uExtractThreshold(-1)
+, m_uExtractThreshold(-1)
 	, m_uBlurDirection(-1)
 	, m_uFinalBloom(-1)
 	, m_uFinalFxaa(-1)
@@ -102,6 +130,14 @@ GLPostProcess::GLPostProcess(GLShaderPipeline * pipeline)
 	m_volumeTexture[0] = m_volumeTexture[1] = 0;
 	m_volumeFramebuffer[0] = m_volumeFramebuffer[1] = 0;
 	m_aoTexture[0] = m_aoTexture[1] = 0;
+	for(int i = 0; i < 3; i++) {
+		m_gbufferBuffer[i] = m_gbufferTexture[i] = 0;
+	}
+	for(int i = 0; i < 2; i++) {
+		m_traceFramebuffer[i] = m_traceBlurFramebuffer[i] = 0;
+		m_traceTexture[i][0] = m_traceTexture[i][1] = 0;
+		m_traceBlurTexture[i][0] = m_traceBlurTexture[i][1] = 0;
+	}
 }
 
 GLPostProcess::~GLPostProcess() {
@@ -130,6 +166,17 @@ bool GLPostProcess::init() {
 		m_volumeProgram = m_pipeline->buildProgram("post_volume", shadersources::post_vert, shadersources::post_volume_frag);
 		if(!m_volumeProgram) {
 			LogWarning << "Volumetric haze shader unavailable, no haze"; // the rest of the post-processing stays
+		}
+	}
+	// The traced lighting: the main program then writes the G-buffer (GLShaderPipeline)
+	m_gbuffer = m_pipeline->tracedLighting();
+	if(m_gbuffer) {
+		m_traceProgram = m_pipeline->buildProgram("post_trace", shadersources::post_vert, shadersources::post_trace_frag,
+		                                          "#version 430\n#define ARX_RT 1\n", "rt_common.glsl", shadersources::rt_common_glsl);
+		m_traceBlurProgram = m_pipeline->buildProgram("post_trace_blur", shadersources::post_vert, shadersources::post_trace_blur_frag);
+		if(!m_traceProgram || !m_traceBlurProgram) {
+			LogWarning << "Traced lighting shaders unavailable, traced lighting disabled";
+			m_gbuffer = false;
 		}
 	}
 	if(!m_extractProgram || !m_blurProgram || !m_ssaoProgram || !m_finalProgram) {
@@ -174,12 +221,51 @@ bool GLPostProcess::init() {
 		glUniform1i(glGetUniformLocation(m_volumeProgram, ("u_shadow" + std::to_string(i)).c_str()), 4 + i);
 	}
 
+	if(m_gbuffer) {
+		glUseProgram(m_traceProgram);
+		glUniform1i(glGetUniformLocation(m_traceProgram, "u_depth"), 0);
+		glUniform1i(glGetUniformLocation(m_traceProgram, "u_normal"), 1);
+		glUniform1i(glGetUniformLocation(m_traceProgram, "u_historyA"), 12);
+		glUniform1i(glGetUniformLocation(m_traceProgram, "u_historyB"), 13);
+		glUniform1i(glGetUniformLocation(m_traceProgram, "u_rtTextures"), 10); // bound by the pipeline
+		m_uTraceProjection = glGetUniformLocation(m_traceProgram, "u_projection");
+		m_uTraceInvView = glGetUniformLocation(m_traceProgram, "u_invView");
+		m_uTracePrevViewProj = glGetUniformLocation(m_traceProgram, "u_prevViewProj");
+		m_uTraceCameraPos = glGetUniformLocation(m_traceProgram, "u_cameraPos");
+		m_uTraceFullSize = glGetUniformLocation(m_traceProgram, "u_fullSize");
+		m_uTraceFrame = glGetUniformLocation(m_traceProgram, "u_frame");
+		m_uTraceReset = glGetUniformLocation(m_traceProgram, "u_reset");
+		m_uTraceStatic = glGetUniformLocation(m_traceProgram, "u_static");
+		m_uTraceAoRadius = glGetUniformLocation(m_traceProgram, "u_aoRadius");
+		m_uTraceLightCount = glGetUniformLocation(m_traceProgram, "u_lightCount");
+		m_uTraceDynamicLightCount = glGetUniformLocation(m_traceProgram, "u_dynamicLightCount");
+		m_uTraceLightPos = glGetUniformLocation(m_traceProgram, "u_lightPos");
+		m_uTraceLightColor = glGetUniformLocation(m_traceProgram, "u_lightColor");
+		glUseProgram(m_traceBlurProgram);
+		glUniform1i(glGetUniformLocation(m_traceBlurProgram, "u_sourceA"), 0);
+		glUniform1i(glGetUniformLocation(m_traceBlurProgram, "u_sourceB"), 1);
+		glUniform1i(glGetUniformLocation(m_traceBlurProgram, "u_normal"), 2);
+		m_uTraceBlurDirection = glGetUniformLocation(m_traceBlurProgram, "u_direction");
+		m_traceReset = true;
+	}
+
 	glUseProgram(m_finalProgram);
 	glUniform1i(glGetUniformLocation(m_finalProgram, "u_scene"), 0);
 	glUniform1i(glGetUniformLocation(m_finalProgram, "u_bloomTexture"), 1);
 	glUniform1i(glGetUniformLocation(m_finalProgram, "u_aoTexture"), 2);
 	glUniform1i(glGetUniformLocation(m_finalProgram, "u_volumeTexture"), 3);
-	m_uFinalVolumetric = glGetUniformLocation(m_finalProgram, "u_volumetric");
+	glUniform1i(glGetUniformLocation(m_finalProgram, "u_traceA"), 4);
+	glUniform1i(glGetUniformLocation(m_finalProgram, "u_traceB"), 5);
+	glUniform1i(glGetUniformLocation(m_finalProgram, "u_albedo"), 6);
+	glUniform1i(glGetUniformLocation(m_finalProgram, "u_static"), 7);
+	glUniform1i(glGetUniformLocation(m_finalProgram, "u_depth"), 8);
+	m_uFinalTraceMode = glGetUniformLocation(m_finalProgram, "u_traceMode");
+	m_uFinalBounce = glGetUniformLocation(m_finalProgram, "u_bounce");
+	m_uFinalStaticMix = glGetUniformLocation(m_finalProgram, "u_staticMix");
+	m_uFinalTraceSize = glGetUniformLocation(m_finalProgram, "u_traceSize");
+	m_uFinalProjection = glGetUniformLocation(m_finalProgram, "u_projection");
+	m_uFinalFogRange = glGetUniformLocation(m_finalProgram, "u_fogRange");
+m_uFinalVolumetric = glGetUniformLocation(m_finalProgram, "u_volumetric");
 	m_uFinalAo = glGetUniformLocation(m_finalProgram, "u_ao");
 	m_uFinalDarkness = glGetUniformLocation(m_finalProgram, "u_darkness");
 	m_uFinalDebug = glGetUniformLocation(m_finalProgram, "u_debug");
@@ -273,7 +359,8 @@ void GLPostProcess::shutdown() {
 		m_vao = 0;
 	}
 	for(GLuint * program : { &m_extractProgram, &m_blurProgram, &m_ssaoProgram, &m_finalProgram, &m_volumeProgram,
-	                         &m_smaaEdgeProgram, &m_smaaWeightProgram, &m_smaaBlendProgram }) {
+	                         &m_smaaEdgeProgram, &m_smaaWeightProgram, &m_smaaBlendProgram,
+	                         &m_traceProgram, &m_traceBlurProgram }) {
 		if(*program) {
 			glDeleteProgram(*program);
 			*program = 0;
@@ -336,10 +423,29 @@ bool GLPostProcess::createBuffers(int width, int height, int samples) {
 	}
 	glBindRenderbuffer(GL_RENDERBUFFER, 0);
 
+	// The G-buffer of the traced lighting: three more targets next to the scene colour
+	if(m_gbuffer) {
+		for(int i = 0; i < 3; i++) {
+			glGenRenderbuffers(1, &m_gbufferBuffer[i]);
+			glBindRenderbuffer(GL_RENDERBUFFER, m_gbufferBuffer[i]);
+			if(samples > 1) {
+				glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_RGBA8, width, height);
+			} else {
+				glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, width, height);
+			}
+		}
+		glBindRenderbuffer(GL_RENDERBUFFER, 0);
+	}
+
 	glGenFramebuffers(1, &m_sceneFramebuffer);
 	glBindFramebuffer(GL_FRAMEBUFFER, m_sceneFramebuffer);
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, m_sceneColorBuffer);
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, m_sceneDepthBuffer);
+	if(m_gbuffer) {
+		for(int i = 0; i < 3; i++) {
+			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1 + GLenum(i), GL_RENDERBUFFER, m_gbufferBuffer[i]);
+		}
+	}
 	bool ok = framebufferComplete("scene");
 
 	// Resolved copy (color and depth)
@@ -356,7 +462,44 @@ bool GLPostProcess::createBuffers(int width, int height, int samples) {
 	glBindFramebuffer(GL_FRAMEBUFFER, m_resolveFramebuffer);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_sceneTexture, 0);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, m_depthTexture, 0);
+	if(m_gbuffer) {
+		for(int i = 0; i < 3; i++) {
+			m_gbufferTexture[i] = createColorTexture(width, height);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1 + GLenum(i), GL_TEXTURE_2D, m_gbufferTexture[i], 0);
+		}
+	}
 	ok = framebufferComplete("resolve") && ok;
+
+	// Traced lighting at half size: the accumulated outputs (history ping-pong) and their blur.
+	// 16-bit normalised textures: a float format is sampled as zeros by the water pass on some
+	// setups (GLRipples.cpp), the values are scaled instead.
+	if(m_gbuffer) {
+		int tw = std::max(width / 2, 1);
+		int th = std::max(height / 2, 1);
+		struct Target { GLuint * fb; GLuint * tex; const char * what; };
+		for(Target target : { Target { &m_traceFramebuffer[0], m_traceTexture[0], "trace" },
+		                      Target { &m_traceFramebuffer[1], m_traceTexture[1], "trace" },
+		                      Target { &m_traceBlurFramebuffer[0], m_traceBlurTexture[0], "trace blur" },
+		                      Target { &m_traceBlurFramebuffer[1], m_traceBlurTexture[1], "trace blur" } }) {
+			glGenFramebuffers(1, target.fb);
+			glBindFramebuffer(GL_FRAMEBUFFER, *target.fb);
+			for(int i = 0; i < 2; i++) {
+				glGenTextures(1, &target.tex[i]);
+				glBindTexture(GL_TEXTURE_2D, target.tex[i]);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16, tw, th, 0, GL_RGBA, GL_UNSIGNED_SHORT, nullptr);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + GLenum(i), GL_TEXTURE_2D, target.tex[i], 0);
+			}
+			const GLenum both[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
+			glDrawBuffers(2, both);
+			ok = framebufferComplete(target.what) && ok;
+		}
+		glBindTexture(GL_TEXTURE_2D, 0);
+		m_traceReset = true;
+	}
 
 	// SMAA: the composed image, its edges and the blending weights, full size
 	if(m_smaaEdgeProgram) {
@@ -418,13 +561,14 @@ void GLPostProcess::destroyBuffers() {
 	for(GLuint * fb : { &m_sceneFramebuffer, &m_resolveFramebuffer, &m_bloomFramebuffer[0], &m_bloomFramebuffer[1],
 	                    &m_aoFramebuffer[0], &m_aoFramebuffer[1], &m_volumeFramebuffer[0], &m_volumeFramebuffer[1],
 	                    &m_compositeFramebuffer, &m_edgesFramebuffer,
-	                    &m_blendFramebuffer }) {
+	                    &m_blendFramebuffer, &m_traceFramebuffer[0], &m_traceFramebuffer[1],
+	                    &m_traceBlurFramebuffer[0], &m_traceBlurFramebuffer[1] }) {
 		if(*fb) {
 			glDeleteFramebuffers(1, fb);
 			*fb = 0;
 		}
 	}
-	for(GLuint * rb : { &m_sceneColorBuffer, &m_sceneDepthBuffer }) {
+	for(GLuint * rb : { &m_sceneColorBuffer, &m_sceneDepthBuffer, &m_gbufferBuffer[0], &m_gbufferBuffer[1], &m_gbufferBuffer[2] }) {
 		if(*rb) {
 			glDeleteRenderbuffers(1, rb);
 			*rb = 0;
@@ -432,7 +576,10 @@ void GLPostProcess::destroyBuffers() {
 	}
 	for(GLuint * tex : { &m_sceneTexture, &m_depthTexture, &m_bloomTexture[0], &m_bloomTexture[1],
 	                     &m_aoTexture[0], &m_aoTexture[1], &m_volumeTexture[0], &m_volumeTexture[1],
-	                     &m_compositeTexture, &m_edgesTexture, &m_blendTexture }) {
+	                     &m_compositeTexture, &m_edgesTexture, &m_blendTexture,
+	                     &m_gbufferTexture[0], &m_gbufferTexture[1], &m_gbufferTexture[2],
+	                     &m_traceTexture[0][0], &m_traceTexture[0][1], &m_traceTexture[1][0], &m_traceTexture[1][1],
+	                     &m_traceBlurTexture[0][0], &m_traceBlurTexture[0][1], &m_traceBlurTexture[1][0], &m_traceBlurTexture[1][1] }) {
 		if(*tex) {
 			glDeleteTextures(1, tex);
 			*tex = 0;
@@ -456,6 +603,7 @@ void GLPostProcess::begin(int width, int height, int samples) {
 
 	glBindFramebuffer(GL_FRAMEBUFFER, m_sceneFramebuffer);
 	m_inScene = true;
+	m_gbufferWrites = false;
 
 	// The engine only clears (and draws) inside its viewport, which can be a letterbox band:
 	// the window outside of it is black, so make the scene buffer black there too.
@@ -468,6 +616,15 @@ void GLPostProcess::begin(int width, int height, int samples) {
 		glDisable(GL_SCISSOR_TEST);
 	}
 	glDepthMask(GL_TRUE);
+	if(m_gbuffer) {
+		// The G-buffer starts as "nothing lit here" (alpha 0), the scene colour as opaque black
+		const GLenum targets[3] = { GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3 };
+		glDrawBuffers(3, targets);
+		glClearColor(0.f, 0.f, 0.f, 0.f);
+		glClear(GL_COLOR_BUFFER_BIT);
+		const GLenum scene = GL_COLOR_ATTACHMENT0;
+		glDrawBuffers(1, &scene);
+	}
 	glClearColor(0.f, 0.f, 0.f, 1.f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glDepthMask(depthMask);
@@ -476,6 +633,15 @@ void GLPostProcess::begin(int width, int height, int samples) {
 	}
 	glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
 
+}
+
+void GLPostProcess::setGBufferWrites(bool enable) {
+	if(!m_gbuffer || !m_inScene || enable == m_gbufferWrites) {
+		return;
+	}
+	m_gbufferWrites = enable;
+	static const GLenum all[4] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3 };
+	glDrawBuffers(enable ? 4 : 1, all);
 }
 
 void GLPostProcess::drawFullscreen() {
@@ -537,14 +703,88 @@ void GLPostProcess::end() {
 	glBindFramebuffer(GL_READ_FRAMEBUFFER, m_sceneFramebuffer);
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_resolveFramebuffer);
 	glBlitFramebuffer(0, 0, m_width, m_height, 0, 0, m_width, m_height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-	bool ao = m_settings.ao > 0.f;
+	bool traced = m_gbuffer && m_settings.traceMode >= 3 && m_traceProgram != 0;
+	bool ao = m_settings.ao > 0.f && !traced; // the traced pass supplies the occlusion instead
 	bool haze = m_settings.volumetric > 0.f && m_volumeProgram != 0;
-	if(ao || haze) {
+	if(ao || haze || traced) {
 		glBlitFramebuffer(0, 0, m_width, m_height, 0, 0, m_width, m_height, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+	}
+	if(traced) {
+		// The G-buffer too, one target at a time (a blit writes every draw buffer of the target)
+		for(int i = 0; i < 3; i++) {
+			glReadBuffer(GL_COLOR_ATTACHMENT1 + GLenum(i));
+			glDrawBuffer(GL_COLOR_ATTACHMENT1 + GLenum(i));
+			glBlitFramebuffer(0, 0, m_width, m_height, 0, 0, m_width, m_height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+		}
+		glReadBuffer(GL_COLOR_ATTACHMENT0);
+		glDrawBuffer(GL_COLOR_ATTACHMENT0);
 	}
 
 	glBindVertexArray(m_vao);
 	glActiveTexture(GL_TEXTURE0);
+
+	if(traced) {
+		// One ray per pixel at half size, accumulated over the frames, then blurred along the surfaces
+		const glm::mat4 & proj = m_pipeline->projection();
+		const glm::mat4 & view = m_pipeline->view();
+		glm::mat4 invView = glm::inverse(view);
+		glm::vec3 cameraPos(invView[3]);
+		int next = m_traceIndex ^ 1;
+		glViewport(0, 0, m_bloomWidth, m_bloomHeight);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_traceFramebuffer[next]);
+		glUseProgram(m_traceProgram);
+		glUniform4f(m_uTraceProjection, proj[0][0], proj[1][1], proj[2][2], -proj[3][2]);
+		glUniformMatrix4fv(m_uTraceInvView, 1, GL_FALSE, glm::value_ptr(invView));
+		glUniformMatrix4fv(m_uTracePrevViewProj, 1, GL_FALSE, glm::value_ptr(m_prevViewProj));
+		glUniform3fv(m_uTraceCameraPos, 1, glm::value_ptr(cameraPos));
+		glUniform2i(m_uTraceFullSize, m_width, m_height);
+		glUniform1i(m_uTraceFrame, m_traceFrame);
+		glUniform1i(m_uTraceReset, m_traceReset ? 1 : 0);
+		glUniform1i(m_uTraceStatic, (m_settings.traceMode >= 4) ? 1 : 0);
+		glUniform1f(m_uTraceAoRadius, std::max(m_settings.aoRadius * 2.f, 60.f));
+		const std::vector<glm::vec4> & lightPos = m_pipeline->lightPositions();
+		GLsizei lights = GLsizei(std::min(lightPos.size(), size_t(128)));
+		glUniform1i(m_uTraceLightCount, lights);
+		glUniform1i(m_uTraceDynamicLightCount, GLint(std::min(m_pipeline->dynamicLightCount(), size_t(lights))));
+		if(lights > 0) {
+			glUniform4fv(m_uTraceLightPos, lights, glm::value_ptr(lightPos[0]));
+			glUniform4fv(m_uTraceLightColor, lights, glm::value_ptr(m_pipeline->lightColors()[0]));
+		}
+		glActiveTexture(GL_TEXTURE13);
+		glBindTexture(GL_TEXTURE_2D, m_traceTexture[m_traceIndex][1]);
+		glActiveTexture(GL_TEXTURE12);
+		glBindTexture(GL_TEXTURE_2D, m_traceTexture[m_traceIndex][0]);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, m_gbufferTexture[0]);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_depthTexture);
+		drawFullscreen();
+		m_traceIndex = next;
+		m_traceFrame++;
+		m_traceReset = false;
+		m_prevViewProj = proj * view;
+		// Blur: horizontal into the first pair, vertical into the second
+		glUseProgram(m_traceBlurProgram);
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, m_gbufferTexture[0]);
+		for(int pass = 0; pass < 2; pass++) {
+			glBindFramebuffer(GL_FRAMEBUFFER, m_traceBlurFramebuffer[pass]);
+			if(pass == 0) {
+				glUniform2f(m_uTraceBlurDirection, 1.f / float(m_bloomWidth), 0.f);
+			} else {
+				glUniform2f(m_uTraceBlurDirection, 0.f, 1.f / float(m_bloomHeight));
+			}
+			const GLuint * source = (pass == 0) ? m_traceTexture[m_traceIndex] : m_traceBlurTexture[0];
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, source[1]);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, source[0]);
+			drawFullscreen();
+		}
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, 0);
+		glActiveTexture(GL_TEXTURE0);
+	}
 
 	if(ao) {
 		// Ambient occlusion from the depth buffer, half size, then blurred
@@ -666,11 +906,32 @@ void GLPostProcess::end() {
 	glUniform1i(m_uFinalVolumetric, haze ? 1 : 0);
 	glUniform1i(m_uFinalDebug, m_settings.debugView);
 	glUniform2f(m_uFinalInvSize, 1.f / float(m_width), 1.f / float(m_height));
+	glUniform1i(m_uFinalTraceMode, traced ? m_settings.traceMode : 0);
+	if(traced) {
+		const glm::mat4 & proj = m_pipeline->projection();
+		glUniform1f(m_uFinalAo, m_settings.ao); // the traced occlusion, at the option's strength
+		glUniform1f(m_uFinalBounce, m_settings.bounce);
+		glUniform1f(m_uFinalStaticMix, m_settings.staticMix);
+		glUniform2i(m_uFinalTraceSize, m_bloomWidth, m_bloomHeight);
+		glUniform4f(m_uFinalProjection, proj[0][0], proj[1][1], proj[2][2], -proj[3][2]);
+		const glm::vec2 & fog = m_pipeline->fogRange();
+		glUniform2f(m_uFinalFogRange, fog.x, m_pipeline->fogEnabled() ? fog.y : 0.f);
+		glActiveTexture(GL_TEXTURE8);
+		glBindTexture(GL_TEXTURE_2D, m_depthTexture);
+		glActiveTexture(GL_TEXTURE7);
+		glBindTexture(GL_TEXTURE_2D, m_gbufferTexture[2]);
+		glActiveTexture(GL_TEXTURE6);
+		glBindTexture(GL_TEXTURE_2D, m_gbufferTexture[1]);
+		glActiveTexture(GL_TEXTURE5);
+		glBindTexture(GL_TEXTURE_2D, m_traceBlurTexture[1][1]);
+		glActiveTexture(GL_TEXTURE4);
+		glBindTexture(GL_TEXTURE_2D, m_traceBlurTexture[1][0]);
+	}
 	glActiveTexture(GL_TEXTURE3);
 	glBindTexture(GL_TEXTURE_2D, haze ? m_volumeTexture[0] : 0);
 	glActiveTexture(GL_TEXTURE2);
 	glBindTexture(GL_TEXTURE_2D, ao ? m_aoTexture[0] : 0);
-	glActiveTexture(GL_TEXTURE1);
+glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, bloom ? m_bloomTexture[0] : 0);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, m_sceneTexture);
@@ -718,6 +979,12 @@ void GLPostProcess::end() {
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glActiveTexture(GL_TEXTURE2);
 	glBindTexture(GL_TEXTURE_2D, 0);
+	if(traced) {
+		for(GLenum unit : { GL_TEXTURE4, GL_TEXTURE5, GL_TEXTURE6, GL_TEXTURE7, GL_TEXTURE8, GL_TEXTURE12, GL_TEXTURE13 }) {
+			glActiveTexture(unit);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
+	}
 	glActiveTexture(GL_TEXTURE0);
 
 	// Restore the state the engine believes is set
