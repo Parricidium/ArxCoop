@@ -24,6 +24,7 @@
 
 #include "coop/Puppets.h"
 #include "core/Core.h"
+#include "scene/Object.h"
 #include "core/GameTime.h"
 
 #include "game/Equipment.h"
@@ -146,6 +147,21 @@ void ARX_THROWN_OBJECT_Throw(EntityHandle source, const Vec3f & position, const 
 	
 }
 
+void ARX_THROWN_OBJECT_ThrowRemote(EntityHandle source, const Vec3f & position, const Vec3f & vect, float gravity,
+                                   const glm::quat & rotation, bool fiery) {
+	if(!arrowobj || arrowobj->vertexlist.size() < 2) {
+		return;
+	}
+	VertexId attach = getNamedVertex(arrowobj.get(), "attach");
+	if(!attach) {
+		attach = arrowobj->origin;
+	}
+	ARX_THROWN_OBJECT_Throw(source, position, vect, gravity, arrowobj.get(), attach, rotation, 0.f, 0.f);
+	if(fiery) {
+		g_projectiles.back().flags |= ATO_FIERY;
+	}
+}
+
 static float ARX_THROWN_ComputeDamages(const Projectile & projectile, Entity & target) {
 	
 	SendIOScriptEvent(entities.player(), &target, SM_AGGRESSION);
@@ -216,12 +232,15 @@ static void CheckExp(const Projectile & projectile) {
 	
 	if((projectile.flags & ATO_FIERY) && !(projectile.flags & ATO_UNDERWATER)) {
 		const Vec3f & pos = projectile.position;
-		
+
 		spawnFireHitParticle(pos, 0);
 		PolyBoomAddScorch(pos);
 		LaunchFireballBoom(pos, 10);
-		doSphericDamage(Sphere(pos, 50.f), 4.f * 2, DAMAGE_AREA, nullptr,
-		                DAMAGE_TYPE_FAKESPELL | DAMAGE_TYPE_FIRE | DAMAGE_TYPE_MAGICAL, entities.player());
+		Entity * shooter = entities.get(projectile.source);
+		if(!shooter || !shooter->coopPuppet) { // another player's arrow: their side deals the blast
+			doSphericDamage(Sphere(pos, 50.f), 4.f * 2, DAMAGE_AREA, nullptr,
+			                DAMAGE_TYPE_FAKESPELL | DAMAGE_TYPE_FIRE | DAMAGE_TYPE_MAGICAL, entities.player());
+		}
 		ARX_SOUND_PlaySFX(g_snd.SPELL_FIRE_HIT, &pos);
 		spawnAudibleSound(pos, *entities.player());
 		
@@ -440,7 +459,7 @@ static void ARX_THROWN_OBJECT_ManageProjectile(Projectile & projectile, ShortGam
 				} else { // not NPC
 					
 					if(Entity * source = entities.get(projectile.source)) {
-						if(target.ioflags & IO_FIX) {
+						if((target.ioflags & IO_FIX) && !source->coopPuppet) {
 							damageProp(target, 0.1f, source, nullptr, DAMAGE_TYPE_METAL);
 						}
 						spawnAudibleSound(v0, *source);

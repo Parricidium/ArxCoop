@@ -220,6 +220,8 @@ protocol).
 | Enchanted weapons and armour | ✅ | stats travel with the item (give, drop, chest); the glow shows on the other players |
 | Scrolls (found, given, dropped) | ✅ | keep their spell everywhere |
 | Spells | ✅ | visuals everywhere, damage at the caster |
+| Aimed spells (magic missile, fireball, ice, lightning) | ✅ | fly the same path everywhere: the caster's exact aim, start point and random draws travel with the cast |
+| Arrows | ✅ | the same arrow leaves every copy of the archer (position, speed, drop); damage on the archer's side, through the host |
 | Magic traps, NPC spells (fire fields, lightning, fireballs) | ✅ | replayed for the eyes, damage dealt by the host |
 | Persistent magic fields ("blue walls") | ✅ | recreated on arrival, end together |
 | Burning players | ✅ | flames follow the player |
@@ -522,6 +524,8 @@ Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition RT (p
 | Armes et armures enchantées | ✅ | les stats voyagent avec l'objet (don, dépôt, coffre) ; l'aura se voit chez les autres |
 | Parchemins (trouvés, donnés, lâchés) | ✅ | gardent leur sort partout |
 | Sorts | ✅ | visuels partout, dégâts chez le lanceur |
+| Sorts visés (missile magique, boule de feu, glace, éclair) | ✅ | même trajectoire partout : visée exacte, point de départ et tirages aléatoires du lanceur voyagent avec le sort |
+| Flèches | ✅ | la même flèche part de chaque copie de l'archer (position, vitesse, chute) ; dégâts du côté de l'archer, via l'hôte |
 | Pièges magiques, sorts des PNJ (champs de feu, éclairs, boules de feu) | ✅ | rejoués pour les yeux, dégâts infligés par l'hôte |
 | Champs magiques persistants (« murs bleus ») | ✅ | recréés à l'arrivée, disparaissent ensemble |
 | Joueurs en feu | ✅ | les flammes suivent le joueur |

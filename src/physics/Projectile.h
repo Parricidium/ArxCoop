@@ -28,6 +28,10 @@
 
 glm::quat getProjectileQuatFromVector(Vec3f vector);
 
+//! Co-op: an arrow shot by another player (its puppet), flying for the eyes: no damage here.
+void ARX_THROWN_OBJECT_ThrowRemote(EntityHandle source, const Vec3f & position, const Vec3f & vect, float gravity,
+                                   const glm::quat & rotation, bool fiery);
+
 void ARX_THROWN_OBJECT_Throw(EntityHandle source, const Vec3f & position, const Vec3f & vect, float gravity,
                              EERIE_3DOBJ * obj, VertexId attach, const glm::quat & rotation,
                              float damages, float poisonous);
