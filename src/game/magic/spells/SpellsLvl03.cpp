@@ -195,8 +195,8 @@ void FireballSpell::Launch() {
 			float d = glm::distance(getXZ(end), getXZ(start));
 			anglea = glm::degrees(getAngle(start.y, start.z, end.y, end.z + d));
 		}
-		coop::puppetAimPitch(*caster, anglea); // another player: where they look
 		angleb = caster->angle.getYaw();
+		coop::puppetAim(*caster, anglea, angleb); // another player: where they look
 	}
 	
 	Vec3f eSrc = target;
@@ -255,7 +255,7 @@ void FireballSpell::Update() {
 				float d = glm::distance(getXZ(p2), getXZ(*p1));
 				afAlpha = 360.f - (glm::degrees(getAngle(p1->y, p1->z, p2.y, p2.z + d)));
 			}
-			coop::puppetAimPitch(*caster, afAlpha); // another player: where they look
+			coop::puppetAim(*caster, afAlpha, afBeta); // another player: where they look
 
 		}
 		
