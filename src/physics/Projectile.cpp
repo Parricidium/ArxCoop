@@ -24,6 +24,7 @@
 
 #include "coop/Puppets.h"
 #include "coop/Qol.h"
+#include "graphics/effects/WaterRipples.h"
 #include "core/Core.h"
 #include "scene/Object.h"
 #include "core/GameTime.h"
@@ -349,8 +350,9 @@ static void ARX_THROWN_OBJECT_ManageProjectile(Projectile & projectile, ShortGam
 		} else if(ep) {
 			projectile.flags |= ATO_UNDERWATER;
 			ARX_SOUND_PlaySFX(g_snd.PLOUF, &projectile.position);
+			addRippleSource(projectile.position, 30.f, 3.f); // ArxModern: an arrow hitting the water
 		}
-	}
+}
 	
 	// Check for collision MUST be done after DRAWING !!!!
 	for(EERIE_ACTIONLIST & action : projectile.obj->actionlist) {

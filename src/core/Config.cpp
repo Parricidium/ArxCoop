@@ -147,7 +147,8 @@ constexpr const float
 	volumetricLight = 1.f,
 	normalMaps = 1.f,
 	water = 1.f,
-	lava = 1.f,
+	waterRipples = true,
+lava = 1.f,
 	parallax = 1.f,
 	specular = 1.f,
 	reflections = 1.f,
@@ -278,7 +279,8 @@ constexpr const std::string_view
 	normalMaps = "normal_maps",
 	physics = "physics",
 	water = "water",
-	lava = "lava",
+	waterRipples = "water_ripples",
+lava = "lava",
 	parallax = "parallax",
 	specular = "specular",
 	reflections = "reflections",
@@ -579,7 +581,8 @@ bool Config::save() {
 	writer.writeKey(Key::normalMaps, video.normalMaps);
 	writer.writeKey(Key::physics, video.physics);
 	writer.writeKey(Key::water, video.water);
-	writer.writeKey(Key::lava, video.lava);
+	writer.writeKey(Key::waterRipples, video.waterRipples);
+writer.writeKey(Key::lava, video.lava);
 	writer.writeKey(Key::parallax, video.parallax);
 	writer.writeKey(Key::specular, video.specular);
 	writer.writeKey(Key::reflections, video.reflections);
@@ -744,7 +747,8 @@ bool Config::init(const fs::path & file) {
 	video.normalMaps = reader.getKey(Section::Video, Key::normalMaps, Default::normalMaps);
 	video.physics = reader.getKey(Section::Video, Key::physics, Default::physics);
 	video.water = reader.getKey(Section::Video, Key::water, Default::water);
-	video.lava = reader.getKey(Section::Video, Key::lava, Default::lava);
+	video.waterRipples = reader.getKey(Section::Video, Key::waterRipples, Default::waterRipples);
+video.lava = reader.getKey(Section::Video, Key::lava, Default::lava);
 	video.parallax = reader.getKey(Section::Video, Key::parallax, Default::parallax);
 	video.specular = reader.getKey(Section::Video, Key::specular, Default::specular);
 	video.reflections = reader.getKey(Section::Video, Key::reflections, Default::reflections);

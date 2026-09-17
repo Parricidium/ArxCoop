@@ -1661,6 +1661,66 @@ void main() {
 }
 )glsl";
 
+constexpr const char * ripple_update_frag = R"glsl(#version 130
+
+// ArxModern water ripples: one step of a 2D wave equation on a height field that follows the
+// camera (GLRipples.cpp). Red = height, green = vertical velocity, both stored normalised as
+// 0.5 + x / Range in a 16-bit texture (a float format sampled as zeros in the water pass on
+// the machine this was written on). Things moving in the water (a wading player, a falling
+// object, an arrow) push the surface down at their position and the rings spread from there;
+// the water shader (water.frag) reads the slopes of this map.
+
+uniform sampler2D u_previous;
+uniform vec2 u_shift;      // texels the window moved since the last step (the old state is read shifted)
+uniform vec2 u_invSize;    // 1 / map size
+uniform vec4 u_window;     // (origin x, origin z, size in world units, texel in world units)
+uniform float u_speed;     // wave speed squared, in texels per step (< 0.5 for stability)
+uniform float u_damping;   // velocity kept per step
+uniform int u_sourceCount;
+uniform vec4 u_sources[32]; // (x, z, radius, strength) in world units
+
+in vec2 v_uv;
+
+out vec4 fragColor;
+
+const float Range = 64.0; // world units of height (or velocity) either way, see water.frag
+
+float height(vec2 uv) {
+	return (texture(u_previous, uv).r - 0.5) * Range;
+}
+
+void main() {
+
+	vec2 uv = v_uv + u_shift * u_invSize;
+	vec2 state = (texture(u_previous, uv).rg - 0.5) * Range;
+	float h = state.r;
+	float v = state.g;
+
+	float laplacian = height(uv + vec2(-u_invSize.x, 0.0))
+	                + height(uv + vec2(u_invSize.x, 0.0))
+	                + height(uv + vec2(0.0, -u_invSize.y))
+	                + height(uv + vec2(0.0, u_invSize.y))
+	                - 4.0 * h;
+	v = (v + laplacian * u_speed) * u_damping;
+	h = (h + v) * 0.999; // (the 16-bit rounding would drift the whole map otherwise)
+
+	vec2 world = u_window.xy + (v_uv - 0.5) * u_window.z;
+	for(int i = 0; i < u_sourceCount; i++) {
+		float d = distance(world, u_sources[i].xy);
+		if(d < u_sources[i].z) {
+			float k = 1.0 - d / u_sources[i].z;
+			h -= u_sources[i].w * k * k;
+		}
+	}
+
+	// The waves die out towards the edge of the window instead of bouncing on it
+	vec2 e = min(v_uv, 1.0 - v_uv);
+	float edge = smoothstep(0.0, 0.06, min(e.x, e.y));
+
+	fragColor = vec4(0.5 + h * edge / Range, 0.5 + v * edge / Range, 0.0, 1.0);
+}
+)glsl";
+
 constexpr const char * rt_common_glsl = R"glsl(// ArxModern ray tracing: walking the level's bounding volume hierarchy (scene/RayScene.cpp).
 //
 // Shared by the traced passes (reflect_rt.frag, ...), which are built with a "#version 430"
@@ -2786,6 +2846,17 @@ uniform mat4 u_proj;
 uniform float u_reflection; // 0..1, strength of the mirrored scene (0 = off)
 uniform vec3 u_fogColor;
 
+// Ripples (ripple_update.frag): a height map of the water around the camera, in a window of
+// u_rippleWindow = (origin x, origin z, size, texel) world units; size 0 = none. The height
+// is stored normalised: 0.5 + h / 64 in the red channel.
+uniform sampler2D u_ripples;
+uniform vec4 u_rippleWindow;
+uniform float u_rippleStrength;
+
+float rippleHeight(vec2 uv) {
+	return (texture(u_ripples, uv).r - 0.5) * 64.0;
+}
+
 in vec3 v_worldPos;
 in float v_viewDepth;
 in vec2 v_uv0;
@@ -2974,6 +3045,24 @@ void main() {
 	float dhdu, dhdv;
 	waves(surfacePos, dhdu, dhdv);
 	vec2 ripple = (texture(u_enviro, v_uv1).rg - texture(u_enviro, v_uv2).gb) * RippleDetail;
+
+	// Simulated ripples: slopes of the height map, along the surface's tangent frame
+	float rippleCrest = 0.0;
+	vec3 rippleGrad = vec3(0.0);
+	if(u_rippleWindow.z > 0.0) {
+		vec2 ruv = (v_worldPos.xz - u_rippleWindow.xy) / u_rippleWindow.z + 0.5;
+		if(ruv.x > 0.0 && ruv.x < 1.0 && ruv.y > 0.0 && ruv.y < 1.0) {
+			float t = u_rippleWindow.w / u_rippleWindow.z; // one texel in uv
+			float hl = rippleHeight(ruv - vec2(t, 0.0));
+			float hr = rippleHeight(ruv + vec2(t, 0.0));
+			float hd = rippleHeight(ruv - vec2(0.0, t));
+			float hu = rippleHeight(ruv + vec2(0.0, t));
+			rippleGrad = vec3(hr - hl, 0.0, hu - hd) / (2.0 * u_rippleWindow.w) * u_rippleStrength;
+			dhdu += dot(rippleGrad, tangent);
+			dhdv += dot(rippleGrad, bitangent);
+			rippleCrest = clamp(abs(rippleHeight(ruv)) * 0.25, 0.0, 1.0);
+		}
+	}
 	vec3 normal = normalize(geoNormal - tangent * (dhdu * u_strength + ripple.x) - bitangent * (dhdv * u_strength + ripple.y));
 
 	// Scene behind the surface, refracted where the water is deep enough
@@ -2999,6 +3088,13 @@ void main() {
 	// A little darker and bluer with depth
 	float tint = clamp(depth2 / TintDepth, 0.0, 1.0) * u_strength;
 	color *= mix(vec3(1.0), TintColor, tint);
+
+	// The ripples show even on dark, unlit water: their slopes shade the surface a little
+	// (as if lit from a fixed direction) and the crests catch a touch of light
+	float rippleShade = clamp(dot(rippleGrad, normalize(vec3(0.6, 0.0, 0.8))) * 3.0, -0.5, 0.5);
+	color *= 1.0 + rippleShade;
+	color += vec3(rippleCrest * 0.12);
+
 
 	// Fresnel: glossier at grazing angles
 	float facing = max(dot(normal, view), 0.0);

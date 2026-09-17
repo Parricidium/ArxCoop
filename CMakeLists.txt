@@ -1008,7 +1008,8 @@ set(GRAPHICS_SOURCES
 	src/graphics/effects/BlobShadow.cpp
 	src/graphics/effects/Cabal.cpp
 	src/graphics/effects/Decal.cpp
-	src/graphics/effects/Fade.cpp
+	src/graphics/effects/WaterRipples.cpp
+src/graphics/effects/Fade.cpp
 	src/graphics/effects/Field.cpp
 	src/graphics/effects/Fissure.cpp
 	src/graphics/effects/FloatingStones.cpp
@@ -1061,7 +1062,8 @@ set(GRAPHICS_OPENGL_SOURCES
 	src/graphics/opengl/GLShadowMaps.cpp
 	src/graphics/opengl/GLPostProcess.cpp
 	src/graphics/opengl/GLWater.cpp
-	src/graphics/opengl/GLLava.cpp
+	src/graphics/opengl/GLRipples.cpp
+src/graphics/opengl/GLLava.cpp
 	src/graphics/opengl/GLReflect.cpp
 	src/graphics/opengl/GLRayScene.cpp
 src/graphics/opengl/GLLava.cpp

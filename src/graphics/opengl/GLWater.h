@@ -23,8 +23,11 @@
 #include "graphics/opengl/OpenGLUtil.h"
 #include "math/Types.h"
 
+#include <memory>
+
 class GLShaderPipeline;
 class GLPostProcess;
+class GLRipples;
 
 /*!
  * ArxModern: the water surface pass (data/graph/shaders/water.{vert,frag}).
@@ -49,7 +52,9 @@ public:
 	void setStrength(float strength) { m_strength = strength; }
 	//! Strength of the mirrored scene (0 = off); traced through the level when the pipeline ray traces
 	void setReflection(float reflection) { m_reflection = reflection; }
-	//! Whether the program was built with the ray tracing code (init() again when this must change)
+	//! Rings and wakes from what moves in the water (GLRipples.cpp), created / dropped on the next begin()
+	void setRipples(bool ripples) { m_ripplesWanted = ripples; }
+//! Whether the program was built with the ray tracing code (init() again when this must change)
 	[[nodiscard]] bool traced() const noexcept { return m_traced; }
 
 	/*!
@@ -85,6 +90,11 @@ private:
 	GLint m_uLightCount;
 	GLint m_uLightPos;
 	GLint m_uLightColor;
+
+	std::unique_ptr<GLRipples> m_ripples;
+	bool m_ripplesWanted;
+	GLint m_uRippleWindow;
+	GLint m_uRippleStrength;
 
 };
 
