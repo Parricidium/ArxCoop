@@ -676,7 +676,7 @@ static std::string g_snapshotMenuPage;
 static void menuPage(const std::string & page) {
 	g_snapshotMenuPage = page;
 }
-ARX_PROGRAM_OPTION_ARG("menupage", "", "Open this menu page before --menusnapshot (hd, options, render)", &menuPage, "PAGE")
+ARX_PROGRAM_OPTION_ARG("menupage", "", "Open this menu page before --menusnapshot (hd, rt, options, render)", &menuPage, "PAGE")
 
 // ArxModern: at frame N, render the same game state with the fixed-function pipeline, the shader
 // pipeline and the fixed-function pipeline again (snapshots 1, 2, 3 after the normal frame 0),
@@ -2307,7 +2307,7 @@ void ArxGame::render() {
 			frameTimeCount++;
 		}
 		if(g_autoSnapshotFrames == 30 && g_autoSnapshotAnyMode && !g_snapshotMenuPage.empty() && g_mainMenu) {
-			MENUSTATE page = (g_snapshotMenuPage == "hd") ? Page_OptionsHd
+			MENUSTATE page = (g_snapshotMenuPage == "hd") ? Page_OptionsHd : (g_snapshotMenuPage == "rt") ? Page_OptionsHd2
 			                 : (g_snapshotMenuPage == "render") ? Page_OptionsRender : Page_Options;
 			g_mainMenu->requestPage(page);
 		}

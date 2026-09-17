@@ -30,6 +30,8 @@ class MenuPage;
  * Changes are applied to the renderer immediately and saved with the configuration.
  */
 std::unique_ptr<MenuPage> createHdOptionsMenuPage();
+//! The ray tracing modes and the mood of the levels (second page)
+std::unique_ptr<MenuPage> createHdRayTracingMenuPage();
 
 //! Apply a quality preset (0 = off ... 4 = ultra) to the configuration and the renderer
 void applyHdPreset(int preset);

@@ -142,6 +142,8 @@ const bool allowConsole = true;
 constexpr const float
 	bloom = 0.35f,
 	ambientOcclusion = 0.f,
+	raytracingBounce = 1.f,
+	raytracingStaticMix = 0.25f,
 	darkness = 0.f,
 	volumetric = 0.f,
 	volumetricLight = 1.f,
@@ -270,6 +272,8 @@ constexpr const std::string_view
 	shadows = "shadows",
 	shadowResolution = "shadow_resolution",
 	raytracing = "raytracing",
+	raytracingBounce = "raytracing_bounce",
+	raytracingStaticMix = "raytracing_static_mix",
 	postprocess = "postprocess",
 	bloom = "bloom",
 	fxaa = "fxaa",
@@ -573,6 +577,8 @@ bool Config::save() {
 	writer.writeKey(Key::shadows, video.shadows);
 	writer.writeKey(Key::shadowResolution, video.shadowResolution);
 	writer.writeKey(Key::raytracing, video.raytracing);
+	writer.writeKey(Key::raytracingBounce, video.raytracingBounce);
+	writer.writeKey(Key::raytracingStaticMix, video.raytracingStaticMix);
 	writer.writeKey(Key::postprocess, video.postprocess);
 	writer.writeKey(Key::bloom, video.bloom);
 	writer.writeKey(Key::fxaa, video.fxaa);
@@ -740,6 +746,8 @@ bool Config::init(const fs::path & file) {
 	video.shadows = reader.getKey(Section::Video, Key::shadows, Default::shadows);
 	video.shadowResolution = reader.getKey(Section::Video, Key::shadowResolution, Default::shadowResolution);
 	video.raytracing = reader.getKey(Section::Video, Key::raytracing, Default::raytracing);
+	video.raytracingBounce = reader.getKey(Section::Video, Key::raytracingBounce, Default::raytracingBounce);
+	video.raytracingStaticMix = reader.getKey(Section::Video, Key::raytracingStaticMix, Default::raytracingStaticMix);
 	video.postprocess = reader.getKey(Section::Video, Key::postprocess, Default::postprocess);
 	video.bloom = reader.getKey(Section::Video, Key::bloom, Default::bloom);
 	video.fxaa = reader.getKey(Section::Video, Key::fxaa, Default::fxaa);

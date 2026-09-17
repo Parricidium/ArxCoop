@@ -143,14 +143,23 @@ public:
 	/*!
 	 * ArxModern RT (OpenGL 4.3): 0 = off, 1 = the level hierarchy is available to the passes
 	 * (traced reflections), 2 = the main shader also traces the shadows of the dynamic lights
-	 * through the level (the cube maps then only hold the entities). Rebuilds the programs
-	 * when the mode crosses on/off; returns false if unsupported (the mode stays off).
+	 * through the level (the cube maps then only hold the entities), 3 = the main shader also
+	 * writes a G-buffer for the traced lighting pass (occlusion and indirect light,
+	 * GLPostProcess), 4 = that pass also traces the shadows of the static lights. Rebuilds the
+	 * programs when the mode crosses on/off or the G-buffer threshold; returns false if
+	 * unsupported (the mode stays off).
 	 */
 	bool setRayTracing(int mode);
 	//! post_debug=rtshadow: the traced shadow factors instead of the scene
 	void setRayTracingDebug(int mode);
 	[[nodiscard]] int rayTracing() const noexcept { return m_rayTracing; }
 	[[nodiscard]] bool tracedShadows() const noexcept { return m_rayTracing >= 2; }
+	//! Whether the main program writes the G-buffer of the traced lighting (modes 3 and 4)
+	[[nodiscard]] bool tracedLighting() const noexcept { return m_rayTracing >= 3; }
+	//! Whether a pass of ours other than the main program is drawing (water, reflections, lava)
+	[[nodiscard]] bool inExternalPass() const noexcept { return m_externalPass; }
+	//! Whether the shadow cube maps are being rendered
+	[[nodiscard]] bool inShadowPass() const noexcept { return m_shadowPass; }
 	//! The level hierarchy, null when ray tracing is off or there is no level
 	[[nodiscard]] GLRayScene * rayScene() const noexcept { return m_rayScene.get(); }
 	//! Once per frame before the scene: (re)build and bind the hierarchy

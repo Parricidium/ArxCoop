@@ -794,8 +794,9 @@ void OpenGLRenderer::applyGraphicsConfig() {
 			if(!m_post->init()) {
 				m_post.reset();
 			}
-		} else if(m_post->traced() != (m_shaders->rayTracing() > 0)) {
-			// The haze program carries the ray tracing code only when the pipeline traces
+		} else if(m_post->traced() != (m_shaders->rayTracing() > 0) || m_post->gbuffer() != m_shaders->tracedLighting()) {
+			// The haze program carries the ray tracing code only when the pipeline traces, and
+			// the scene buffer the G-buffer only when the lighting is traced
 			GLPostProcess::Settings settings = m_post->settings();
 			if(m_post->init()) {
 				m_post->settings() = settings;
@@ -813,8 +814,12 @@ void OpenGLRenderer::applyGraphicsConfig() {
 			m_post->settings().darkness = config.video.darkness;
 			m_post->settings().volumetric = config.video.volumetric;
 			m_post->settings().volumetricLight = config.video.volumetricLight;
+			m_post->settings().traceMode = m_shaders->rayTracing();
+			m_post->settings().bounce = config.video.raytracingBounce;
+			m_post->settings().staticMix = config.video.raytracingStaticMix;
 			m_post->settings().debugView = (config.video.postDebug == "ao") ? 1 : (config.video.postDebug == "bloom") ? 2
-			                               : (config.video.postDebug == "haze") ? 3 : 0;
+			                               : (config.video.postDebug == "haze") ? 3 : (config.video.postDebug == "gi") ? 4
+			                               : (config.video.postDebug == "rtao") ? 5 : (config.video.postDebug == "rtstatic") ? 6 : 0;
 		}
 	} else {
 		m_reflect.reset();
@@ -1371,9 +1376,15 @@ void OpenGLRenderer::flushState() {
 		
 		m_glstate = m_state;
 	}
-	
+
 	for(size_t i = 0; i <= maxTextureStage; i++) {
 		GetTextureStage(i)->apply();
 	}
-	
+
+	// ArxModern traced lighting: only the lit, opaque draws of the main program fill the G-buffer
+	if(m_post && m_shaders) {
+		bool opaque = m_state.getBlendSrc() == BlendOne && m_state.getBlendDst() == BlendZero && m_state.getDepthWrite();
+		m_post->setGBufferWrites(opaque && !m_shaders->inExternalPass() && !m_shaders->inShadowPass());
+	}
+
 }

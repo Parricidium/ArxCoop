@@ -79,7 +79,16 @@ in vec3 v_worldPos;
 in vec3 v_normal;
 in float v_diffuse;
 
+#ifdef ARX_GBUFFER
+// ArxModern traced lighting (post_trace.frag): the lit, opaque draws also leave what the
+// lighting pass needs. The renderer only enables these outputs for them (GLPostProcess).
+layout(location = 0) out vec4 fragColor;
+layout(location = 1) out vec4 fragNormal; // world normal * 0.5 + 0.5, a = 1 (0 = nothing lit here)
+layout(location = 2) out vec4 fragAlbedo; // the texture colour
+layout(location = 3) out vec4 fragStatic; // the static part of the lighting (vertex colour, level lights)
+#else
 out vec4 fragColor;
+#endif
 
 // Tunables (a mod can edit this file: F7 reloads it)
 const float ParallaxDepth = 0.018;    // uv units of relief at u_material.x == 1 (level geometry)
@@ -273,6 +282,7 @@ void main() {
 	}
 
 	vec3 specular = vec3(0.0);
+	vec3 staticLight = color.rgb; // level: the precomputed vertex colour; entities: the ambient term
 #ifdef ARX_RT
 	float debugShadow = 1.0;
 	vec3 debugBlocker = vec3(1.0);
@@ -351,6 +361,9 @@ void main() {
 				}
 			}
 			light += u_lightColor[i].rgb * (cosangle * attenuation);
+			if(i >= u_dynamicLightCount) {
+				staticLight += u_lightColor[i].rgb * (cosangle * attenuation * lightScale);
+			}
 			if(gloss > 0.0 && u_specular > 0.0) {
 				vec3 halfway = normalize(toLight + view);
 				float s = pow(max(dot(normal, halfway), 0.0), shininess) * (shininess + 8.0) * 0.02;
@@ -413,5 +426,12 @@ void main() {
 #endif
 
 	fragColor = color;
+
+#ifdef ARX_GBUFFER
+	bool lit = (u_pixelLighting != 0) || (v_diffuse > 0.0);
+	fragNormal = lit ? vec4(normalize(v_normal) * 0.5 + 0.5, 1.0) : vec4(0.0);
+	fragAlbedo = vec4(lit ? albedo : vec3(0.0), 1.0);
+	fragStatic = vec4(lit ? min(staticLight, 1.0) : vec3(0.0), 1.0);
+#endif
 
 }

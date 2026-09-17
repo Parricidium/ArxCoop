@@ -257,8 +257,12 @@ bool GLShaderPipeline::init() {
 
 	GLuint program = 0;
 	if(m_rayTracing > 0) {
-		// The main shader with the ray tracing code (rt_common.glsl) compiled in
+		// The main shader with the ray tracing code (rt_common.glsl) compiled in, and the
+		// G-buffer outputs of the traced lighting from mode 3 on
 		std::string prelude = "#version 430\n#define ARX_RT 1\n";
+		if(m_rayTracing >= 3) {
+			prelude += "#define ARX_GBUFFER 1\n";
+		}
 		std::string common = loadSource("rt_common.glsl", shadersources::rt_common_glsl);
 		program = build("legacy", shadersources::legacy_vert, shadersources::legacy_frag,
 		                prelude, prelude + common + "\n#line 1\n");
@@ -385,13 +389,14 @@ bool GLShaderPipeline::setRayTracing(int mode) {
 		return mode > 0;
 	}
 	bool wasOn = (m_rayTracing > 0);
+	bool wasGBuffer = (m_rayTracing >= 3);
 	m_rayTracing = mode;
 	if(mode > 0 && !m_rayScene) {
 		m_rayScene = std::make_unique<GLRayScene>();
 	} else if(mode == 0) {
 		m_rayScene.reset();
 	}
-	if((mode > 0) != wasOn && m_program) {
+	if(((mode > 0) != wasOn || (mode >= 3) != wasGBuffer) && m_program) {
 		reload();
 	} else if(m_program) {
 		glUseProgram(m_program);

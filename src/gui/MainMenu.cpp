@@ -1889,6 +1889,7 @@ void MainMenu::initWindowPages() {
 	m_window->add(createCoopAdminMenuPage());
 	m_window->add(createCoopOptionsMenuPage());
 	m_window->add(createHdOptionsMenuPage());
+	m_window->add(createHdRayTracingMenuPage());
 	
 }
 
