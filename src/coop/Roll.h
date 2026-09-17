@@ -54,6 +54,9 @@ float rollPhase();
 //! Degrees the roll's direction is off the facing (0 forward, 180 backward, +-90 sideways).
 float rollTurn();
 
+//! The roll's direction as a yaw (player.angle convention, angleToVectorXZ), for the others.
+float rollDirectionYaw();
+
 /*!
  * From the player controls: starts a roll on the key (direction from the movement keys held,
  * forward otherwise) and, while rolling, replaces the keys' movement by the roll's.
@@ -74,10 +77,11 @@ void rollCameraEffect(Anglef & angle);
 
 /*!
  * The body somersault (puppets, and our own body in third person - never in first person,
- * the eye follows the head): the body turns into the roll's direction and somersaults forward
- * along it, about its own sideways axis (the engine's pitch turns about a world axis).
- * \a base is the render rotation of \a io's angle, the result replaces it (unchanged when
- * \a io is not rolling). Called by the skeleton animation (AnimationRender.cpp).
+ * the eye follows the head): the body keeps facing where the player looks and rolls along
+ * the roll's direction - forward, backward, or over a shoulder sideways - about the
+ * horizontal axis perpendicular to that direction (the engine's pitch turns about a world
+ * axis, useless here). \a base is the render rotation of \a io's angle, the result replaces
+ * it (unchanged when \a io is not rolling). Called by the skeleton animation (AnimationRender.cpp).
  */
 glm::quat rollRotation(const Entity & io, const glm::quat & base);
 
