@@ -46,6 +46,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "game/NPC.h"
 
+#include "graphics/effects/Decal.h"
 #include "graphics/effects/WaterRipples.h"
 
 #include "coop/Puppets.h"
@@ -2628,7 +2629,9 @@ void CheckNPCEx(Entity & io) {
 }
 
 void ARX_NPC_NeedStepSound(Entity * io, const Vec3f & pos, const float volume, const float power) {
-	
+
+	PolyBoomFootstep(io, pos); // ArxModern: blood on the feet leaves prints
+
 	std::string_view step_material = "foot_bare";
 	std::string_view floor_material = "earth";
 	

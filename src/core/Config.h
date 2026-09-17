@@ -175,6 +175,7 @@ public:
 		bool physics; // Jolt physics: ragdoll corpses, loose objects
 		float water; // water shader strength, 0 = the original overlay
 		bool waterRipples; // ArxModern: rings and wakes on the water from what moves in it (GLRipples.cpp)
+		bool bloodTrails; // ArxModern: bloody footprints after stepping in blood (Decal.cpp)
 float lava; // lava shader strength, 0 = the original overlay
 		float parallax; // depth of the parallax relief, 0 = off
 		float specular; // strength of the specular highlights, 0 = off
