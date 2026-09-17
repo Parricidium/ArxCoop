@@ -387,7 +387,11 @@ static void ARX_THROWN_OBJECT_ManageProjectile(Projectile & projectile, ShortGam
 				if(projectile.source == EntityHandle_Player && !(projectile.flags & ATO_FIERY)) {
 					coop::arrowLanded(projectile.position, projectile.quat); // ours: it may stay to be picked up
 				}
-				projectile.vector = Vec3f(0.f);
+				// Co-op mod: the engine kept drawing a stuck projectile forever (it only stopped moving);
+				// the stuck arrow is an item now (ours, or the shooter's through DropItem) or it broke,
+				// so the projectile goes - otherwise it stayed on screen after the item was picked up
+				projectile.obj = nullptr;
+				return;
 			} else {
 				projectile.obj = nullptr;
 				return;
