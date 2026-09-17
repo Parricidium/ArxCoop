@@ -1971,7 +1971,7 @@ void UpdateInter() {
 				pos.y = entity._npcdata->vvpos;
 			}
 			
-			coop::rollTumble(coop::rollPhaseOf(entity), temp, pos); // (another player's dodge roll)
+			coop::rollTumble(entity, temp, pos); // (another player's dodge roll)
 			EERIEDrawAnimQuatUpdate(entity.obj, entity.animlayer.data(), temp, pos, diff, &entity, true);
 			
 		}

@@ -56,6 +56,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "game/Damage.h"
 #include "coop/Puppets.h"
+#include "coop/Roll.h"
 #include "game/Equipment.h"
 #include "game/EntityManager.h"
 #include "game/NPC.h"
@@ -1468,6 +1469,9 @@ static void animateSkeleton(EERIE_3DOBJ * eobj, AnimLayer * animlayer,
 		rotation = toQuaternion(angle);
 	} else {
 		rotation = QuatFromAngles(angle);
+	}
+	if(io) {
+		rotation = coop::rollRotation(*io, rotation); // (a player's dodge roll somersault)
 	}
 	
 	EERIE_EXTRA_ROTATE * extraRotation = nullptr;

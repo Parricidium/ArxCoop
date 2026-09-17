@@ -169,6 +169,7 @@ struct PlayerSnapshot {
 	bool inDialogue = false; //!< locked in a cinematic dialogue with an NPC
 	float ignition = 0.f;    //!< on fire (the engine's Entity::ignition of the player)
 	float roll = 0.f;        //!< dodge roll progress, 0 = none (coop/Roll.cpp)
+	float rollTurn = 0.f;    //!< degrees the roll's direction is off the facing (0 forward, 180 back)
 	IO_HALO slotHalo[3];     //!< helmet, armor, leggings glow, drawn on the puppet's mesh (puppetSlotHalo)
 	PlatformInstant received;
 };
@@ -756,6 +757,7 @@ void handlePlayerState(PlayerId id, Reader & reader) {
 	state.inDialogue = reader.remaining() ? reader.bool_() : false;
 	state.ignition = reader.remaining() >= sizeof(float) ? reader.f32_() : 0.f;
 	state.roll = reader.remaining() >= sizeof(float) ? reader.f32_() : 0.f;
+	state.rollTurn = reader.remaining() >= sizeof(float) ? reader.f32_() : 0.f;
 	state.received = platform::getTime();
 
 }
@@ -1435,6 +1437,14 @@ float puppetRollPhase(const Entity & puppet) {
 	return it == g_remote.end() ? 0.f : it->second.roll;
 }
 
+float puppetRollTurn(const Entity & puppet) {
+	if(!puppet.coopPuppet) {
+		return 0.f;
+	}
+	auto it = g_remote.find(puppetOwner(puppet));
+	return it == g_remote.end() ? 0.f : it->second.rollTurn;
+}
+
 IO_HALO * puppetSlotHalo(const Entity & puppet, unsigned slot) {
 	if(slot >= 3 || !puppet.coopPuppet) {
 		return nullptr;
@@ -1537,6 +1547,7 @@ void puppetsSendLocalState() {
 	writer.bool_(getCinematicSpeech() != nullptr);
 	writer.f32_(std::max(io.ignition, 0.f));
 	writer.f32_(rollPhase());
+	writer.f32_(rollTurn());
 
 	g_coop.sendToOthers(MessageType::PlayerState, writer);
 	sendEquipmentIfNeeded(false);
@@ -1895,10 +1906,13 @@ void puppetsTestUpdate() {
 			if(g_coop.isClient()) {
 				thirdPersonTestSet(true, false, false, 0.f);
 				g_rollTestRequest = true;
-				LogInfo << "[coop] test: client rolls (third person)";
+				g_rollTestTurn = 90.f;
+				LogInfo << "[coop] test: client rolls to its left (third person), facing yaw " << player.angle.getYaw()
+				        << " at " << int(player.pos.x) << "," << int(player.pos.z);
 			} else if(const Entity * puppet = !g_remote.empty() ? findPuppet(g_remote.begin()->first) : nullptr) {
-				// Stand 220 units behind the puppet, looking at it
-				Vec3f dir = angleToVectorXZ(player.angle.getYaw());
+				// Stand 220 units behind the puppet (along its owner's facing), looking at it: a roll
+				// to the owner's left goes to the left of the picture, head leading
+				Vec3f dir = angleToVectorXZ(g_remote.begin()->second.angle.getYaw());
 				Vec3f eye = puppet->pos - dir * 220.f + Vec3f(0.f, -160.f, 0.f);
 				ARX_INTERACTIVE_Teleport(entities.player(), eye + Vec3f(0.f, 160.f, 0.f));
 				Vec3f to = puppet->pos + Vec3f(0.f, -90.f, 0.f) - player.pos;
@@ -1912,7 +1926,7 @@ void puppetsTestUpdate() {
 		if(rollStep == 1 && g_coop.isClient() && now - rollStart > std::chrono::milliseconds(260)) {
 			rollStep = 2;
 			GetSnapShot();
-			LogInfo << "[coop] test: mid-roll snapshot, phase " << rollPhase() << " invulnerable "
+			LogInfo << "[coop] test: mid-roll snapshot, phase " << rollPhase() << " turn " << rollTurn() << " invulnerable "
 			        << bool(player.playerflags & PLAYERFLAGS_INVULNERABILITY) << " crouch " << bool(player.m_currentMovement & PLAYER_CROUCH);
 			Logger::flush();
 		}
@@ -1923,7 +1937,12 @@ void puppetsTestUpdate() {
 					rollStep = 2;
 					rollStart = now;
 					GetSnapShot();
-					LogInfo << "[coop] test: puppet " << int(entry.first) << " roll phase " << entry.second.roll << " (snapshot)";
+					const Entity * puppet = findPuppet(entry.first);
+					Vec3f rel = puppet ? puppet->pos - player.pos : Vec3f(0.f);
+					LogInfo << "[coop] test: puppet " << int(entry.first) << " roll phase " << entry.second.roll << " turn "
+					        << entry.second.rollTurn << " (snapshot), host yaw " << player.angle.getYaw() << ", puppet "
+					        << glm::dot(rel, angleToVectorXZ(player.angle.getYaw())) << " ahead and "
+					        << glm::dot(rel, angleToVectorXZ(player.angle.getYaw() + 90.f)) << " to the left of the host";
 					Logger::flush();
 					break;
 				}
