@@ -1787,6 +1787,7 @@ void puppetsUpdate() {
 bool g_puppetsTestMode = false;
 bool g_puppetsTestLean = false;
 int g_puppetsTestLevel = -1;
+static Vec3f g_testStartPos(0.f);
 std::string g_puppetsTestTarget;
 
 //! Developer aid: runs one script line in an entity's context (the script stays alive for deferred parts).
@@ -1971,6 +1972,7 @@ void puppetsTestUpdate() {
 		if(g_currentArea == AreaId(u32(g_puppetsTestLevel)) && arrived == PlatformInstant()) {
 			arrived = now;
 			LogInfo << "[coop] test: arrived in level " << g_puppetsTestLevel;
+			g_testStartPos = player.pos;
 		}
 		if(arrived != PlatformInstant() && !listed && now - arrived > std::chrono::seconds(25)) {
 			listed = true;
@@ -2459,7 +2461,8 @@ void puppetsTestUpdate() {
 			cutStep = 1;
 			cutStepTime = now;
 			// A goblin of the level (it exists on the client too: a spawn from test code would not),
-			// brought next to us
+			// brought next to us - back at the level's start, out of the water (JD's case: dry ground)
+			ARX_INTERACTIVE_Teleport(entities.player(), g_testStartPos + Vec3f(0.f, 160.f, 0.f), true);
 			if(Entity * goblin = entities.getById("goblin_base_0021")) {
 				Vec3f at = player.pos + angleToVectorXZ(player.angle.getYaw()) * 150.f;
 				at.y = player.pos.y + 130.f;
@@ -2470,14 +2473,22 @@ void puppetsTestUpdate() {
 			}
 			Logger::flush();
 		}
-		if(g_coop.isHost() && cutStep == 1 && now - cutStepTime > std::chrono::milliseconds(1500)) {
+		if(g_coop.isHost() && cutStep == 1 && now - cutStepTime > std::chrono::milliseconds(3000)) {
 			cutStep = 2;
 			cutStepTime = now;
 			Entity * goblin = entities.getById("goblin_base_0021");
 			if(goblin) {
 				// (a second on screen: its vertices are placed, the piece starts from the real neck)
-				// The real path: a killing blow at the torso cuts it (damageNpc -> ARX_NPC_TryToCutSomething)
+				// The real path: a killing blow at the torso cuts it (damageNpc -> ARX_NPC_TryToCutSomething),
+				// the blow landing right on the torso selection's first vertex (what the cut measures)
 				Vec3f hit = goblin->pos + Vec3f(0.f, -80.f, 0.f);
+				for(VertexSelectionId sel : goblin->obj->selections.handles()) {
+					if(goblin->obj->selections[sel].name == "cut_torso" && !goblin->obj->selections[sel].selected.empty()) {
+						hit = goblin->obj->vertexWorldPositions[goblin->obj->selections[sel].selected[0]].v;
+					}
+				}
+				LogInfo << "[coop] test: blow at " << int(hit.x) << "," << int(hit.y) << "," << int(hit.z) << " goblin at "
+				        << int(goblin->pos.x) << "," << int(goblin->pos.y) << "," << int(goblin->pos.z) << " treat " << bool(goblin->gameFlags & GFLAG_ISINTREATZONE);
 				damageNpc(*goblin, 100000.f, nullptr, nullptr, DAMAGE_TYPE_METAL, &hit);
 				bloodPool = goblin->pos;
 				PolyBoomAddSplat(Sphere(bloodPool + Vec3f(0.f, -5.f, 0.f), 35.f), Color3f(0.6f, 0.05f, 0.05f), 0);
