@@ -19,6 +19,8 @@
 
 #include "physics/LooseObjects.h"
 
+#include "game/npc/Dismemberment.h"
+
 #include "physics/Cloth.h"
 #include "physics/Debris.h"
 
@@ -467,7 +469,17 @@ void launchObject(EERIE_3DOBJ * obj, const Vec3f & pos, const Anglef & angle, co
 bool updateLooseObject(Entity & io) {
 
 	if(isMirrorMode()) {
-		return true; // the simulating machine tells where it is
+		// The simulating machine tells where it is - except a corpse piece (ARX_NPC_SpawnCutMember)
+		// it never told about: after a few seconds it falls with the engine's own box rather than
+		// hanging in the air where it was cut
+		if(g_mirroredObjects.find(&io) == g_mirroredObjects.end()) {
+			std::string npcId;
+			DismembermentFlag flag;
+			if(ARX_NPC_IsCutMember(io, npcId, flag) && g_gameTime.now() - io.animBlend.lastanimtime > 3s) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	auto it = g_loose.find(&io);

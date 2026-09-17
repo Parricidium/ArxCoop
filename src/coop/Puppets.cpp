@@ -2476,14 +2476,22 @@ void puppetsTestUpdate() {
 			Entity * goblin = entities.getById("goblin_base_0021");
 			if(goblin) {
 				// (a second on screen: its vertices are placed, the piece starts from the real neck)
-				damageNpc(*goblin, 100000.f, entities.player(), nullptr, DAMAGE_TYPE_METAL, nullptr);
-				ARX_NPC_ApplyRemoteCuts(*goblin, FLAG_CUT_HEAD);
-				// A pool of blood at its feet (the kill from test code spawns none), for the footprints
+				// The real path: a killing blow at the torso cuts it (damageNpc -> ARX_NPC_TryToCutSomething)
+				Vec3f hit = goblin->pos + Vec3f(0.f, -80.f, 0.f);
+				damageNpc(*goblin, 100000.f, nullptr, nullptr, DAMAGE_TYPE_METAL, &hit);
 				bloodPool = goblin->pos;
 				PolyBoomAddSplat(Sphere(bloodPool + Vec3f(0.f, -5.f, 0.f), 35.f), Color3f(0.6f, 0.05f, 0.05f), 0);
 				PolyBoomAddSplat(Sphere(bloodPool + Vec3f(20.f, -5.f, 15.f), 30.f), Color3f(0.6f, 0.05f, 0.05f), 0);
 				LogInfo << "[coop] test: blood pool at " << int(goblin->pos.x) << "," << int(goblin->pos.y) << "," << int(goblin->pos.z) << ", decals " << PolyBoomCount();
-				if(Entity * member = ARX_NPC_SpawnCutMember(*goblin, FLAG_CUT_HEAD)) {
+				Entity * member = nullptr;
+				for(Entity & io : entities.inScene()) {
+					std::string npcId;
+					DismembermentFlag flag;
+					if(ARX_NPC_IsCutMember(io, npcId, flag) && npcId == goblin->idString()) {
+						member = &io;
+					}
+				}
+				if(member) {
 					cutMemberId = member->idString();
 					LogInfo << "[coop] test: host cut " << goblin->idString() << " (dead " << IsDeadNPC(*goblin) << ") at "
 					        << int(goblin->pos.x) << "," << int(goblin->pos.y) << "," << int(goblin->pos.z) << ": piece "
