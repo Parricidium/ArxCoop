@@ -19,6 +19,8 @@
 
 #include "coop/Puppets.h"
 
+#include <boost/algorithm/string/predicate.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -2313,13 +2315,27 @@ void puppetsTestUpdate() {
 				if(!attach) {
 					attach = arrowobj->origin;
 				}
-				ARX_THROWN_OBJECT_Throw(EntityHandle_Player, pos, vect, 0.f, arrowobj.get(), attach, quat_identity(), 1.f, 0.f);
-				projectileFired(pos, vect, 0.f, quat_identity(), false);
+				VertexId hit = attach;
+				{
+					float maxdist = 0.f;
+					for(const EERIE_ACTIONLIST & action : arrowobj->actionlist) {
+						if(boost::starts_with(action.name, "hit_")) {
+							float d = glm::distance(arrowobj->vertexlist[attach].v, arrowobj->vertexlist[action.idx].v);
+							if(d > maxdist) {
+								maxdist = d;
+								hit = action.idx;
+							}
+						}
+					}
+				}
+				glm::quat orient = glm::inverse(getProjectileQuatFromVector(arrowobj->vertexlist[hit].v - arrowobj->vertexlist[attach].v));
+				ARX_THROWN_OBJECT_Throw(EntityHandle_Player, pos, vect, 0.f, arrowobj.get(), attach, orient, 1.f, 0.f);
+				projectileFired(pos, vect, 0.f, orient, false);
 				LogInfo << "[coop] test: client shoots an arrow from " << int(pos.x) << "," << int(pos.y) << "," << int(pos.z)
 				        << " along " << vect.x << "," << vect.y << "," << vect.z;
 				Vec3f vect2 = VRotateY(vect, 6.f); // a second one, to refill the quiver the first one makes
-				ARX_THROWN_OBJECT_Throw(EntityHandle_Player, pos, vect2, 0.f, arrowobj.get(), attach, quat_identity(), 1.f, 0.f);
-				projectileFired(pos, vect2, 0.f, quat_identity(), false);
+				ARX_THROWN_OBJECT_Throw(EntityHandle_Player, pos, vect2, 0.f, arrowobj.get(), attach, orient, 1.f, 0.f);
+				projectileFired(pos, vect2, 0.f, orient, false);
 			}
 			Logger::flush();
 		}
@@ -2350,17 +2366,41 @@ void puppetsTestUpdate() {
 			itemStepTime = now;
 			if(arrowobj && arrowobj->vertexlist.size() >= 2) {
 				Vec3f pos = player.pos + Vec3f(0.f, 40.f, 0.f);
-				Vec3f vect = glm::normalize(angleToVectorXZ(player.angle.getYaw()) + Vec3f(0.f, 0.9f, 0.f)) * 0.9f;
+				// Steeply, into the floor a few steps ahead: the other player's puppet stands 120 units away
+				Vec3f vect = glm::normalize(angleToVectorXZ(player.angle.getYaw()) + Vec3f(0.f, 2.5f, 0.f)) * 0.9f;
 				VertexId attach = getNamedVertex(arrowobj.get(), "attach");
 				if(!attach) {
 					attach = arrowobj->origin;
 				}
-				ARX_THROWN_OBJECT_Throw(EntityHandle_Player, pos, vect, 0.f, arrowobj.get(), attach, quat_identity(), 1.f, 0.f);
-				projectileFired(pos, vect, 0.f, quat_identity(), false);
-				Vec3f vect2 = VRotateY(vect, 6.f);
-				ARX_THROWN_OBJECT_Throw(EntityHandle_Player, pos, vect2, 0.f, arrowobj.get(), attach, quat_identity(), 1.f, 0.f);
-				projectileFired(pos, vect2, 0.f, quat_identity(), false);
-				LogInfo << "[coop] test: host shoots two arrows into the floor ahead";
+				VertexId hit = attach;
+				{
+					float maxdist = 0.f;
+					for(const EERIE_ACTIONLIST & action : arrowobj->actionlist) {
+						if(boost::starts_with(action.name, "hit_")) {
+							float d = glm::distance(arrowobj->vertexlist[attach].v, arrowobj->vertexlist[action.idx].v);
+							if(d > maxdist) {
+								maxdist = d;
+								hit = action.idx;
+							}
+						}
+					}
+				}
+				glm::quat orient = glm::inverse(getProjectileQuatFromVector(arrowobj->vertexlist[hit].v - arrowobj->vertexlist[attach].v));
+				ARX_THROWN_OBJECT_Throw(EntityHandle_Player, pos, vect, 0.f, arrowobj.get(), attach, orient, 1.f, 0.f);
+				projectileFired(pos, vect, 0.f, orient, false);
+				Vec3f vect2 = VRotateY(vect, 25.f);
+				ARX_THROWN_OBJECT_Throw(EntityHandle_Player, pos, vect2, 0.f, arrowobj.get(), attach, orient, 1.f, 0.f);
+				projectileFired(pos, vect2, 0.f, orient, false);
+				LogInfo << "[coop] test: host shoots two arrows into the floor ahead from " << int(pos.x) << "," << int(pos.y) << "," << int(pos.z);
+				for(const auto & entry : g_remote) {
+					if(const Entity * puppet = findPuppet(entry.first)) {
+						const Vec3f & v0 = puppet->obj->vertexWorldPositions[puppet->obj->origin].v;
+						LogInfo << "[coop] test: puppet " << puppet->idString() << " pos " << int(puppet->pos.x) << "," << int(puppet->pos.y) << "," << int(puppet->pos.z)
+						        << " origin vertex " << int(v0.x) << "," << int(v0.y) << "," << int(v0.z)
+						        << " bbox " << int(puppet->bbox3D.min.x) << "," << int(puppet->bbox3D.min.z) << " - " << int(puppet->bbox3D.max.x) << "," << int(puppet->bbox3D.max.z)
+						        << " show " << int(puppet->show) << " treat " << bool(puppet->gameFlags & GFLAG_ISINTREATZONE);
+					}
+				}
 			}
 			Logger::flush();
 		}
@@ -2373,10 +2413,12 @@ void puppetsTestUpdate() {
 					landed.push_back(&entity);
 				}
 			}
+			GetSnapShot(); // (the stuck arrows ahead, before they are picked up)
+			LogInfo << "[coop] test: host finds " << landed.size() << " stuck arrow(s)";
 			for(Entity * arrow : landed) {
 				std::string id = arrow->idString();
+				LogInfo << "[coop] test: host picks " << id << " up (mesh " << arrow->usemesh << ", label " << arrow->locname << ")";
 				giveToPlayer(arrow);
-				LogInfo << "[coop] test: host picked " << id << " up";
 			}
 			for(Entity & entity : entities) {
 				if(entity.className() == "arrows" && IsInPlayerInventory(&entity)) {

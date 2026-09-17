@@ -1093,6 +1093,7 @@ Entity * placedItem(const ItemPlacement & placement, bool create, const ItemStat
 	item->angle = placement.angle;
 	item->requestRoomUpdate = true;
 	item->gameFlags &= ~GFLAG_NOCOMPUTATION;
+	dressStuckArrow(*item); // (another player's arrow stuck in the world)
 	return item;
 }
 

@@ -385,7 +385,7 @@ static void ARX_THROWN_OBJECT_ManageProjectile(Projectile & projectile, ShortGam
 				// TODO better offset calculation
 				projectile.position = original_pos + result.pos - v0;
 				if(projectile.source == EntityHandle_Player && !(projectile.flags & ATO_FIERY)) {
-					coop::arrowLanded(projectile.position, glm::normalize(projectile.vector)); // ours: pick it up again
+					coop::arrowLanded(projectile.position, projectile.quat); // ours: it may stay to be picked up
 				}
 				projectile.vector = Vec3f(0.f);
 			} else {

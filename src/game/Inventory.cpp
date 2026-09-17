@@ -46,6 +46,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "game/Inventory.h"
 #include "coop/Replication.h"
+#include "coop/Qol.h"
 
 #include <algorithm>
 #include <vector>
@@ -352,6 +353,8 @@ InventoryPos Inventory::mergeArrows(Entity & item) {
 InventoryPos Inventory::insertImpl(Entity & item, InventoryPos pos) {
 
 	arx_assert(item.ioflags & IO_ITEM);
+
+	coop::undressStuckArrow(item); // (a stuck arrow picked up is a quiver again)
 
 	if(pos.container == owner() && insertIntoStackAt(item, pos)) {
 		return pos;
