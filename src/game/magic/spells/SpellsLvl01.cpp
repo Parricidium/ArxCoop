@@ -19,11 +19,14 @@
 
 #include "game/magic/spells/SpellsLvl01.h"
 
+#include <random>
 #include <utility>
 
 #include "coop/Replication.h"
+#include "coop/Puppets.h"
 #include "core/Application.h"
 #include "core/Core.h"
+#include "io/log/Logger.h"
 #include "core/GameTime.h"
 
 #include "game/Damage.h"
@@ -143,15 +146,31 @@ void MagicMissileSpell::Launch() {
 		}
 	} else {
 		pitch = 0.f;
-		otherPlayer = coop::puppetAimPitch(*entities[m_caster], pitch); // another player: where they look
 		yaw = entities[m_caster]->angle.getYaw();
+		otherPlayer = coop::puppetAim(*entities[m_caster], pitch, yaw); // another player: where they look
 		if(!m_hand_group) {
 			startPos = entities[m_caster]->pos;
 		}
 	}
-	
+
 	startPos += angleToVector(Anglef(pitch, yaw, 0.f)) * 60.f;
-	
+
+	// Co-op: another player's missiles start where theirs did (their hand, not the puppet's
+	// smoothed one); ours tell the others. Their random draws come from the cast's seed so
+	// that every copy flies the same wobbly path.
+	if(!coop::castOrigin(startPos)) {
+		coop::castOriginUsed(startPos);
+	}
+	std::mt19937 syncedRng(coop::castSeed());
+	std::mt19937 * rng = coop::castSeed() ? &syncedRng : nullptr;
+	auto randomf = [rng](float min, float max) {
+		return rng ? std::uniform_real_distribution<float>(min, max)(*rng) : Random::getf(min, max);
+	};
+	if(rng) {
+		LogInfo << "[coop] magic missile of " << entities[m_caster]->idString() << " from " << startPos.x << ","
+		        << startPos.y << "," << startPos.z << " pitch " << pitch << " yaw " << yaw << " seed " << coop::castSeed();
+	}
+
 	// An NPC aims at its target; another player aims where they look (their "target" is
 	// their own puppet here, which would bend the missiles down)
 	if(m_caster != EntityHandle_Player && !otherPlayer) {
@@ -214,14 +233,14 @@ void MagicMissileSpell::Launch() {
 		Anglef angles(pitch, yaw, 0.f);
 		
 		if(i > 0) {
-			angles.setPitch(angles.getPitch() + Random::getf(-4.0f, 4.0f));
-			angles.setYaw(angles.getYaw() + Random::getf(-6.0f, 6.0f));
+			angles.setPitch(angles.getPitch() + randomf(-4.0f, 4.0f));
+			angles.setYaw(angles.getYaw() + randomf(-6.0f, 6.0f));
 		}
-		
-		missile.Create(startPos, angles);
-		
-		GameDuration lTime = m_duration + Random::get(-1000ms, 1000ms);
-		
+
+		missile.Create(startPos, angles, rng);
+
+		GameDuration lTime = m_duration + std::chrono::milliseconds(long(randomf(-1000.f, 1000.f)));
+
 		lTime = std::max(GameDuration(1s), lTime);
 		lMax = std::max(lMax, lTime);
 		

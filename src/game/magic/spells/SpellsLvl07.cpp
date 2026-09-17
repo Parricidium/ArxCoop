@@ -571,9 +571,8 @@ void LightningStrikeSpell::Update() {
 	if(m_caster == EntityHandle_Player) {
 		falpha = -player.angle.getPitch();
 		fBeta = player.angle.getYaw();
-	} else if(caster && coop::puppetAimPitch(*caster, puppetPitch)) {
+	} else if(caster && coop::puppetAim(*caster, puppetPitch, fBeta)) {
 		falpha = -puppetPitch; // another player: where they look
-		fBeta = caster->angle.getYaw();
 	} else {
 		fBeta = caster ? caster->angle.getYaw() : 0.f;
 		if(caster && entities.get(caster->targetinfo) && caster->targetinfo != m_caster) {

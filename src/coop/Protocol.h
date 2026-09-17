@@ -37,7 +37,7 @@
  */
 namespace coop {
 
-constexpr u32 ProtocolVersion = 18; // 18: item state (script variables, enchantments...) behind GiveItem/DropItem/StoreItem, halos behind PlayerEquipment
+constexpr u32 ProtocolVersion = 19; // 19: Projectile (arrows), missile origin + seed behind SpellCast
 constexpr u16 DefaultPort = 27015;
 constexpr size_t MaxPlayers = 4;
 constexpr size_t MaxNicknameLength = 24;
@@ -77,7 +77,7 @@ enum class MessageType : u16 {
 	SharedRune    = 45, //!< both: u32 rune
 	SharedXP      = 46, //!< both: s32 amount
 	SharedGold    = 61, //!< both: s32 amount (script rewards)
-	SpellCast     = 62, //!< like PlayerState: u8 caster, u32 spell, f32 level, u32 flags, string target, s64 duration, f32 pitch, f32 yaw (where the caster looked)
+	SpellCast     = 62, //!< like PlayerState: u8 caster, u32 spell, f32 level, u32 flags, string target, s64 duration, f32 pitch, f32 yaw (where the caster looked), u8 hasOrigin, f32 origin[3] (where the missiles started), u32 seed (the spell's random draws)
 	SpawnEntity   = 47, //!< H->C: u8 kind, string classPath, s32 instance, f32 pos[3], f32 angle[3]
 	LevelState    = 48, //!< H->C: u32 area, string levelBlob, string globalsBlob, f32 pos[3]
 	RequestLevel  = 49, //!< C->H: (empty)
@@ -108,6 +108,7 @@ enum class MessageType : u16 {
 	PlayerSpeech  = 79, //!< like PlayerState: u8 id, string sample: this player's character said a line (the others hear it from the puppet)
 	GiveGold      = 81, //!< C->H->target: u8 from, u8 to, u32 amount (see coop/Qol.cpp)
 	PlayerStats   = 82, //!< C->H: f32 attributes[4], f32 skills[9], f32 life, maxLife, mana, maxMana, hunger, poison, s32 gold, s32 level: the scripts' ^player_* answer for the acting client (see coop/Replication.cpp)
+	Projectile    = 83, //!< like PlayerState: u8 shooter, f32 pos[3], f32 vect[3], f32 gravity, f32 quat[4] (x y z w), u8 fiery: this player shot an arrow (flies the same path everywhere, damage on the shooter's side only)
 	PhysicsState  = 80, //!< H->C: u16 n ragdolls (string id, f32 pos[3], u8 active, u16 bones, bones x f32[7] pos + quat xyzw), u16 n objects (string id, f32 pos[3], f32 angle[3], u8 active), see coop/PhysicsSync.cpp
 
 };

@@ -44,6 +44,7 @@
 #include "physics/Ragdoll.h"
 #include "core/Application.h"
 #include "core/Core.h"
+#include "math/Random.h"
 #include "core/GameTime.h"
 #include "game/Entity.h"
 #include "game/EntityId.h"
@@ -79,6 +80,7 @@
 #include "gui/menu/MenuFader.h"
 #include "io/Screenshot.h"
 #include "io/log/Logger.h"
+#include "physics/Projectile.h"
 #include "io/resource/ResourcePath.h"
 #include "math/Angle.h"
 #include "math/Vector.h"
@@ -844,6 +846,15 @@ void reviveLocalPlayer() {
 
 int g_applyingRemoteSpell = 0;
 
+// Synced casts: seed and missile origin of the cast being launched (see castStarting)
+struct CastInfo {
+	u32 seed = 0;
+	bool remote = false;
+	bool hasOrigin = false;
+	Vec3f origin = Vec3f(0.f);
+};
+CastInfo g_cast;
+
 // Spells ------------------------------------------------------------------------------
 
 //! Translates an entity id as seen by another player into our own entity.
@@ -873,6 +884,15 @@ void handleSpellCast(PlayerId from, Reader & reader) {
 	s64 duration = reader.s64_();
 	float pitch = reader.f32_();
 	float yaw = reader.f32_();
+	CastInfo cast;
+	cast.remote = true;
+	cast.hasOrigin = reader.remaining() ? reader.bool_() : false;
+	if(reader.remaining() >= 3 * sizeof(float) + sizeof(u32)) {
+		cast.origin.x = reader.f32_();
+		cast.origin.y = reader.f32_();
+		cast.origin.z = reader.f32_();
+		cast.seed = reader.u32_();
+	}
 	Entity * caster = findPuppet(from);
 	if(!caster || !puppetsAllowed()) {
 		return;
@@ -880,25 +900,55 @@ void handleSpellCast(PlayerId from, Reader & reader) {
 	Entity * target = mapRemoteEntity(from, targetId);
 	LogInfo << "[coop] player " << int(from) << " casts spell " << spell << " level " << level;
 	// Aim exactly where the caster looked when casting, not where the smoothed puppet faces
-	// now (the spells read the caster's yaw and, for puppets, the remote pitch)
+	// now: the spells read the owner's angles through puppetAim() (the entity yaw for what
+	// still reads it), and start their missiles where the caster's did (castOrigin), with the
+	// caster's random draws (castSeed)
 	Anglef savedAngle = caster->angle;
 	caster->angle.setYaw(MAKEANGLE(180.f - yaw));
 	auto remote = g_remote.find(from);
-	float savedPitch = 0.f;
+	Anglef savedRemote;
 	if(remote != g_remote.end()) {
-		savedPitch = remote->second.angle.getPitch();
+		savedRemote = remote->second.angle;
 		remote->second.angle.setPitch(pitch);
+		remote->second.angle.setYaw(yaw);
 	}
+	g_cast = cast;
 	g_applyingRemoteSpell++;
 	ARX_SPELLS_Launch(SpellType(spell), *caster,
 	                  SpellcastFlags::load(flags) | SPELLCAST_FLAG_NOCHECKCANCAST | SPELLCAST_FLAG_NOMANA
 	                  | SPELLCAST_FLAG_NOANIM,
 	                  long(level), target, GameDuration::ofRaw(duration));
 	g_applyingRemoteSpell--;
+	g_cast = CastInfo();
 	caster->angle = savedAngle;
 	if(remote != g_remote.end()) {
-		remote->second.angle.setPitch(savedPitch);
+		remote->second.angle = savedRemote;
 	}
+}
+
+void handleProjectile(PlayerId from, Reader & reader) {
+	Vec3f pos;
+	pos.x = reader.f32_();
+	pos.y = reader.f32_();
+	pos.z = reader.f32_();
+	Vec3f vect;
+	vect.x = reader.f32_();
+	vect.y = reader.f32_();
+	vect.z = reader.f32_();
+	float gravity = reader.f32_();
+	glm::quat rotation;
+	rotation.x = reader.f32_();
+	rotation.y = reader.f32_();
+	rotation.z = reader.f32_();
+	rotation.w = reader.f32_();
+	bool fiery = reader.bool_();
+	Entity * shooter = findPuppet(from);
+	if(!shooter || !puppetsAllowed() || shooter->show != SHOW_FLAG_IN_SCENE) {
+		return; // not in this level
+	}
+	LogInfo << "[coop] player " << int(from) << " shot an arrow from " << int(pos.x) << "," << int(pos.y) << "," << int(pos.z)
+	        << " along " << vect.x << "," << vect.y << "," << vect.z;
+	ARX_THROWN_OBJECT_ThrowRemote(shooter->index(), pos, vect, gravity, rotation, fiery);
 }
 
 void handlePlayerSpeech(PlayerId from, Reader & reader) {
@@ -1191,6 +1241,7 @@ void puppetsInit() {
 	};
 	g_coop.onSpellCast = handleSpellCast;
 	g_coop.onPlayerSpeech = handlePlayerSpeech;
+	g_coop.onProjectile = handleProjectile;
 	g_coop.onNpcState = [](Reader & reader) {
 		if(npcsAreMirrored()) {
 			applyNpcState(reader);
@@ -1310,6 +1361,11 @@ void spellCast(unsigned spell, float level, unsigned flags, const Entity * targe
 	writer.s64_(durationUs);
 	writer.f32_(player.angle.getPitch());
 	writer.f32_(player.angle.getYaw());
+	writer.bool_(g_cast.hasOrigin);
+	writer.f32_(g_cast.origin.x);
+	writer.f32_(g_cast.origin.y);
+	writer.f32_(g_cast.origin.z);
+	writer.u32_(g_cast.seed);
 	g_coop.sendToOthers(MessageType::SpellCast, writer);
 }
 
@@ -1461,7 +1517,7 @@ bool teammateWithin(const Vec3f & pos, float limit) {
 	return false;
 }
 
-bool puppetAimPitch(const Entity & caster, float & pitch) {
+bool puppetAim(const Entity & caster, float & pitch, float & yaw) {
 	PlayerId owner = puppetOwner(caster);
 	if(owner == InvalidPlayerId) {
 		return false;
@@ -1470,8 +1526,66 @@ bool puppetAimPitch(const Entity & caster, float & pitch) {
 	if(it == g_remote.end()) {
 		return false;
 	}
+	// The owner's own angles (their player.angle, the ones their spells use): the puppet's
+	// entity yaw is the NPC one (180 - yaw), which sends a missile the mirrored way
 	pitch = it->second.angle.getPitch();
+	yaw = it->second.angle.getYaw();
 	return true;
+}
+
+bool puppetAimPitch(const Entity & caster, float & pitch) {
+	float yaw;
+	return puppetAim(caster, pitch, yaw);
+}
+
+void castStarting(const Entity & source) {
+	if(g_applyingRemoteSpell > 0) {
+		return; // handleSpellCast set the cast up from the message
+	}
+	g_cast = CastInfo();
+	if(&source == entities.player() && puppetsAllowed()) {
+		g_cast.seed = Random::getu(1u, 0xFFFFFFFEu);
+	}
+}
+
+unsigned castSeed() {
+	return g_cast.seed;
+}
+
+bool castOrigin(Vec3f & origin) {
+	if(!g_cast.remote || !g_cast.hasOrigin) {
+		return false;
+	}
+	origin = g_cast.origin;
+	return true;
+}
+
+void castOriginUsed(const Vec3f & origin) {
+	if(!g_cast.remote) {
+		g_cast.hasOrigin = true;
+		g_cast.origin = origin;
+	}
+}
+
+void projectileFired(const Vec3f & pos, const Vec3f & vect, float gravity, const glm::quat & rotation, bool fiery) {
+	if(!puppetsAllowed()) {
+		return;
+	}
+	Writer writer;
+	writer.u8_(g_coop.localId());
+	writer.f32_(pos.x);
+	writer.f32_(pos.y);
+	writer.f32_(pos.z);
+	writer.f32_(vect.x);
+	writer.f32_(vect.y);
+	writer.f32_(vect.z);
+	writer.f32_(gravity);
+	writer.f32_(rotation.x);
+	writer.f32_(rotation.y);
+	writer.f32_(rotation.z);
+	writer.f32_(rotation.w);
+	writer.bool_(fiery);
+	g_coop.sendToOthers(MessageType::Projectile, writer);
 }
 
 extern Entity * g_localTorchDisplay;
@@ -1713,6 +1827,7 @@ void puppetsTestUpdate() {
 	static bool lootTaken = false;
 	static bool equipDone = false;
 	static bool spellDone = false;
+	static bool arrowDone = false;
 	static bool equipChecked = false;
 	static bool lootDropped = false;
 	static bool chatDone = false;
@@ -2098,6 +2213,27 @@ void puppetsTestUpdate() {
 			}
 			Logger::flush();
 		}
+		if(arrived != PlatformInstant() && g_coop.isClient() && itemStep == 2 && now - itemStepTime > std::chrono::seconds(1)) {
+			itemStep = 3;
+			itemStepTime = now;
+			// Aimed things the host must see fly the same way: a magic missile, then an arrow
+			LogInfo << "[coop] test: client casts magic missile";
+			ARX_SPELLS_Launch(SPELL_MAGIC_MISSILE, *entities.player(), SPELLCAST_FLAG_NOCHECKCANCAST | SPELLCAST_FLAG_NOMANA,
+			                  3, nullptr, GameDuration::ofRaw(-1));
+			if(arrowobj && arrowobj->vertexlist.size() >= 2) {
+				Vec3f pos = player.pos + Vec3f(0.f, 40.f, 0.f);
+				Vec3f vect = angleToVector(player.angle) * 0.9f;
+				VertexId attach = getNamedVertex(arrowobj.get(), "attach");
+				if(!attach) {
+					attach = arrowobj->origin;
+				}
+				ARX_THROWN_OBJECT_Throw(EntityHandle_Player, pos, vect, 0.f, arrowobj.get(), attach, quat_identity(), 1.f, 0.f);
+				projectileFired(pos, vect, 0.f, quat_identity(), false);
+				LogInfo << "[coop] test: client shoots an arrow from " << int(pos.x) << "," << int(pos.y) << "," << int(pos.z)
+				        << " along " << vect.x << "," << vect.y << "," << vect.z;
+			}
+			Logger::flush();
+		}
 		bool gotSword = false;
 		for(const Entity & entity : entities) {
 			if(entity.className() == "short_sword" && IsInPlayerInventory(const_cast<Entity *>(&entity))) {
@@ -2117,7 +2253,7 @@ void puppetsTestUpdate() {
 			}
 			Logger::flush();
 		}
-		if(listed && ((itemStep == 2 && now - itemStepTime > std::chrono::seconds(g_coop.isHost() ? 6 : 3))
+		if(listed && ((itemStep == (g_coop.isHost() ? 2 : 3) && now - itemStepTime > std::chrono::seconds(g_coop.isHost() ? 8 : 3))
 		              || now - arrived > std::chrono::seconds(150))) {
 			mainApp->quit();
 		}
@@ -2368,6 +2504,21 @@ void puppetsTestUpdate() {
 		LogInfo << "[coop] test: client casts magic missile";
 		ARX_SPELLS_Launch(SPELL_MAGIC_MISSILE, *entities.player(), SPELLCAST_FLAG_NOCHECKCANCAST | SPELLCAST_FLAG_NOMANA,
 		                  3, nullptr, GameDuration::ofRaw(-1));
+	} else if(step >= 3 && elapsed > std::chrono::seconds(107) && g_coop.isClient() && !arrowDone) {
+		arrowDone = true;
+		if(arrowobj && arrowobj->vertexlist.size() >= 2) {
+			// Like the bow code (Core.cpp), without the bow: the arrow the others must see
+			Vec3f pos = player.pos + Vec3f(0.f, 40.f, 0.f);
+			Vec3f vect = angleToVector(player.angle) * 0.9f;
+			VertexId attach = getNamedVertex(arrowobj.get(), "attach");
+			if(!attach) {
+				attach = arrowobj->origin;
+			}
+			ARX_THROWN_OBJECT_Throw(EntityHandle_Player, pos, vect, 0.f, arrowobj.get(), attach, quat_identity(), 1.f, 0.f);
+			projectileFired(pos, vect, 0.f, quat_identity(), false);
+			LogInfo << "[coop] test: client shoots an arrow from " << int(pos.x) << "," << int(pos.y) << "," << int(pos.z)
+			        << " along " << vect.x << "," << vect.y << "," << vect.z;
+		}
 	} else if(step >= 3 && elapsed > std::chrono::seconds(110) && !equipChecked) {
 		equipChecked = true;
 		LogInfo << "[coop] test: my player mesh tweaked=" << (entities.player()->tweaky != nullptr)

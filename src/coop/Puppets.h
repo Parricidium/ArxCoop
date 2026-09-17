@@ -30,6 +30,7 @@
  */
 #include "coop/Protocol.h"
 #include <string>
+#include <glm/gtc/quaternion.hpp>
 #include "game/GameTypes.h"
 #include "graphics/Color.h"
 #include "math/Rectangle.h"
@@ -103,6 +104,23 @@ void bloodSpawned(const Entity & target, const Vec3f & pos, const Vec3f & source
  */
 //! The local player launched a spell: the others see it cast by our puppet (visual only there).
 void spellCast(unsigned spell, float level, unsigned flags, const Entity * target, long long durationUs);
+
+/*!
+ * Aimed spells and missiles fly the same path everywhere: right before a spell's Launch()
+ * (ARX_SPELLS_Launch), our own cast draws a random seed and the spell reports where its
+ * missiles started; both travel with the SpellCast message and are handed to the same
+ * spell code on the other machines.
+ */
+void castStarting(const Entity & source);
+//! The seed of the cast being launched, 0 when none (an NPC's cast: the spell keeps its own randomness).
+unsigned castSeed();
+//! Another player's cast: \a origin becomes where their missiles started; false for our own casts and NPCs'.
+bool castOrigin(Vec3f & origin);
+//! Our own cast: where the missiles started (sent with the cast).
+void castOriginUsed(const Vec3f & origin);
+
+//! The local player shot an arrow: the others see it fly from our puppet (no damage there).
+void projectileFired(const Vec3f & pos, const Vec3f & vect, float gravity, const glm::quat & rotation, bool fiery);
 
 //! Co-op death: the local player stays down until a teammate revives it, unless everyone is down.
 bool localPlayerDowned();

@@ -999,9 +999,10 @@ bool ARX_SPELLS_Launch(SpellType typ, Entity & source, SpellcastFlags flags, lon
 	if(!spell->CanLaunch()) {
 		return false;
 	}
-	
+
+	coop::castStarting(source); // (co-op: the seed and origin the others' copies will share)
 	spell->Launch();
-	
+
 	Spell & addedSpell = spells.addSpell(std::move(spell));
 	
 	SPELLCAST_Notify(addedSpell);
