@@ -301,6 +301,23 @@ void PolyBoomDraw() {
 		
 		std::array<TexturedVertexUntransformed, 4> vertices;
 		
+		// Co-op mod (RT): lit like the floor it lies on. Decals are drawn unlit, and the blood
+		// blend, (1 - a) * (decal + floor), shows the decal's own red on a black floor: with the
+		// deep shadows of the modern renderer, blood glowed in the dark. The polygon's vertex
+		// lighting (static + dynamic lights) scales the decal's colour.
+		Color3f lit[4] = { Color3f::white, Color3f::white, Color3f::white, Color3f::white };
+		{
+			EERIEPOLY * polygon = const_cast<EERIEPOLY *>(decal.polygon);
+			auto tile = g_tiles->getTile(polygon->center);
+			if(tile.valid()) {
+				ApplyTileLights(polygon, Vec2s(tile.x, tile.y));
+				for(size_t i = 0; i < nbvert; i++) {
+					Color4f c = Color4f::fromRGBA(polygon->color[i]);
+					lit[i] = Color3f(c.r, c.g, c.b);
+				}
+			}
+		}
+
 		RenderMaterial mat;
 		mat.setDepthTest(true);
 		mat.setDepthBias(8);
@@ -325,13 +342,14 @@ void PolyBoomDraw() {
 			
 			case BloodDecal: {
 				
-				ColorRGBA color = Color4f(decal.rgb * t, glm::clamp(t * 1.5f, 0.f, 1.f)).toRGBA();
+				float alpha = glm::clamp(t * 1.5f, 0.f, 1.f);
 				for(size_t i = 0; i < nbvert; i++) {
 					vertices[i].p = decal.polygon->v[i].p;
 					vertices[i].uv = (decal.uv[i] - 0.5f) * std::max(1.f, t * 2.f - 0.5f) + 0.5f;
-					vertices[i].color = color;
+					Color3f rgb(decal.rgb.r * lit[i].r * t, decal.rgb.g * lit[i].g * t, decal.rgb.b * lit[i].b * t);
+					vertices[i].color = Color4f(rgb, alpha).toRGBA();
 				}
-				
+
 				mat.setBlendType(RenderMaterial::Subtractive2);
 				
 				break;
@@ -339,13 +357,13 @@ void PolyBoomDraw() {
 			
 			case WaterDecal: {
 				
-				ColorRGBA color = (decal.rgb * (t * 0.5f)).toRGB();
 				bool cullXlow = true, cullXhigh = true, cullYlow = true, cullYhigh = true;
 				for(size_t i = 0; i < nbvert; i++) {
 					vertices[i].p = decal.polygon->v[i].p;
 					vertices[i].uv = (decal.uv[i] - 0.5f) * std::max(1.f, t * 2.f - 0.5f) + 0.5f;
-					vertices[i].color = color;
-					cullXlow = cullXlow && vertices[i].uv.x < 0.f;
+					float f = t * 0.5f;
+					vertices[i].color = Color3f(decal.rgb.r * lit[i].r * f, decal.rgb.g * lit[i].g * f, decal.rgb.b * lit[i].b * f).toRGB();
+cullXlow = cullXlow && vertices[i].uv.x < 0.f;
 					cullXhigh = cullXhigh && vertices[i].uv.x > 1.f;
 					cullYlow = cullYlow && vertices[i].uv.y < 0.f;
 					cullYhigh = cullYhigh && vertices[i].uv.y > 1.f;
