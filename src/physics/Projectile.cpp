@@ -23,6 +23,7 @@
 #include <string_view>
 
 #include "coop/Puppets.h"
+#include "coop/Qol.h"
 #include "core/Core.h"
 #include "scene/Object.h"
 #include "core/GameTime.h"
@@ -362,7 +363,10 @@ static void ARX_THROWN_OBJECT_ManageProjectile(Projectile & projectile, ShortGam
 		
 		const Vec3f v0 = projectile.obj->vertexWorldPositions[action.idx].v;
 		
-		RaycastResult result = raycastScene(original_pos, v0, POLY_WATER | POLY_TRANS | POLY_NOCOL);
+		// Co-op mod: sweep the whole frame's move (was: only the arrow's own length, which let an
+		// arrow tunnel through a floor at low frame rates)
+		RaycastResult result = raycastScene(original_pos, v0 + projectile.vector * timeDeltaMs,
+		                                    POLY_WATER | POLY_TRANS | POLY_NOCOL);
 		if(result || IsPointInField(v0)) {
 			
 			ParticleSparkSpawn(v0, result ? 14 : 24);
@@ -380,6 +384,9 @@ static void ARX_THROWN_OBJECT_ManageProjectile(Projectile & projectile, ShortGam
 			if(result) {
 				// TODO better offset calculation
 				projectile.position = original_pos + result.pos - v0;
+				if(projectile.source == EntityHandle_Player && !(projectile.flags & ATO_FIERY)) {
+					coop::arrowLanded(projectile.position, glm::normalize(projectile.vector)); // ours: pick it up again
+				}
 				projectile.vector = Vec3f(0.f);
 			} else {
 				projectile.obj = nullptr;

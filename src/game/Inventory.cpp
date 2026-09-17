@@ -45,6 +45,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 // Copyright (c) 1999-2001 ARKANE Studios SA. All rights reserved
 
 #include "game/Inventory.h"
+#include "coop/Replication.h"
 
 #include <algorithm>
 #include <vector>
@@ -318,18 +319,52 @@ InventoryPos Inventory::insertIntoNewSlot(Entity & item) {
 	return { };
 }
 
+InventoryPos Inventory::mergeArrows(Entity & item) {
+
+	// A quiver counts its arrows in its durability (the bow takes one per shot, coop::arrowLanded
+	// leaves one-arrow quivers where our arrows land): what fits goes into a quiver already here,
+	// up to its capacity. Quivers of different fill would otherwise never stack (IsSameObject).
+	if(item.className() != "arrows" || !item._itemdata || item._itemdata->count != 1 || item.durability <= 0.f) {
+		return { };
+	}
+
+	for(auto slot : slotsInOrder()) {
+		Entity * quiver = slot.entity;
+		if(!slot.show || !quiver || quiver == &item || quiver->className() != "arrows"
+		   || quiver->durability >= quiver->max_durability) {
+			continue;
+		}
+		float taken = std::min(item.durability, quiver->max_durability - quiver->durability);
+		quiver->durability += taken;
+		item.durability -= taken;
+		LogInfo << "[coop] " << item.idString() << " refilled " << quiver->idString() << " to " << quiver->durability
+		        << " arrows" << (item.durability > 0.f ? " (some left over)" : "");
+		if(item.durability <= 0.f) {
+			coop::itemTaken(item); // gone from the shared world, never owned
+			ARX_INTERACTIVE_DestroyIOdelayed(&item);
+			return slot;
+		}
+	}
+
+	return { };
+}
+
 InventoryPos Inventory::insertImpl(Entity & item, InventoryPos pos) {
-	
+
 	arx_assert(item.ioflags & IO_ITEM);
-	
+
 	if(pos.container == owner() && insertIntoStackAt(item, pos)) {
 		return pos;
 	}
-	
+
+	if(InventoryPos newPos = mergeArrows(item)) {
+		return newPos;
+	}
+
 	if(InventoryPos newPos = insertIntoStack(item)) {
 		return newPos;
 	}
-	
+
 	if(pos.container == owner() && insertIntoNewSlotAt(item, pos)) {
 		return pos;
 	}

@@ -222,6 +222,7 @@ protocol).
 | Spells | ✅ | visuals everywhere, damage at the caster |
 | Aimed spells (magic missile, fireball, ice, lightning) | ✅ | fly the same path everywhere: the caster's exact aim, start point and random draws travel with the cast |
 | Arrows | ✅ | the same arrow leaves every copy of the archer (position, speed, drop); damage on the archer's side, through the host |
+| Arrows stuck in the world | ✅ | can be picked up again: a one-arrow quiver drops there (shared like any item); picking it up refills a quiver you carry, or becomes one |
 | Magic traps, NPC spells (fire fields, lightning, fireballs) | ✅ | replayed for the eyes, damage dealt by the host |
 | Persistent magic fields ("blue walls") | ✅ | recreated on arrival, end together |
 | Burning players | ✅ | flames follow the player |
@@ -526,6 +527,7 @@ Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition RT (p
 | Sorts | ✅ | visuels partout, dégâts chez le lanceur |
 | Sorts visés (missile magique, boule de feu, glace, éclair) | ✅ | même trajectoire partout : visée exacte, point de départ et tirages aléatoires du lanceur voyagent avec le sort |
 | Flèches | ✅ | la même flèche part de chaque copie de l'archer (position, vitesse, chute) ; dégâts du côté de l'archer, via l'hôte |
+| Flèches plantées dans le décor | ✅ | se ramassent : un carquois d'une flèche tombe là (partagé comme tout objet) ; le ramasser remplit un carquois qu'on porte, ou en devient un |
 | Pièges magiques, sorts des PNJ (champs de feu, éclairs, boules de feu) | ✅ | rejoués pour les yeux, dégâts infligés par l'hôte |
 | Champs magiques persistants (« murs bleus ») | ✅ | recréés à l'arrivée, disparaissent ensemble |
 | Joueurs en feu | ✅ | les flammes suivent le joueur |

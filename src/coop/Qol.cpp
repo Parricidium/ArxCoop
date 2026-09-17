@@ -38,6 +38,7 @@
 #include "game/Entity.h"
 #include "game/EntityManager.h"
 #include "game/Inventory.h"
+#include "physics/Physics.h"
 #include "game/Item.h"
 #include "game/Player.h"
 #include "graphics/Draw.h"
@@ -636,6 +637,32 @@ void qolDraw2D() {
 		hFontInGame->draw(Vec2i(pos), text, Color(255, 120, 120));
 	}
 
+}
+
+void arrowLanded(const Vec3f & pos, const Vec3f & direction) {
+	Entity * item = AddItem("graph/obj3d/interactive/items/weapons/arrows/arrows", -1, IO_IMMEDIATELOAD);
+	if(!item || !item->_itemdata) {
+		LogWarning << "[coop] my arrow landed but no quiver item could be created";
+		return;
+	}
+	initItemCopy(*item, ItemState()); // a fresh class item: INIT / INITEND like every other AddItem() of the engine
+	if(!ValidIOAddress(item)) {
+		return;
+	}
+	item->durability = 1.f; // one arrow
+	item->_itemdata->count = 1;
+	item->angle = Anglef();
+	item->show = SHOW_FLAG_IN_SCENE;
+	Vec3f start = pos - direction * 20.f; // back out of the wall it stuck in
+	ARX_INTERACTIVE_Teleport(item, start, true);
+	Vec3f fall(0.f, 0.1f, 0.f);
+	if(item->obj && item->obj->pbox) {
+		item->soundtime = 0;
+		item->soundcount = 0;
+		EERIE_PHYSICS_BOX_Launch(item->obj, item->pos, item->angle, fall, item);
+	}
+	itemDropped(*item, true, fall); // (the others get it the same way, settled position later)
+	LogInfo << "[coop] my arrow landed: " << item->idString() << " at " << int(start.x) << "," << int(start.y) << "," << int(start.z);
 }
 
 } // namespace coop

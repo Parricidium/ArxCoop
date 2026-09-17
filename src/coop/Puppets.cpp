@@ -2222,7 +2222,9 @@ void puppetsTestUpdate() {
 			                  3, nullptr, GameDuration::ofRaw(-1));
 			if(arrowobj && arrowobj->vertexlist.size() >= 2) {
 				Vec3f pos = player.pos + Vec3f(0.f, 40.f, 0.f);
-				Vec3f vect = angleToVector(player.angle) * 0.9f;
+				// Down into the floor ahead, short of the host's puppet (which would take them); the tiles
+				// behind the camera are not active, an arrow shot there is dropped by the engine
+				Vec3f vect = glm::normalize(angleToVectorXZ(player.angle.getYaw()) + Vec3f(0.f, 0.9f, 0.f)) * 0.9f;
 				VertexId attach = getNamedVertex(arrowobj.get(), "attach");
 				if(!attach) {
 					attach = arrowobj->origin;
@@ -2231,6 +2233,71 @@ void puppetsTestUpdate() {
 				projectileFired(pos, vect, 0.f, quat_identity(), false);
 				LogInfo << "[coop] test: client shoots an arrow from " << int(pos.x) << "," << int(pos.y) << "," << int(pos.z)
 				        << " along " << vect.x << "," << vect.y << "," << vect.z;
+				Vec3f vect2 = VRotateY(vect, 6.f); // a second one, to refill the quiver the first one makes
+				ARX_THROWN_OBJECT_Throw(EntityHandle_Player, pos, vect2, 0.f, arrowobj.get(), attach, quat_identity(), 1.f, 0.f);
+				projectileFired(pos, vect2, 0.f, quat_identity(), false);
+			}
+			Logger::flush();
+		}
+		if(arrived != PlatformInstant() && g_coop.isClient() && itemStep == 3 && now - itemStepTime > std::chrono::seconds(2)) {
+			itemStep = 4;
+			itemStepTime = now;
+			// Pick the landed arrows up: one quiver with the arrows of both
+			std::vector<Entity *> landed;
+			for(Entity & entity : entities) {
+				if(entity.className() == "arrows" && entity.show == SHOW_FLAG_IN_SCENE && !locateInInventories(&entity)) {
+					landed.push_back(&entity);
+				}
+			}
+			for(Entity * arrow : landed) {
+				std::string id = arrow->idString();
+				giveToPlayer(arrow);
+				LogInfo << "[coop] test: client picked " << id << " up";
+			}
+			for(Entity & entity : entities) {
+				if(entity.className() == "arrows" && IsInPlayerInventory(&entity)) {
+					LogInfo << "[coop] test: client's quiver " << entity.idString() << " holds " << entity.durability << " arrows";
+				}
+			}
+			Logger::flush();
+		}
+		if(arrived != PlatformInstant() && g_coop.isHost() && itemStep == 2 && now - itemStepTime > std::chrono::seconds(2)) {
+			itemStep = 3;
+			itemStepTime = now;
+			if(arrowobj && arrowobj->vertexlist.size() >= 2) {
+				Vec3f pos = player.pos + Vec3f(0.f, 40.f, 0.f);
+				Vec3f vect = glm::normalize(angleToVectorXZ(player.angle.getYaw()) + Vec3f(0.f, 0.9f, 0.f)) * 0.9f;
+				VertexId attach = getNamedVertex(arrowobj.get(), "attach");
+				if(!attach) {
+					attach = arrowobj->origin;
+				}
+				ARX_THROWN_OBJECT_Throw(EntityHandle_Player, pos, vect, 0.f, arrowobj.get(), attach, quat_identity(), 1.f, 0.f);
+				projectileFired(pos, vect, 0.f, quat_identity(), false);
+				Vec3f vect2 = VRotateY(vect, 6.f);
+				ARX_THROWN_OBJECT_Throw(EntityHandle_Player, pos, vect2, 0.f, arrowobj.get(), attach, quat_identity(), 1.f, 0.f);
+				projectileFired(pos, vect2, 0.f, quat_identity(), false);
+				LogInfo << "[coop] test: host shoots two arrows into the floor ahead";
+			}
+			Logger::flush();
+		}
+		if(arrived != PlatformInstant() && g_coop.isHost() && itemStep == 3 && now - itemStepTime > std::chrono::seconds(3)) {
+			itemStep = 4;
+			itemStepTime = now;
+			std::vector<Entity *> landed;
+			for(Entity & entity : entities) {
+				if(entity.className() == "arrows" && entity.show == SHOW_FLAG_IN_SCENE && !locateInInventories(&entity)) {
+					landed.push_back(&entity);
+				}
+			}
+			for(Entity * arrow : landed) {
+				std::string id = arrow->idString();
+				giveToPlayer(arrow);
+				LogInfo << "[coop] test: host picked " << id << " up";
+			}
+			for(Entity & entity : entities) {
+				if(entity.className() == "arrows" && IsInPlayerInventory(&entity)) {
+					LogInfo << "[coop] test: host's quiver " << entity.idString() << " holds " << entity.durability << " arrows";
+				}
 			}
 			Logger::flush();
 		}
@@ -2253,8 +2320,8 @@ void puppetsTestUpdate() {
 			}
 			Logger::flush();
 		}
-		if(listed && ((itemStep == (g_coop.isHost() ? 2 : 3) && now - itemStepTime > std::chrono::seconds(g_coop.isHost() ? 8 : 3))
-		              || now - arrived > std::chrono::seconds(150))) {
+		if(listed && ((itemStep == 4 && now - itemStepTime > std::chrono::seconds(g_coop.isHost() ? 8 : 3))
+		              || now - arrived > std::chrono::seconds(175))) {
 			mainApp->quit();
 		}
 		return;
