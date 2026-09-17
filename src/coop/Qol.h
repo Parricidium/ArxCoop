@@ -91,6 +91,14 @@ bool restoreRejoiningPlayer(PlayerId id); //!< true when a spot was sent
 //! Developer aid (--coop-test): places a marker as if the key was pressed.
 void qolTestPing();
 
+/*!
+ * One of our arrows stuck in the world: it can be picked up again. A one-arrow quiver item
+ * (the "arrows" class, whose durability is its arrow count) drops there, shared like any
+ * dropped item; picking it up refills a quiver we carry (Inventory::mergeArrows) or becomes
+ * a new one.
+ */
+void arrowLanded(const Vec3f & pos, const Vec3f & direction);
+
 } // namespace coop
 
 #endif // ARX_COOP_QOL_H

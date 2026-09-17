@@ -83,8 +83,24 @@ CMagicMissile::CMagicMissile()
 	m_elapsed = m_duration + 1ms;
 }
 
-void CMagicMissile::Create(const Vec3f & startPos, const Anglef & angles) {
-	
+//! Split() with the cast's own random source, so that every machine bends the path the same way
+static void splitSeeded(Vec3f * v, int a, int b, float yo, float fMul, std::mt19937 & rng) {
+	if(a != b) {
+		int i = (a + b) / 2;
+		if(i != a && i != b) {
+			std::uniform_real_distribution<float> d(-yo, yo);
+			float x = d(rng);
+			float y = d(rng);
+			float z = d(rng);
+			v[i] = (v[a] + v[b]) * 0.5f + Vec3f(x, y, z);
+			splitSeeded(v, a, i, yo * fMul, fMul, rng);
+			splitSeeded(v, i, b, yo * fMul, fMul, rng);
+		}
+	}
+}
+
+void CMagicMissile::Create(const Vec3f & startPos, const Anglef & angles, std::mt19937 * rng) {
+
 	SetDuration(m_duration);
 	
 	eCurPos = startPos;
@@ -96,7 +112,11 @@ void CMagicMissile::Create(const Vec3f & startPos, const Anglef & angles) {
 	
 	pathways[0] = startPos;
 	pathways[5] = endPos;
-	Split(pathways, 0, 5, 50, 0.5f);
+	if(rng) {
+		splitSeeded(pathways, 0, 5, 50.f, 0.5f, *rng);
+	} else {
+		Split(pathways, 0, 5, 50, 0.5f);
+	}
 
 	for(i = 0; i < 6; i++) {
 		if(pathways[i].y >= startPos.y + 150) {

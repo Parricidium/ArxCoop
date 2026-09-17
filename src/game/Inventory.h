@@ -208,7 +208,10 @@ class Inventory {
 	bool insertIntoStackAt(Entity & item, Vec3s pos, bool identify = false);
 	
 	InventoryPos insertIntoStack(Entity & item);
-	
+
+	//! Co-op mod: a quiver picked up (a shot arrow, one arrow) refills a quiver already here.
+	InventoryPos mergeArrows(Entity & item);
+
 	bool insertIntoNewSlotAt(Entity & item, Vec3s pos);
 	
 	InventoryPos insertIntoNewSlot(Entity & item);

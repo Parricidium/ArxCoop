@@ -44,6 +44,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #ifndef ARX_GRAPHICS_EFFECTS_MAGICMISSILE_H
 #define ARX_GRAPHICS_EFFECTS_MAGICMISSILE_H
 
+#include <random>
+
 #include "graphics/effects/SpellEffects.h"
 #include "platform/Platform.h"
 
@@ -56,7 +58,8 @@ public:
 	
 	void SetTTL(GameDuration aulTTL);
 	
-	void Create(const Vec3f & startPos, const Anglef & angles);
+	//! \a rng: the cast's shared random source (co-op), the engine's when null.
+	void Create(const Vec3f & startPos, const Anglef & angles, std::mt19937 * rng = nullptr);
 	void Update(ShortGameDuration timeDelta) final;
 	void Render() final;
 	

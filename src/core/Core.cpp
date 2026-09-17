@@ -45,6 +45,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 // Copyright (c) 1999-2001 ARKANE Studios SA. All rights reserved
 
 #include "core/Core.h"
+#include "coop/Puppets.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -913,7 +914,13 @@ void ManageCombatModeAnimations() {
 				
 				ARX_THROWN_OBJECT_Throw(EntityHandle_Player, pos, vect, gravity, arrowobj.get(), attach, quat,
 				                        damages, poisonous);
-				
+
+				{
+					// Co-op: the others see the same arrow leave our puppet
+					Entity * weapon = entities.get(player.equiped[EQUIP_SLOT_WEAPON]);
+					coop::projectileFired(pos, vect, gravity, quat, weapon && (weapon->ioflags & IO_FIERY));
+				}
+
 				if(cur_mx == CHEAT_ENABLED) {
 					for(int i = -2; i <= 2; i++) {
 						if(i != 0) {

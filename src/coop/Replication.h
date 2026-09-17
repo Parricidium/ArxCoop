@@ -294,6 +294,8 @@ bool nearTeammate(const Entity & entity, float limit);
 
 //! Aim pitch of another player's puppet (its owner's look pitch), for projectile spells it casts.
 bool puppetAimPitch(const Entity & caster, float & pitch);
+//! Same, with the owner's yaw (their player.angle, what their own spells used; the puppet's entity yaw is the NPC one).
+bool puppetAim(const Entity & caster, float & pitch, float & yaw);
 
 } // namespace coop
 
