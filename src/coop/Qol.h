@@ -27,6 +27,8 @@
 #include <string>
 #include <vector>
 
+#include <glm/gtc/quaternion.hpp>
+
 #include "coop/Protocol.h"
 #include "math/Vector.h"
 
@@ -92,12 +94,19 @@ bool restoreRejoiningPlayer(PlayerId id); //!< true when a spot was sent
 void qolTestPing();
 
 /*!
- * One of our arrows stuck in the world: it can be picked up again. A one-arrow quiver item
- * (the "arrows" class, whose durability is its arrow count) drops there, shared like any
- * dropped item; picking it up refills a quiver we carry (Inventory::mergeArrows) or becomes
- * a new one.
+ * One of our arrows stuck in the world: unless it broke (ArrowBreakChance), it stays there to
+ * be picked up again. An "arrows" item (the quiver class, whose durability is its arrow count)
+ * is placed with the arrow's own mesh and orientation (\a quat, the projectile's; \a position
+ * its attach point) and one arrow in it, shared like any dropped item; looking at it reads
+ * "pick up", picking it up refills a quiver we carry (Inventory::mergeArrows) or becomes one.
  */
-void arrowLanded(const Vec3f & pos, const Vec3f & direction);
+void arrowLanded(const Vec3f & position, const glm::quat & quat);
+
+//! A stuck arrow item (arrowLanded, here or received): the arrow's mesh and label. No-op otherwise.
+void dressStuckArrow(Entity & item);
+
+//! A stuck arrow picked up: a quiver again (its own mesh and name). No-op otherwise.
+void undressStuckArrow(Entity & item);
 
 } // namespace coop
 

@@ -30,6 +30,7 @@
 #include "coop/Replication.h"
 #include "coop/Session.h"
 #include "coop/Text.h"
+#include "physics/CollisionShapes.h"
 #include "core/Config.h"
 #include "core/Core.h"
 #include "core/Localisation.h"
@@ -38,6 +39,9 @@
 #include "game/Entity.h"
 #include "game/EntityManager.h"
 #include "game/Inventory.h"
+#include "math/Random.h"
+#include "script/Script.h"
+#include "scene/Object.h"
 #include "physics/Physics.h"
 #include "game/Item.h"
 #include "game/Player.h"
@@ -639,10 +643,39 @@ void qolDraw2D() {
 
 }
 
-void arrowLanded(const Vec3f & pos, const Vec3f & direction) {
+// Stuck arrows -------------------------------------------------------------------------
+
+constexpr float ArrowBreakChance = 0.3f; //!< arrows that break on the wall instead of sticking (JD: no free arrows forever)
+static const char * const StuckArrowVar = "\xA7" "coop_stuck"; //!< local script variable marking a stuck arrow item
+
+//! The entity angle rendering an item with rotation \a q: the engine draws items with
+//! toQuaternion(pitch, 270 - yaw, roll) = Rz(-roll) * Rx(pitch) * Ry(270 - yaw), a Z-X-Y decomposition.
+static Anglef itemAngleOf(const glm::quat & q) {
+	glm::mat3 m = glm::mat3_cast(q); // m[column][row]
+	float r21 = glm::clamp(m[1][2], -1.f, 1.f);
+	float b = std::asin(r21);
+	float a, c;
+	if(std::abs(r21) < 0.9999f) {
+		a = std::atan2(-m[1][0], m[1][1]);
+		c = std::atan2(-m[0][2], m[2][2]);
+	} else {
+		a = std::atan2(m[0][1], m[0][0]); // pointing straight up or down: the roll carries the yaw
+		c = 0.f;
+	}
+	return Anglef(glm::degrees(b), MAKEANGLE(270.f - glm::degrees(c)), -glm::degrees(a));
+}
+
+void arrowLanded(const Vec3f & position, const glm::quat & quat) {
+	if(!arrowobj || arrowobj->vertexlist.size() < 2) {
+		return;
+	}
+	if(Random::getf() < ArrowBreakChance) {
+		LogInfo << "[coop] my arrow broke";
+		return;
+	}
 	Entity * item = AddItem("graph/obj3d/interactive/items/weapons/arrows/arrows", -1, IO_IMMEDIATELOAD);
 	if(!item || !item->_itemdata) {
-		LogWarning << "[coop] my arrow landed but no quiver item could be created";
+		LogWarning << "[coop] my arrow stuck but no quiver item could be created";
 		return;
 	}
 	initItemCopy(*item, ItemState()); // a fresh class item: INIT / INITEND like every other AddItem() of the engine
@@ -651,18 +684,55 @@ void arrowLanded(const Vec3f & pos, const Vec3f & direction) {
 	}
 	item->durability = 1.f; // one arrow
 	item->_itemdata->count = 1;
-	item->angle = Anglef();
-	item->show = SHOW_FLAG_IN_SCENE;
-	Vec3f start = pos - direction * 20.f; // back out of the wall it stuck in
-	ARX_INTERACTIVE_Teleport(item, start, true);
-	Vec3f fall(0.f, 0.1f, 0.f);
-	if(item->obj && item->obj->pbox) {
-		item->soundtime = 0;
-		item->soundcount = 0;
-		EERIE_PHYSICS_BOX_Launch(item->obj, item->pos, item->angle, fall, item);
+	SETVarValueLong(item->m_variables, StuckArrowVar, 1);
+	// The projectile drew the arrow with its attach vertex on its position: the entity's pivot goes
+	// where the projectile put the mesh's origin, with the projectile's rotation
+	VertexId attach = getNamedVertex(arrowobj.get(), "attach");
+	if(!attach) {
+		attach = arrowobj->origin;
 	}
-	itemDropped(*item, true, fall); // (the others get it the same way, settled position later)
-	LogInfo << "[coop] my arrow landed: " << item->idString() << " at " << int(start.x) << "," << int(start.y) << "," << int(start.z);
+	Vec3f pos = position + quat * (arrowobj->vertexlist[arrowobj->origin].v - arrowobj->vertexlist[attach].v);
+	item->show = SHOW_FLAG_IN_SCENE;
+	item->pos = item->lastpos = item->initpos = pos;
+	item->angle = item->initangle = itemAngleOf(quat);
+	item->requestRoomUpdate = true;
+	{
+		// (self-check of the decomposition against the item render path: yaw drawn as 270 - yaw)
+		Anglef render = item->angle;
+		render.setYaw(MAKEANGLE(270.f - render.getYaw()));
+		float agreement = std::abs(glm::dot(toQuaternion(render), quat));
+		if(agreement < 0.999f) {
+			LogWarning << "[coop] stuck arrow orientation off: agreement " << agreement;
+		}
+	}
+	dressStuckArrow(*item);
+	itemDropped(*item); // (the others get it where and how it is)
+	LogInfo << "[coop] my arrow stuck: " << item->idString() << " at " << int(pos.x) << "," << int(pos.y) << "," << int(pos.z);
+}
+
+void dressStuckArrow(Entity & item) {
+	if(item.className() != "arrows" || GETVarValueLong(item.m_variables, StuckArrowVar) != 1 || !item.usemesh.empty()) {
+		return;
+	}
+	ARX_INTERACTIVE_USEMESH(&item, "weapons/arrow/arrow.teo");
+	if(item.obj && item.obj->pbox) {
+		item.obj->pbox->active = 0; // stuck: no physics
+	}
+	item.locname = trs("coop_arrow_stuck", "Fl\xC3\xA8" "che (ramasser)");
+}
+
+void undressStuckArrow(Entity & item) {
+	if(item.className() != "arrows" || GETVarValueLong(item.m_variables, StuckArrowVar) != 1) {
+		return;
+	}
+	SETVarValueLong(item.m_variables, StuckArrowVar, 0);
+	item.locname = "description_arrows";
+	if(!item.usemesh.empty()) {
+		item.usemesh.clear();
+		delete item.obj;
+		item.obj = loadObject(item.classPath() + ".teo").release();
+		EERIE_COLLISION_Cylinder_Create(&item);
+	}
 }
 
 } // namespace coop
