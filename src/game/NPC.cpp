@@ -46,6 +46,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "game/NPC.h"
 
+#include "game/npc/Dismemberment.h"
 #include "graphics/effects/Decal.h"
 #include "graphics/effects/WaterRipples.h"
 
@@ -904,6 +905,13 @@ void ARX_PHYSICS_Apply() {
 		
 		if(io->obj && io->obj->pbox) {
 			io->gameFlags &= ~GFLAG_NOCOMPUTATION;
+			{
+				std::string npcId;
+				DismembermentFlag flag;
+				if(ARX_NPC_IsCutMember(*io, npcId, flag)) {
+					ARX_NPC_UpdateCutMember(*io); // ArxModern: a corpse piece never left hanging
+				}
+			}
 			
 			PHYSICS_BOX_DATA & pbox = *io->obj->pbox;
 			

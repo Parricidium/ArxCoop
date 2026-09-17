@@ -19,6 +19,8 @@
 
 #include "game/npc/Dismemberment.h"
 #include "game/EntityId.h"
+#include "graphics/data/Mesh.h"
+#include <unordered_map>
 #include "io/log/Logger.h"
 
 #include <string_view>
@@ -245,6 +247,16 @@ static Entity * ARX_NPC_SpawnMember(Entity * ioo, VertexSelectionId num) {
 	io->scriptload = 1;
 	io->obj = nouvo;
 	io->lastpos = io->initpos = io->pos = from->vertexWorldPositions[inpos].v;
+	// Co-op mod: the mesh's world vertices can be stale (never placed since the NPC moved) or
+	// inside the wall the NPC leans on: the piece then starts nowhere or wedged, and never falls.
+	// Off the corpse's own centre instead, and pulled towards it a little.
+	Vec3f centre = ioo->pos + Vec3f(0.f, -60.f, 0.f);
+	if(!closerThan(io->pos, centre, 250.f)) {
+		io->pos = centre;
+	} else {
+		io->pos = io->pos + (centre - io->pos) * 0.35f;
+	}
+	io->lastpos = io->initpos = io->pos;
 	io->angle = ioo->angle;
 	
 	io->gameFlags = ioo->gameFlags;
@@ -284,6 +296,36 @@ Entity * ARX_NPC_SpawnCutMember(Entity & npc, DismembermentFlag flag) {
 	}
 	VertexSelectionId selection = GetCutSelection(&npc, flag);
 	return selection ? ARX_NPC_SpawnMember(&npc, selection) : nullptr;
+}
+
+void ARX_NPC_UpdateCutMember(Entity & io) {
+	
+	// A piece asleep in the air (its body wedged in a wall at birth, or the engine's box stopped
+	// short): dropped again, a few times at most
+	if(!io.obj || !io.obj->pbox || io.obj->pbox->active == 1) {
+		return;
+	}
+	if(g_gameTime.now() - io.animBlend.lastanimtime < 1s) {
+		return;
+	}
+	static std::unordered_map<const Entity *, int> s_relaunched;
+	int & count = s_relaunched[&io];
+	if(count >= 4) {
+		return;
+	}
+	float floorY = 0.f;
+	EERIEPOLY * floor = CheckInPoly(io.pos + Vec3f(0.f, -20.f, 0.f), &floorY);
+	if(!floor || floorY - io.pos.y < 30.f) {
+		return; // resting on the ground (or as good as), or nothing known below: leave it
+	}
+	count++;
+	io.animBlend.lastanimtime = g_gameTime.now();
+	io.obj->pbox->active = 1;
+	io.obj->pbox->stopcount = 0;
+	EERIE_PHYSICS_BOX_Launch(io.obj, io.pos, io.angle, Vec3f(0.f, 0.15f, 0.f), &io);
+	LogInfo << "[coop] corpse piece " << io.idString() << " hung in the air at " << int(io.pos.x) << "," << int(io.pos.y) << "," << int(io.pos.z)
+	        << " (floor at " << int(floorY) << "): dropped again";
+	
 }
 
 bool ARX_NPC_IsCutMember(const Entity & io, std::string & npcId, DismembermentFlag & flag) {

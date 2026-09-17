@@ -51,4 +51,7 @@ Entity * ARX_NPC_SpawnCutMember(Entity & npc, DismembermentFlag flag);
 //! Is \a io such a corpse piece? Then its NPC's id and the cut are filled in.
 bool ARX_NPC_IsCutMember(const Entity & io, std::string & npcId, DismembermentFlag & flag);
 
+//! Per frame for a corpse piece (NPC.cpp): a piece asleep in the air is dropped again.
+void ARX_NPC_UpdateCutMember(Entity & io);
+
 #endif // ARX_GAME_NPC_DISMEMBERMENT_H
