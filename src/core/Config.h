@@ -174,7 +174,8 @@ public:
 		float normalMaps; // relief strength of the (generated or provided) normal maps, 0 = off
 		bool physics; // Jolt physics: ragdoll corpses, loose objects
 		float water; // water shader strength, 0 = the original overlay
-		float lava; // lava shader strength, 0 = the original overlay
+		bool waterRipples; // ArxModern: rings and wakes on the water from what moves in it (GLRipples.cpp)
+float lava; // lava shader strength, 0 = the original overlay
 		float parallax; // depth of the parallax relief, 0 = off
 		float specular; // strength of the specular highlights, 0 = off
 		float reflections; // strength of the screen-space reflections on glossy floors, 0 = off

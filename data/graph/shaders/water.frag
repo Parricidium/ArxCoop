@@ -40,6 +40,17 @@ uniform mat4 u_proj;
 uniform float u_reflection; // 0..1, strength of the mirrored scene (0 = off)
 uniform vec3 u_fogColor;
 
+// Ripples (ripple_update.frag): a height map of the water around the camera, in a window of
+// u_rippleWindow = (origin x, origin z, size, texel) world units; size 0 = none. The height
+// is stored normalised: 0.5 + h / 64 in the red channel.
+uniform sampler2D u_ripples;
+uniform vec4 u_rippleWindow;
+uniform float u_rippleStrength;
+
+float rippleHeight(vec2 uv) {
+	return (texture(u_ripples, uv).r - 0.5) * 64.0;
+}
+
 in vec3 v_worldPos;
 in float v_viewDepth;
 in vec2 v_uv0;
@@ -228,6 +239,24 @@ void main() {
 	float dhdu, dhdv;
 	waves(surfacePos, dhdu, dhdv);
 	vec2 ripple = (texture(u_enviro, v_uv1).rg - texture(u_enviro, v_uv2).gb) * RippleDetail;
+
+	// Simulated ripples: slopes of the height map, along the surface's tangent frame
+	float rippleCrest = 0.0;
+	vec3 rippleGrad = vec3(0.0);
+	if(u_rippleWindow.z > 0.0) {
+		vec2 ruv = (v_worldPos.xz - u_rippleWindow.xy) / u_rippleWindow.z + 0.5;
+		if(ruv.x > 0.0 && ruv.x < 1.0 && ruv.y > 0.0 && ruv.y < 1.0) {
+			float t = u_rippleWindow.w / u_rippleWindow.z; // one texel in uv
+			float hl = rippleHeight(ruv - vec2(t, 0.0));
+			float hr = rippleHeight(ruv + vec2(t, 0.0));
+			float hd = rippleHeight(ruv - vec2(0.0, t));
+			float hu = rippleHeight(ruv + vec2(0.0, t));
+			rippleGrad = vec3(hr - hl, 0.0, hu - hd) / (2.0 * u_rippleWindow.w) * u_rippleStrength;
+			dhdu += dot(rippleGrad, tangent);
+			dhdv += dot(rippleGrad, bitangent);
+			rippleCrest = clamp(abs(rippleHeight(ruv)) * 0.25, 0.0, 1.0);
+		}
+	}
 	vec3 normal = normalize(geoNormal - tangent * (dhdu * u_strength + ripple.x) - bitangent * (dhdv * u_strength + ripple.y));
 
 	// Scene behind the surface, refracted where the water is deep enough
@@ -253,6 +282,13 @@ void main() {
 	// A little darker and bluer with depth
 	float tint = clamp(depth2 / TintDepth, 0.0, 1.0) * u_strength;
 	color *= mix(vec3(1.0), TintColor, tint);
+
+	// The ripples show even on dark, unlit water: their slopes shade the surface a little
+	// (as if lit from a fixed direction) and the crests catch a touch of light
+	float rippleShade = clamp(dot(rippleGrad, normalize(vec3(0.6, 0.0, 0.8))) * 3.0, -0.5, 0.5);
+	color *= 1.0 + rippleShade;
+	color += vec3(rippleCrest * 0.12);
+
 
 	// Fresnel: glossier at grazing angles
 	float facing = max(dot(normal, view), 0.0);

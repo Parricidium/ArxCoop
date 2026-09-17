@@ -84,6 +84,8 @@
 #include "io/Screenshot.h"
 #include "io/log/Logger.h"
 #include "physics/Projectile.h"
+#include "scene/Tiles.h"
+#include "graphics/particle/ParticleEffects.h"
 #include "io/resource/ResourcePath.h"
 #include "math/Angle.h"
 #include "math/Vector.h"
@@ -2525,6 +2527,73 @@ void puppetsTestUpdate() {
 					Logger::flush();
 				}
 			}
+		}
+		static int waterStep = 0;
+		static PlatformInstant waterStepTime;
+		static Vec3f waterSpot;
+		if(arrived != PlatformInstant() && g_coop.isHost() && waterStep == 0 && now - arrived > std::chrono::seconds(12)) {
+			waterStep = 1;
+			waterStepTime = now;
+			// The biggest pool of the level (the water polygon with the most water around it), to
+			// picture the ripples
+			std::vector<const EERIEPOLY *> water;
+			for(auto tile : g_tiles->tiles()) {
+				for(const EERIEPOLY & poly : tile.polygons()) {
+					if(poly.type & POLY_WATER) {
+						water.push_back(&poly);
+					}
+				}
+			}
+			const EERIEPOLY * best = nullptr;
+			size_t bestCount = 0;
+			for(const EERIEPOLY * poly : water) {
+				size_t count = 0;
+				for(const EERIEPOLY * other : water) {
+					if(glm::distance(other->center, poly->center) < 400.f && std::abs(other->center.y - poly->center.y) < 30.f) {
+						count++;
+					}
+				}
+				if(count > bestCount) {
+					bestCount = count;
+					best = poly;
+				}
+			}
+			float bestDist = best ? glm::distance(best->center, player.pos) : 0.f;
+			if(best) {
+				waterSpot = best->center;
+				// Feet at the edge of the pool, the eye (170 above) looking down at it
+				ARX_INTERACTIVE_Teleport(entities.player(), waterSpot + Vec3f(0.f, -10.f, 130.f), true);
+				Vec3f to = waterSpot - player.pos;
+				player.angle.setYaw(MAKEANGLE(glm::degrees(std::atan2(-to.x, to.z))));
+				player.angle.setPitch(MAKEANGLE(glm::degrees(std::atan2(to.y, glm::length(Vec2f(to.x, to.z))))));
+				player.desiredangle = player.angle;
+				LogInfo << "[coop] test: host stands by the water at " << int(waterSpot.x) << "," << int(waterSpot.y) << "," << int(waterSpot.z)
+				        << " (" << int(bestDist) << " units from where it was, " << bestCount << " water polygons around, " << water.size() << " in the level)";
+			} else {
+				waterStep = 9;
+				LogInfo << "[coop] test: no water in this level";
+			}
+			Logger::flush();
+		}
+		if(g_coop.isHost() && waterStep == 1 && now - waterStepTime > std::chrono::milliseconds(1500)) {
+			waterStep = 2;
+			waterStepTime = now;
+			ARX_PARTICLES_SpawnWaterSplash(waterSpot); // (the splash reports a ripple source)
+			LogInfo << "[coop] test: host makes a splash";
+		}
+		if(g_coop.isHost() && waterStep == 2 && now - waterStepTime > std::chrono::milliseconds(400)) {
+			waterStep = 3;
+			waterStepTime = now;
+			GetSnapShot();
+			LogInfo << "[coop] test: ripples snapshot 1, me at " << int(player.pos.x) << "," << int(player.pos.y) << "," << int(player.pos.z)
+			        << " pitch " << int(player.angle.getPitch()) << " yaw " << int(player.angle.getYaw()) << " water at " << int(waterSpot.y)
+			        << (EEIsUnderWater(player.basePosition()) ? " (feet in the water)" : "");
+		}
+		if(g_coop.isHost() && waterStep == 3 && now - waterStepTime > std::chrono::milliseconds(1200)) {
+			waterStep = 4;
+			GetSnapShot();
+			LogInfo << "[coop] test: ripples snapshot 2";
+			Logger::flush();
 		}
 		if(listed && ((itemStep == 4 && now - itemStepTime > std::chrono::seconds(g_coop.isHost() ? 14 : 12))
 		              || now - arrived > std::chrono::seconds(175))) {

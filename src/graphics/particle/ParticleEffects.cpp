@@ -46,6 +46,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "graphics/particle/ParticleEffects.h"
 
+#include "graphics/effects/WaterRipples.h"
+
 #include <algorithm>
 #include <chrono>
 
@@ -564,7 +566,9 @@ void ARX_PARTICLES_Spawn_Splat(const Vec3f & pos, float dmgs, Color col) {
 
 
 void ARX_PARTICLES_SpawnWaterSplash(const Vec3f & _ePos) {
-	
+
+	addRippleSource(_ePos, 60.f, 20.f); // ArxModern: rings from the splash
+
 	long nbParticles = Random::get(15, 35);
 	for(long kk = 0; kk < nbParticles; kk++) {
 		

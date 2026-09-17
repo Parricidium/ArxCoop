@@ -19,6 +19,12 @@
 
 #include "graphics/opengl/GLWater.h"
 
+#include <vector>
+#include <algorithm>
+
+#include "graphics/effects/WaterRipples.h"
+#include "graphics/opengl/GLRipples.h"
+
 #include <algorithm>
 
 #include <glm/gtc/type_ptr.hpp>
@@ -32,6 +38,7 @@
 // Texture units of the scene copies: above the shadow cube maps (4..7) of the main program
 static const GLenum SceneUnit = GL_TEXTURE8;
 static const GLenum DepthUnit = GL_TEXTURE9;
+static const GLenum RippleUnit = GL_TEXTURE11; // (0..2 the texture stages, 3 the normal map, 4..7 shadow maps, 8..10 scene, depth and ray tracing textures)
 
 GLWater::GLWater(GLShaderPipeline * pipeline, GLPostProcess * post)
 	: m_pipeline(pipeline)
@@ -56,6 +63,9 @@ GLWater::GLWater(GLShaderPipeline * pipeline, GLPostProcess * post)
 	, m_uLightCount(-1)
 	, m_uLightPos(-1)
 	, m_uLightColor(-1)
+	, m_ripplesWanted(false)
+	, m_uRippleWindow(-1)
+	, m_uRippleStrength(-1)
 { }
 
 GLWater::~GLWater() {
@@ -99,9 +109,12 @@ bool GLWater::init() {
 	m_uLightCount = glGetUniformLocation(m_program, "u_lightCount");
 	m_uLightPos = glGetUniformLocation(m_program, "u_lightPos");
 	m_uLightColor = glGetUniformLocation(m_program, "u_lightColor");
+	m_uRippleWindow = glGetUniformLocation(m_program, "u_rippleWindow");
+	m_uRippleStrength = glGetUniformLocation(m_program, "u_rippleStrength");
 
 	glUseProgram(m_program);
-	glUniform1i(glGetUniformLocation(m_program, "u_enviro"), 0);
+	glUniform1i(glGetUniformLocation(m_program, "u_ripples"), int(RippleUnit - GL_TEXTURE0));
+glUniform1i(glGetUniformLocation(m_program, "u_enviro"), 0);
 	glUniform1i(glGetUniformLocation(m_program, "u_scene"), int(SceneUnit - GL_TEXTURE0));
 	glUniform1i(glGetUniformLocation(m_program, "u_depth"), int(DepthUnit - GL_TEXTURE0));
 	if(m_traced) {
@@ -113,7 +126,8 @@ bool GLWater::init() {
 }
 
 void GLWater::shutdown() {
-	if(m_program) {
+	m_ripples.reset();
+if(m_program) {
 		glDeleteProgram(m_program);
 		m_program = 0;
 	}
@@ -128,7 +142,38 @@ bool GLWater::begin(float time, const Vec3f & cameraPos) {
 		return false;
 	}
 
+	// Ripples: the simulation steps before the surface is drawn (it renders to its own maps
+	// and puts the scene framebuffer back)
+	if(m_ripplesWanted && !m_ripples) {
+		m_ripples = std::make_unique<GLRipples>(m_pipeline);
+		if(!m_ripples->init()) {
+			m_ripples.reset();
+			m_ripplesWanted = false; // (no second try every frame)
+		}
+	} else if(!m_ripplesWanted && m_ripples) {
+		m_ripples.reset();
+	}
+	if(m_ripples) {
+		GLint framebuffer = 0;
+		glGetIntegerv(GL_FRAMEBUFFER_BINDING, &framebuffer);
+		GLint viewport[4] = { 0, 0, 0, 0 };
+		glGetIntegerv(GL_VIEWPORT, viewport);
+		m_ripples->update(time, cameraPos, takeRippleSources(), GLuint(framebuffer), viewport[2], viewport[3]);
+	} else {
+		takeRippleSources(); // (dropped)
+	}
+
 	glUseProgram(m_program);
+	if(m_ripples) {
+		Vec4f w = m_ripples->window();
+		glUniform4f(m_uRippleWindow, w.x, w.y, w.z, w.w);
+		glUniform1f(m_uRippleStrength, 1.f);
+		glActiveTexture(RippleUnit);
+		glBindTexture(GL_TEXTURE_2D, m_ripples->texture());
+	} else {
+		glUniform4f(m_uRippleWindow, 0.f, 0.f, 0.f, 0.f);
+		glUniform1f(m_uRippleStrength, 0.f);
+	}
 
 	const glm::mat4 & proj = m_pipeline->projection();
 	glm::mat4 viewProj = proj * m_pipeline->view();
@@ -160,7 +205,6 @@ bool GLWater::begin(float time, const Vec3f & cameraPos) {
 	glActiveTexture(DepthUnit);
 	glBindTexture(GL_TEXTURE_2D, m_post->depthTexture());
 	glActiveTexture(GL_TEXTURE0);
-
 	m_pipeline->setExternalPass(true);
 
 	return true;
@@ -168,9 +212,11 @@ bool GLWater::begin(float time, const Vec3f & cameraPos) {
 
 void GLWater::end() {
 
+	glActiveTexture(RippleUnit);
+	glBindTexture(GL_TEXTURE_2D, 0);
 	glActiveTexture(SceneUnit);
 	glBindTexture(GL_TEXTURE_2D, 0);
-	glActiveTexture(DepthUnit);
+glActiveTexture(DepthUnit);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glActiveTexture(GL_TEXTURE0);
 

@@ -46,6 +46,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "core/Core.h"
 #include "coop/Puppets.h"
+#include "graphics/effects/WaterRipples.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -324,7 +325,8 @@ void levelInit() {
 	LastMouseClick = 0;
 	
 	PolyBoomClear();
-	ARX_DAMAGES_Reset();
+	clearRippleSources(); // ArxModern
+ARX_DAMAGES_Reset();
 	ARX_MISSILES_ClearAll();
 	spells.clearAll();
 	ARX_SPELLS_ClearAllSymbolDraw();

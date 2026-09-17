@@ -871,7 +871,8 @@ void OpenGLRenderer::applyGraphicsConfig() {
 			m_water->setPost(m_post.get());
 			m_water->setStrength(config.video.water);
 			m_water->setReflection(config.video.reflections);
-		}
+			m_water->setRipples(config.video.waterRipples);
+}
 	} else {
 		m_water.reset();
 	}

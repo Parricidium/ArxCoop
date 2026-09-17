@@ -46,6 +46,8 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "game/NPC.h"
 
+#include "graphics/effects/WaterRipples.h"
+
 #include "coop/Puppets.h"
 
 #include <stddef.h>
@@ -812,9 +814,11 @@ static void CheckUnderWaterIO(Entity & io) {
 			io.ioflags &= ~IO_UNDERWATER;
 			ARX_SOUND_PlaySFX(g_snd.PLOUF, &ppos);
 			ARX_PARTICLES_SpawnWaterSplash(ppos);
+		} else {
+			rippleWake(io); // ArxModern: wading leaves a wake
 		}
 	} else if(ep) {
-		io.ioflags |= IO_UNDERWATER;
+io.ioflags |= IO_UNDERWATER;
 		ARX_SOUND_PlaySFX(g_snd.PLOUF, &ppos);
 		ARX_PARTICLES_SpawnWaterSplash(ppos);
 
