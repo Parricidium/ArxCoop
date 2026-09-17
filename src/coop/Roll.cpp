@@ -26,6 +26,7 @@
 
 #include "animation/Animation.h"
 #include "coop/Puppets.h"
+#include "coop/ThirdPerson.h"
 #include "core/Config.h"
 #include "core/GameTime.h"
 #include "game/Entity.h"
@@ -40,6 +41,7 @@
 #include "scene/GameSound.h"
 
 extern bool BLOCK_PLAYER_CONTROLS;
+extern bool EXTERNALVIEW;
 
 namespace coop {
 
@@ -54,17 +56,20 @@ constexpr float InvulnerableFrom = 0.08f; //!< phase window without damage (the 
 constexpr float InvulnerableTo = 0.62f;
 constexpr float TumbleCentre = 62.f;     //!< height of the body's centre above the feet while balled up
 constexpr float ViewDip = 32.f;          //!< degrees, first-person forward dip at mid-roll
+constexpr float TurnIn = 0.18f;          //!< phase over which the body turns into the roll's direction (and back)
 
 bool g_rolling = false;
 PlatformInstant g_start;
 PlatformInstant g_end;
 Vec3f g_direction(0.f);
+float g_turn = 0.f; //!< degrees off the facing, see rollTurn()
 bool g_invulnerable = false; //!< we set the flag (never clear one set by a script)
 bool g_landed = false;
 
 } // anonymous namespace
 
 bool g_rollTestRequest = false;
+float g_rollTestTurn = 0.f;
 
 bool rollActive() {
 	return g_rolling;
@@ -76,6 +81,10 @@ float rollPhase() {
 	}
 	float phase = float(toMsf(g_platformTime.frameStart() - g_start)) / float(toMsf(RollDuration));
 	return glm::clamp(phase, 0.001f, 1.f);
+}
+
+float rollTurn() {
+	return g_rolling ? g_turn : 0.f;
 }
 
 static void endRoll() {
@@ -118,6 +127,7 @@ bool rollMovement(bool forward, bool backward, bool left, bool right, float unit
 
 	if(!g_rolling) {
 		bool pressed = GInput->actionNowPressed(CONTROLS_CUST_ROLL) || g_rollTestRequest;
+		bool test = g_rollTestRequest;
 		g_rollTestRequest = false;
 		if(!pressed || !entities.player() || BLOCK_PLAYER_CONTROLS
 		   || player.jumpphase != NotJumping || player.levitate || player.climbing || player.lifePool.current <= 0.f
@@ -140,10 +150,14 @@ bool rollMovement(bool forward, bool backward, bool left, bool right, float unit
 		if(right) {
 			dir += angleToVectorXZ(yaw - 90.f);
 		}
+		if(test) {
+			dir = angleToVectorXZ(yaw + g_rollTestTurn);
+		}
 		if(arx::length2(dir) < 0.01f) {
 			dir = angleToVectorXZ(yaw);
 		}
 		g_direction = glm::normalize(dir);
+		g_turn = AngleDifference(yaw, vectorToAngle(g_direction).getYaw());
 		g_rolling = true;
 		g_landed = false;
 		g_start = g_platformTime.frameStart();
@@ -187,26 +201,63 @@ void rollCameraEffect(Anglef & angle) {
 	if(phase <= 0.f) {
 		return;
 	}
-	// Dip forward and come back: the first-person eye follows the crouch already, this sells the tumble
+	// Dip along the roll's direction and come back (forward dip rolling forward, backward dip
+	// rolling back, a lean rolling sideways): the first-person eye follows the crouch already,
+	// this sells the tumble
 	float s = std::sin(phase * glm::pi<float>());
-	angle.setPitch(angle.getPitch() + ViewDip * s);
-	angle.setRoll(angle.getRoll() + 4.f * std::sin(phase * 2.f * glm::pi<float>()));
+	float turn = glm::radians(g_turn);
+	angle.setPitch(angle.getPitch() + ViewDip * s * std::cos(turn));
+	angle.setRoll(angle.getRoll() + ViewDip * 0.5f * s * std::sin(turn)
+	              + 4.f * std::sin(phase * 2.f * glm::pi<float>()));
 }
 
-void rollTumble(float phase, Anglef & angle, Vec3f & pos) {
-	if(phase <= 0.f) {
+//! The roll shown on an entity: phase, degrees off the facing, and the sign of a turn in
+//! its render yaw (the player's body is rendered with a yaw of (180 - facing), a puppet's
+//! with its owner's facing: Interactive.cpp undoes the NPC 180 - yaw).
+static bool shownRoll(const Entity & io, float & phase, float & turn, float & renderTurnSign) {
+	if(&io == entities.player()) {
+		if(!thirdPersonActive() && !EXTERNALVIEW) {
+			return false; // first person: the eye follows the head vertex
+		}
+		phase = rollPhase();
+		turn = g_turn;
+		renderTurnSign = -1.f;
+	} else if(io.coopPuppet) {
+		phase = puppetRollPhase(io);
+		turn = puppetRollTurn(io);
+		renderTurnSign = 1.f;
+	} else {
+		return false;
+	}
+	return phase > 0.f;
+}
+
+glm::quat rollRotation(const Entity & io, const glm::quat & base) {
+	float phase, turn, sign;
+	if(!shownRoll(io, phase, turn, sign)) {
+		return base;
+	}
+	// The body turns into the roll's direction over the first moments and back at the end
+	// (the view never turns: the facing is where the player looks). The yaw is the engine's
+	// rotation about Y, so the turn composes on the left like a yaw change would.
+	float facing = glm::clamp(std::min(phase / TurnIn, (1.f - phase) / TurnIn), 0.f, 1.f);
+	glm::quat turned = glm::angleAxis(glm::radians(sign * turn * facing), Vec3f(0.f, 1.f, 0.f)) * base;
+	// One full somersault over the roll, quick in the middle, about the body's own sideways
+	// axis (the engine's pitch is about the world Z axis, which is only sideways at yaw 0)
+	float eased = phase < 0.5f ? 2.f * phase * phase : 1.f - std::pow(-2.f * phase + 2.f, 2.f) * 0.5f;
+	Vec3f side = turned * Vec3f(0.f, 0.f, 1.f);
+	return glm::angleAxis(glm::radians(360.f * eased), side) * turned;
+}
+
+void rollTumble(const Entity & io, const Anglef & angle, Vec3f & pos) {
+	glm::quat base = QuatFromAngles(angle);
+	glm::quat q = rollRotation(io, base);
+	if(q == base) {
 		return;
 	}
-	// One full turn over the roll, quick in the middle, pivoting on the body's centre (the mesh
-	// pivots on the feet: the feet are moved so that the centre stays put)
-	float eased = phase < 0.5f ? 2.f * phase * phase : 1.f - std::pow(-2.f * phase + 2.f, 2.f) * 0.5f;
-	float tumble = 360.f * eased;
-	Anglef tumbled = angle;
-	tumbled.setPitch(MAKEANGLE(angle.getPitch() + tumble));
+	// The mesh pivots on the feet: move them so that the body's centre stays put
 	Vec3f centre(0.f, -TumbleCentre, 0.f);
-	glm::quat q = QuatFromAngles(tumbled);
 	pos = pos + centre - (q * centre);
-	angle = tumbled;
 }
 
 float rollPhaseOf(const Entity & io) {

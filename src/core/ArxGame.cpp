@@ -1926,12 +1926,11 @@ void ArxGame::updateLevel() {
 			Entity * entity = entities.player();
 			
 			// Co-op mod: our own body somersaults through a dodge roll when it is on screen
-			// (never in first person: the eye follows the head vertex)
+			// (never in first person: the eye follows the head vertex). The rotation itself is
+			// applied by the skeleton animation (coop::rollRotation), this moves the feet.
 			Anglef bodyAngle = entity->angle;
 			Vec3f bodyPos = entity->pos;
-			if(coop::thirdPersonActive() || EXTERNALVIEW) {
-				coop::rollTumble(coop::rollPhase(), bodyAngle, bodyPos);
-			}
+			coop::rollTumble(*entity, bodyAngle, bodyPos);
 			EERIEDrawAnimQuatUpdate(entity->obj,
 			                        entity->animlayer.data(),
 			                        bodyAngle,
