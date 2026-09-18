@@ -19,6 +19,8 @@
 
 #include "game/magic/spells/SpellsLvl09.h"
 
+#include "coop/Puppets.h"
+#include "coop/Replication.h"
 #include "core/Application.h"
 #include "core/Core.h"
 #include "core/Config.h"
@@ -49,10 +51,13 @@ void SummonCreatureSpell::GetTargetAndBeta(Vec3f & target, float & beta) {
 		target = entities[m_caster]->pos;
 		beta = entities[m_caster]->angle.getYaw();
 		displace = (entities[m_caster]->ioflags & IO_NPC) == IO_NPC;
+		float pitch;
+		coop::puppetAim(*entities[m_caster], pitch, beta); // co-op mod: another player, where they look
 	}
 	if(displace) {
 		target += angleToVectorXZ(beta) * 300.f;
 	}
+	coop::spellPlaced(m_type, entities.get(m_caster), target, beta);
 }
 
 SummonCreatureSpell::SummonCreatureSpell()
@@ -90,8 +95,13 @@ void SummonCreatureSpell::Launch() {
 	m_megaCheat = (m_caster == EntityHandle_Player && cur_mega == 10);
 	m_targetPos = target;
 	ARX_SOUND_PlaySFX(g_snd.SPELL_SUMMON_CREATURE, &m_targetPos);
-	
-	m_fissure.Create(target, MAKEANGLE(player.angle.getYaw()));
+
+	float fissureYaw = player.angle.getYaw();
+	if(Entity * caster = entities.get(m_caster)) {
+		float pitch;
+		coop::puppetAim(*caster, pitch, fissureYaw); // co-op mod: another player's fissure faces them
+	}
+	m_fissure.Create(target, MAKEANGLE(fissureYaw));
 	m_fissure.SetDuration(2s, 500ms, 1500ms);
 	m_fissure.SetColorBorder(Color3f::red);
 	m_fissure.SetColorRays1(Color3f::red);
@@ -268,8 +278,14 @@ void FakeSummonSpell::Launch() {
 	}
 	m_targetPos = target;
 	ARX_SOUND_PlaySFX(g_snd.SPELL_SUMMON_CREATURE, &m_targetPos);
-	
-	m_fissure.Create(target, MAKEANGLE(player.angle.getYaw()));
+
+	float fissureYaw = player.angle.getYaw();
+	if(Entity * caster = entities.get(m_caster)) {
+		float pitch;
+		coop::puppetAim(*caster, pitch, fissureYaw); // co-op mod: another player's fissure faces them
+	}
+	coop::spellPlaced(m_type, entities.get(m_caster), target, fissureYaw);
+	m_fissure.Create(target, MAKEANGLE(fissureYaw));
 	m_fissure.SetDuration(2s, 500ms, 1500ms);
 	m_fissure.SetColorBorder(Color3f::red);
 	m_fissure.SetColorRays1(Color3f::red);

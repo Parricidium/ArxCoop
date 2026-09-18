@@ -161,6 +161,7 @@ void MagicMissileSpell::Launch() {
 	if(!coop::castOrigin(startPos)) {
 		coop::castOriginUsed(startPos);
 	}
+	coop::spellPlaced(m_type, entities.get(m_caster), startPos, yaw);
 	std::mt19937 syncedRng(coop::castSeed());
 	std::mt19937 * rng = coop::castSeed() ? &syncedRng : nullptr;
 	auto randomf = [rng](float min, float max) {

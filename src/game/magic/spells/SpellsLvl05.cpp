@@ -19,6 +19,10 @@
 
 #include "game/magic/spells/SpellsLvl05.h"
 
+#include <random>
+
+#include "coop/Puppets.h"
+#include "coop/Replication.h"
 #include "core/Application.h"
 #include "core/Config.h"
 #include "core/Core.h"
@@ -495,10 +499,23 @@ void PoisonProjectileSpell::Launch() {
 	} else {
 		afBeta = entities[m_caster]->angle.getYaw();
 		srcPos = m_hand_group ? m_hand_pos : entities[m_caster]->pos;
+		float pitch;
+		coop::puppetAim(*caster, pitch, afBeta); // co-op mod: another player, where they look
 	}
-	
+
 	srcPos += angleToVectorXZ(afBeta) * 90.f;
-	
+	if(!coop::castOrigin(srcPos)) {
+		coop::castOriginUsed(srcPos); // co-op mod: the others start them where ours started
+	}
+	coop::spellPlaced(m_type, caster, srcPos, afBeta);
+
+	// Co-op mod: the spread and the lifetimes drawn from the caster's seed, the same everywhere
+	std::mt19937 syncedRng(coop::castSeed());
+	std::mt19937 * rng = coop::castSeed() ? &syncedRng : nullptr;
+	auto randomFloat = [rng](float min, float max) {
+		return rng ? std::uniform_real_distribution<float>(min, max)(*rng) : Random::getf(min, max);
+	};
+
 	size_t uiNumber = glm::clamp(static_cast<unsigned int>(m_level), 1u, 5u);
 	m_projectiles.reserve(uiNumber);
 	for(size_t i = 0; i < uiNumber; i++) {
@@ -512,8 +529,8 @@ void PoisonProjectileSpell::Launch() {
 	
 	for(CPoisonProjectile & projectile : util::dereference(m_projectiles)) {
 		
-		projectile.Create(srcPos, afBeta + Random::getf(-10.f, 10.f));
-		GameDuration lTime = m_duration + Random::get(0ms, 5000ms);
+		projectile.Create(srcPos, afBeta + randomFloat(-10.f, 10.f));
+		GameDuration lTime = m_duration + std::chrono::milliseconds(long(randomFloat(0.f, 5000.f)));
 		projectile.SetDuration(lTime);
 		lMax = std::max(lMax, lTime);
 		

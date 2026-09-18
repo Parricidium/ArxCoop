@@ -202,8 +202,7 @@ void AddFlare(const Vec2f & pos, float sm, short typ, Entity * io, bool bookDraw
 		} else if(io) {
 			float vx = -(flare.pos.x - g_size.center().x) * 0.2173913f;
 			float vy = (flare.pos.y - g_size.center().y) * 0.1515151515151515f;
-			// Co-op mod: a puppet's pos is at the eyes like the player's, an NPC's at the feet
-			flare.p = io->coopPuppet ? io->pos - player.baseOffset() : io->pos;
+			flare.p = io->pos;
 			flare.p += angleToVectorXZ(io->angle.getYaw() + vx) * 100.f;
 			flare.p.y += std::sin(glm::radians(MAKEANGLE(io->angle.getPitch() + vy))) * 100.f - 150.f;
 		} else {

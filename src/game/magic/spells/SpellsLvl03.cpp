@@ -19,6 +19,7 @@
 
 #include "game/magic/spells/SpellsLvl03.h"
 
+#include "coop/Puppets.h"
 #include "coop/Replication.h"
 #include "core/Core.h"
 #include "core/GameTime.h"
@@ -173,19 +174,28 @@ void FireballSpell::Launch() {
 		m_hand_group = { };
 	}
 	
+	float anglea = 0.f, angleb = 0.f;
 	Vec3f target = m_hand_pos;
-	if(!m_hand_group) {
+	if(caster && caster != entities.player() && coop::puppetAim(*caster, anglea, angleb)) {
+		// Co-op mod: another player - from its puppet's chest along where they look (the NPC
+		// offsets below assume the NPC yaw, mirrored for a puppet)
+		target = coop::puppetBone(*caster, "chest", Vec3f(0.f, -140.f, 0.f));
+	} else if(!m_hand_group) {
 		target = m_caster_pos;
 		if(caster && (caster->ioflags & IO_NPC)) {
 			target += angleToVectorXZ(caster->angle.getYaw()) * 30.f;
 			target += Vec3f(0.f, -80.f, 0.f);
 		}
 	}
-	
-	float anglea = 0.f, angleb = 0.f;
+
 	if(caster == entities.player()) {
 		anglea = player.angle.getPitch(), angleb = player.angle.getYaw();
-	} else if(caster) {
+		// Co-op mod: from the chest like Update() a frame later, so that the start point sent
+		// to the others is where the ball actually grows
+		if(VertexGroupId chest = EERIE_OBJECT_GetGroup(caster->obj, "chest")) {
+			target = caster->obj->vertexWorldPositions[caster->obj->grouplist[chest].origin].v;
+		}
+	} else if(caster && !caster->coopPuppet) {
 		Vec3f start = caster->pos;
 		if(caster->ioflags & IO_NPC) {
 			start.y -= 80.f;
@@ -196,13 +206,17 @@ void FireballSpell::Launch() {
 			anglea = glm::degrees(getAngle(start.y, start.z, end.y, end.z + d));
 		}
 		angleb = caster->angle.getYaw();
-		coop::puppetAim(*caster, anglea, angleb); // another player: where they look
 	}
-	
+
 	Vec3f eSrc = target;
 	eSrc += angleToVectorXZ(angleb) * 60.f;
+	if(!coop::castOrigin(eSrc)) {
+		coop::castOriginUsed(eSrc); // co-op mod: the others start it where ours started
+	}
+	m_castStart = eSrc;
 	eCurPos = eSrc;
-	
+	coop::spellPlaced(m_type, caster, eSrc, angleb);
+
 	eMove = angleToVector(Anglef(anglea, angleb, 0.f)) * 80.f;
 	
 	ARX_SOUND_PlaySFX(g_snd.SPELL_FIRE_LAUNCH, &m_caster_pos);
@@ -237,17 +251,23 @@ void FireballSpell::Update() {
 			
 			eCurPos += angleToVectorXZ(afBeta) * 60.f;
 			
+		} else if(caster && coop::puppetAim(*caster, afAlpha, afBeta)) {
+
+			// Co-op mod: another player - the ball grows where the caster's did (its puppet's
+			// chest is stale out of view, and its animation runs a little behind)
+			eCurPos = m_castStart;
+
 		} else if(caster) {
-			
+
 			afBeta = caster->angle.getYaw();
-			
+
 			eCurPos = caster->pos;
 			eCurPos += angleToVectorXZ(afBeta) * 60.f;
 			if(caster->ioflags & IO_NPC) {
 				eCurPos += angleToVectorXZ(entities[m_caster]->angle.getYaw()) * 30.f;
 				eCurPos += Vec3f(0.f, -80.f, 0.f);
 			}
-			
+
 			if(Entity * entityTarget = entities.get(caster->targetinfo)) {
 				Vec3f * p1 = &eCurPos;
 				Vec3f p2 = entityTarget->pos;
@@ -255,11 +275,14 @@ void FireballSpell::Update() {
 				float d = glm::distance(getXZ(p2), getXZ(*p1));
 				afAlpha = 360.f - (glm::degrees(getAngle(p1->y, p1->z, p2.y, p2.z + d)));
 			}
-			coop::puppetAim(*caster, afAlpha, afBeta); // another player: where they look
 
 		}
 		
 		eMove = angleToVector(Anglef(afAlpha, afBeta, 0.f)) * 100.f;
+		if(!m_moveLogged) {
+			m_moveLogged = true;
+			coop::spellPlaced(m_type, caster, eCurPos, afBeta); // (the flight direction, once)
+		}
 	}
 	
 	eCurPos += eMove * (g_framedelay * 0.0045f);
@@ -384,8 +407,11 @@ void IceProjectileSpell::Launch() {
 	} else {
 		target = entities[m_caster]->pos;
 		angleb = entities[m_caster]->angle.getYaw();
+		float pitch;
+		coop::puppetAim(*entities[m_caster], pitch, angleb); // co-op mod: another player, where they look
 	}
 	target += angleToVectorXZ(angleb) * 150.0f;
+	coop::spellPlaced(m_type, entities.get(m_caster), target, angleb);
 	
 	
 	tex_p1 = TextureContainer::Load("graph/obj3d/textures/(fx)_tsu_blueting");
