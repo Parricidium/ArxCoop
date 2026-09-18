@@ -87,7 +87,8 @@ enum ControlAction {
 	CONTROLS_CUST_PING,            //!< co-op mod: "look here" marker for the teammates
 	CONTROLS_CUST_ADMIN,           //!< co-op mod: in-game administration / tools page
 	CONTROLS_CUST_ROLL,            //!< co-op mod: dodge roll (coop/Roll.cpp)
-	NUM_ACTION_KEY
+	CONTROLS_CUST_SPRAY,           //!< co-op mod: paint the spray tag (coop/Spray.cpp)
+NUM_ACTION_KEY
 };
 
 enum CinematicWidescreenMode {
@@ -294,6 +295,7 @@ float lava; // lava shader strength, 0 = the original overlay
 		int port;
 		
 		std::string face; //!< Custom face image (file name in <user dir>/coop/faces/), empty = the character's skin
+		std::string spray; //!< Spray tag image (file name in <user dir>/coop/sprays/), empty = none
 
 		std::string favorites; //!< "name|address:port;name|address:port"
 

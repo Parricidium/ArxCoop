@@ -91,6 +91,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "graphics/VertexBuffer.h"
 #include "graphics/data/TextureContainer.h"
 #include "graphics/effects/BlobShadow.h"
+#include "coop/Spray.h"
 #include "graphics/effects/Decal.h"
 #include "graphics/effects/Halo.h"
 #include "graphics/particle/ParticleEffects.h"
@@ -2032,6 +2033,7 @@ void ARX_SCENE_Render() {
 	eyeball.render();
 
 	PolyBoomDraw();
+	coop::spraysDraw(); // co-op mod: spray tags, on top of the decals
 
 	RenderReflections(); // ArxModern: the opaque scene is complete, the glossy floors and walls reflect it
 

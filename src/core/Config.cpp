@@ -71,7 +71,8 @@ constexpr const std::string_view
 	coopNickname = "Joueur",
 	coopAddress = "127.0.0.1",
 	coopFace = "",
-	coopFavorites = "",
+	coopSpray = "",
+coopFavorites = "",
 	bufferUpload,
 	extensionOverride,
 	pipeline = "auto",
@@ -220,6 +221,7 @@ constexpr const ActionKey actions[NUM_ACTION_KEY] = {
 	ActionKey(Mouse::Button_2), // PING
 	ActionKey(Keyboard::Key_F8), // ADMIN
 	ActionKey(Keyboard::Key_Z), // ROLL (the physical key left of X / crouch; W on an AZERTY keyboard)
+	ActionKey(Keyboard::Key_K), // SPRAY (T is the torch)
 };
 
 } // namespace Default
@@ -396,6 +398,7 @@ constexpr const std::string_view actions[NUM_ACTION_KEY] = {
 	"ping",
 	"admin",
 	"roll",
+	"spray",
 };
 
 // Misc options
@@ -413,7 +416,8 @@ constexpr const std::string_view
 	coopAddress = "address",
 	coopPort = "port",
 	coopFace = "face",
-	coopFavorites = "favorites",
+	coopSpray = "spray",
+coopFavorites = "favorites",
 	coopDialogueHold = "dialogue_hold",
 	coopThirdPerson = "third_person",
 	coopRightShoulder = "right_shoulder";
@@ -672,7 +676,8 @@ writer.writeKey(Key::lava, video.lava);
 	writer.writeKey(Key::coopAddress, coop.address);
 	writer.writeKey(Key::coopPort, coop.port);
 	writer.writeKey(Key::coopFace, coop.face);
-	writer.writeKey(Key::coopFavorites, coop.favorites);
+	writer.writeKey(Key::coopSpray, coop.spray);
+writer.writeKey(Key::coopFavorites, coop.favorites);
 	writer.writeKey(Key::coopDialogueHold, coop.dialogueHold);
 	writer.writeKey(Key::coopThirdPerson, coop.thirdPerson);
 	writer.writeKey(Key::coopRightShoulder, coop.rightShoulder);
@@ -844,7 +849,8 @@ video.lava = reader.getKey(Section::Video, Key::lava, Default::lava);
 	coop.address = reader.getKey(Section::Coop, Key::coopAddress, Default::coopAddress);
 	coop.port = reader.getKey(Section::Coop, Key::coopPort, Default::coopPort);
 	coop.face = reader.getKey(Section::Coop, Key::coopFace, Default::coopFace);
-	coop.favorites = reader.getKey(Section::Coop, Key::coopFavorites, Default::coopFavorites);
+	coop.spray = reader.getKey(Section::Coop, Key::coopSpray, Default::coopSpray);
+coop.favorites = reader.getKey(Section::Coop, Key::coopFavorites, Default::coopFavorites);
 	coop.dialogueHold = reader.getKey(Section::Coop, Key::coopDialogueHold, Default::coopDialogueHold);
 	coop.thirdPerson = reader.getKey(Section::Coop, Key::coopThirdPerson, Default::coopThirdPerson);
 	coop.rightShoulder = reader.getKey(Section::Coop, Key::coopRightShoulder, Default::coopRightShoulder);

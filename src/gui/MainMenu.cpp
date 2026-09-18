@@ -1794,7 +1794,8 @@ public:
 		addControlRow(CONTROLS_CUST_CAMERA_ZOOM_IN,  "system_menus_options_input_customize_controls_camera_zoom_in", "Caméra plus près (3e pers.)");
 		addControlRow(CONTROLS_CUST_CAMERA_ZOOM_OUT, "system_menus_options_input_customize_controls_camera_zoom_out", "Caméra plus loin (3e pers.)");
 		addControlRow(CONTROLS_CUST_ROLL,            "system_menus_options_input_customize_controls_roll", "Roulade (esquive)");
-		addControlRow(CONTROLS_CUST_PING,            "system_menus_options_input_customize_controls_ping", "Marqueur « par ici » (coop)");
+		addControlRow(CONTROLS_CUST_SPRAY,           "system_menus_options_input_customize_controls_spray", "Spray (tag sur le mur)");
+addControlRow(CONTROLS_CUST_PING,            "system_menus_options_input_customize_controls_ping", "Marqueur « par ici » (coop)");
 		addControlRow(CONTROLS_CUST_ADMIN,           "system_menus_options_input_customize_controls_admin", "Administration / outils (coop)");
 
 		addBackButton(Page_OptionsInput);
@@ -1888,7 +1889,8 @@ void MainMenu::initWindowPages() {
 	m_window->add(createCoopLobbyMenuPage());
 	m_window->add(createCoopAdminMenuPage());
 	m_window->add(createCoopOptionsMenuPage());
-	m_window->add(createHdOptionsMenuPage());
+	m_window->add(createCustomizeMenuPage());
+m_window->add(createHdOptionsMenuPage());
 	m_window->add(createHdRayTracingMenuPage());
 	
 }
@@ -1915,9 +1917,10 @@ void MainMenu::init() {
 		m_background = TextureContainer::LoadUI("graph/interface/menus/menu_main_background", TextureContainer::NoColorKey);
 	}
 	
-	// Eight entries (Coopération and Options HD added) instead of the original six: tighter
-	Vec2f pos = RATIO_2(Vec2f(370, 84));
-	float yOffset = RATIO_Y(44);
+	// Nine entries (Personnalisation, Coopération added; Options HD moved under Options) instead of the
+	// original six: tighter
+	Vec2f pos = RATIO_2(Vec2f(370, 72));
+	float yOffset = RATIO_Y(42);
 	
 	{
 		auto txt = std::make_unique<TextWidget>(hFontMainMenu, getLocalised("system_menus_main_resumegame"));
@@ -1952,6 +1955,13 @@ void MainMenu::init() {
 	{
 		auto txt = std::make_unique<TextWidget>(hFontMainMenu, getLocalised("system_menus_main_editquest"));
 		txt->setTargetPage(Page_LoadOrSave);
+		txt->setPosition(pos);
+		m_widgets.add(std::move(txt));
+	}
+	pos.y += yOffset;
+	{
+		auto txt = std::make_unique<TextWidget>(hFontMainMenu, getLocalised("system_menus_customize", "Personnalisation"));
+		txt->setTargetPage(Page_Customize);
 		txt->setPosition(pos);
 		m_widgets.add(std::move(txt));
 	}

@@ -58,6 +58,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "coop/Puppets.h"
 #include "coop/Admin.h"
 #include "coop/Qol.h"
+#include "coop/Spray.h"
 #include "coop/Replication.h"
 #include "coop/Roll.h"
 #include "coop/Session.h"
@@ -676,7 +677,7 @@ static std::string g_snapshotMenuPage;
 static void menuPage(const std::string & page) {
 	g_snapshotMenuPage = page;
 }
-ARX_PROGRAM_OPTION_ARG("menupage", "", "Open this menu page before --menusnapshot (hd, rt, options, render)", &menuPage, "PAGE")
+ARX_PROGRAM_OPTION_ARG("menupage", "", "Open this menu page before --menusnapshot (hd, rt, customize, keys3, options, render)", &menuPage, "PAGE")
 
 // ArxModern: at frame N, render the same game state with the fixed-function pipeline, the shader
 // pipeline and the fixed-function pipeline again (snapshots 1, 2, 3 after the normal frame 0),
@@ -711,6 +712,13 @@ static void listTest(u32 frames) {
 	g_listTestFrames = long(frames);
 }
 ARX_PROGRAM_OPTION_ARG("listtest", "", "Log the entities of the level and their positions at frame N", &listTest, "FRAMES")
+
+// Co-op mod: at frame N, paint the spray tag (config coop.spray) where the player looks
+static long g_sprayTestFrames = -1000;
+static void sprayTest(u32 frames) {
+	g_sprayTestFrames = long(frames);
+}
+ARX_PROGRAM_OPTION_ARG("spraytest", "", "Paint the spray tag where the player looks at frame N (decal test)", &sprayTest, "FRAMES")
 
 // ArxModern: at frame N, the player lights a torch (shadow tests: a strong light they carry)
 static long g_torchTestFrames = -1000;
@@ -1057,7 +1065,8 @@ bool ArxGame::initGame()
 	
 	ARX_PLAYER_LoadHeroAnimsAndMesh();
 	coop::facesInit(); // needs the hero head textures and the renderer
-	coop::qolInit();
+	coop::sprayInit(); // after facesInit(): chains its player callbacks
+coop::qolInit();
 	
 	GLOBAL_EERIETEXTUREFLAG_LOADSCENE_RELEASE = old;
 	
@@ -1910,7 +1919,8 @@ void ArxGame::updateLevel() {
 	{ FRAME_SECTION("coop.puppetsUpdate"); coop::puppetsUpdate(); }
 	{ FRAME_SECTION("coop.localTorchDisplayUpdate"); coop::localTorchDisplayUpdate(); }
 	{ FRAME_SECTION("coop.qolUpdate"); coop::qolUpdate(); }
-	{ FRAME_SECTION("coop.npcSyncUpdate"); coop::npcSyncUpdate(); }
+	{ FRAME_SECTION("coop.sprayUpdate"); coop::sprayUpdate(); }
+{ FRAME_SECTION("coop.npcSyncUpdate"); coop::npcSyncUpdate(); }
 	{ FRAME_SECTION("coop.physicsSyncUpdate"); coop::physicsSyncUpdate(); }
 	{ FRAME_SECTION("coop.replicationUpdate"); coop::replicationUpdate(); }
 
@@ -2308,6 +2318,7 @@ void ArxGame::render() {
 		}
 		if(g_autoSnapshotFrames == 30 && g_autoSnapshotAnyMode && !g_snapshotMenuPage.empty() && g_mainMenu) {
 			MENUSTATE page = (g_snapshotMenuPage == "hd") ? Page_OptionsHd : (g_snapshotMenuPage == "rt") ? Page_OptionsHd2
+			                 : (g_snapshotMenuPage == "customize") ? Page_Customize : (g_snapshotMenuPage == "keys3") ? Page_OptionsInputCustomizeKeys3
 			                 : (g_snapshotMenuPage == "render") ? Page_OptionsRender : Page_Options;
 			g_mainMenu->requestPage(page);
 		}
@@ -2337,6 +2348,13 @@ void ArxGame::render() {
 			}
 		}
 		g_listTestFrames--;
+	}
+	
+	if(g_sprayTestFrames > -1000 && ARXmenu.mode() == Mode_InGame && !isInCinematic()) {
+		if(g_sprayTestFrames == 0) {
+			coop::sprayTestPlace();
+		}
+		g_sprayTestFrames--;
 	}
 	
 	if(g_torchTestFrames > -1000 && ARXmenu.mode() == Mode_InGame && !isInCinematic()) {

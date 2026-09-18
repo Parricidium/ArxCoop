@@ -100,6 +100,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "math/Random.h"
 
 #include "physics/Physics.h"
+#include "coop/Spray.h"
 #include "physics/Ragdoll.h"
 
 #include "platform/Platform.h"
@@ -130,6 +131,7 @@ extern bool LOAD_N_ERASE;
 
 static bool ARX_CHANGELEVEL_Push_Index(AreaId area);
 static std::string physicsSaveName(AreaId area); // ArxModern
+static std::string spraysSaveName(AreaId area); // co-op mod
 static bool ARX_CHANGELEVEL_PushLevel(AreaId oldArea, AreaId newArea);
 static bool ARX_CHANGELEVEL_PopLevel(AreaId area, bool reloadflag = false,
                                      std::string_view target = std::string_view(), float angle = 0.f);
@@ -395,7 +397,8 @@ bool ARX_CHANGELEVEL_ExportLevel(std::vector<std::pair<std::string, std::string>
 	// ArxModern: corpses as they lie; an empty file is sent too so that the client forgets a
 	// previous state of this level (its save block clears the entry, see SaveBlock::save)
 	files.emplace_back(physicsSaveName(g_currentArea), physics::serializeRagdolls());
-	
+	files.emplace_back(spraysSaveName(g_currentArea), coop::serializeSprays()); // co-op mod: spray tags
+
 	const ARX_CHANGELEVEL_INDEX * asi = reinterpret_cast<const ARX_CHANGELEVEL_INDEX *>(index.data());
 	const ARX_CHANGELEVEL_IO_INDEX * idx_io = reinterpret_cast<const ARX_CHANGELEVEL_IO_INDEX *>(index.data() + sizeof(ARX_CHANGELEVEL_INDEX));
 	arx_assert(sizeof(ARX_CHANGELEVEL_INDEX) + sizeof(ARX_CHANGELEVEL_IO_INDEX) * asi->nb_inter <= index.size());
@@ -476,6 +479,12 @@ static std::string physicsSaveName(AreaId area) {
 	return name.str();
 }
 
+static std::string spraysSaveName(AreaId area) {
+	std::ostringstream name;
+	name << "sprays" << std::setfill('0') << std::setw(3) << u32(area);
+	return name.str();
+}
+
 static bool ARX_CHANGELEVEL_PushLevel(AreaId oldArea, AreaId newArea) {
 	
 	LogDebug("ARX_CHANGELEVEL_PushLevel " << oldArea << " " << newArea);
@@ -502,7 +511,14 @@ static bool ARX_CHANGELEVEL_PushLevel(AreaId oldArea, AreaId newArea) {
 	} else {
 		g_currentSavedGame->save(physicsSaveName(oldArea), ragdolls.data(), ragdolls.size());
 	}
-	
+	// Co-op mod: the spray tags of the level, the same way
+	std::string sprays = coop::serializeSprays();
+	if(sprays.empty()) {
+		g_currentSavedGame->remove(spraysSaveName(oldArea));
+	} else {
+		g_currentSavedGame->save(spraysSaveName(oldArea), sprays.data(), sprays.size());
+	}
+
 	return ok;
 }
 
@@ -2611,8 +2627,9 @@ static bool ARX_CHANGELEVEL_PopLevel(AreaId area, bool reloadflag, std::string_v
 	
 	if(!firstTime) {
 		physics::restoreRagdolls(g_currentSavedGame->load(physicsSaveName(area))); // ArxModern
+		coop::restoreSprays(g_currentSavedGame->load(spraysSaveName(area))); // co-op mod
 	}
-	
+
 	progressBarAdvance(15.f);
 	LoadLevelScreen();
 	

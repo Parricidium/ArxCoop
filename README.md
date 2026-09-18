@@ -180,6 +180,10 @@ protocol).
 - Off-screen teammates: arrow at the edge of the screen with the distance, shown on the minimap and
   the book map.
 - **Middle click**: "over here" marker (red double circle with the distance, 12 s, seen by all).
+- **Spray tag** (**K**): paints your own image, like the sprays of Counter-Strike, on the wall, floor or
+  ceiling you look at (within reach): everybody sees it there, lit like the surface, with the transparency
+  of your PNG. Pick the image under *Personnalisation > Spray*; the sprays stay with the level (saved with
+  it, sent to whoever joins), the oldest fade out beyond 48 per level.
 
 **Death and revival**
 - At 0 HP you stay **down** ("X is down!" + sound) with a 2-minute countdown.
@@ -234,6 +238,7 @@ protocol).
 | Severed parts (dismemberment) | ✅ | stay on the ground as corpse pieces, host physics, same spot everywhere, saved with the level's corpses |
 | Water ripples (Options RT) | ✅ | rings and wakes from what moves in the water, simulated on every machine from the same positions |
 | Blood trails (Options RT) | ✅ | bloody footprints after stepping in blood, on every machine from the same positions |
+| Spray tags (K key) | ✅ | each player's image travels once (PNG with alpha, 128x128); a tag is painted at the same spot on every machine, saved with the level |
 | Magic traps, NPC spells (fire fields, lightning, fireballs) | ✅ | replayed for the eyes, damage dealt by the host |
 | Persistent magic fields ("blue walls") | ✅ | recreated on arrival, end together |
 | Burning players | ✅ | flames follow the player |
@@ -252,13 +257,13 @@ protocol).
 
 Your face replaces the hero's: the other players see it on your character, and you see it in the book.
 
-1. Launch the mod, go to **Options > Co-op**.
+1. Launch the mod, go to **Personnalisation** (main menu).
 2. Click **"Open the faces folder"**: the folder `userdata\coop\faces\` is created and opened.
 3. Drop your photo there (`jpg` or `png`). **Tight crop on the face, front view**: from the top of the
    forehead to the chin, no hair, no shoulders (see `visages\cadrage_photo.png`: everything inside the
    green oval is pasted on the face, the rest blends into the game head). The game crops to 5:7 and
    scales the photo by itself; a photo that is too wide gives a tiny face.
-4. Go back to the *Co-op* page and pick your file under **"Face"**: the character's head is shown in 3D
+4. Go back to the *Personnalisation* page and pick your file under **"Face"**: the character's head is shown in 3D
    below, with your face.
 5. Done. The photo is sent once to the other players (20–40 KB), and nowhere else.
 
@@ -305,6 +310,7 @@ All configurable in *Options > Controls*.
 | **O** | free camera (third person) |
 | **Wheel** | camera closer / further |
 | **Middle click** | "over here" marker |
+| **K** | spray tag (your image on the wall, floor or ceiling you look at) |
 | **Hold left click** on a downed teammate | revive them |
 | **H** while looking at a downed teammate | life potion on them |
 | **F8** | admin menu |
@@ -499,6 +505,10 @@ Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition RT (p
 - Pseudo, vie et faim des coéquipiers à gauche de l'écran ; ping à côté des noms ; temps de jeu en haut.
 - Coéquipiers hors champ : flèche au bord de l'écran avec la distance, présence sur la mini-carte et la carte du livre.
 - **Clic molette** : marqueur « par ici » (double cercle rouge avec la distance, 12 s, visible par tous).
+- **Spray** (**K**) : peint votre propre image, comme les sprays de Counter-Strike, sur le mur, le sol ou le
+  plafond visé (à portée) : tout le monde la voit là, éclairée comme la surface, avec la transparence de
+  votre PNG. Image à choisir dans *Personnalisation > Spray* ; les sprays restent avec le niveau (enregistrés
+  avec lui, envoyés à qui rejoint), les plus anciens s'effacent au-delà de 48 par niveau.
 
 **Mort et réanimation**
 - À 0 PV on reste **à terre** (« X est à terre ! » + signal sonore) avec un compte à rebours de 2 minutes.
@@ -552,6 +562,7 @@ Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition RT (p
 | Morceaux tranchés (démembrement) | ✅ | restent au sol comme des morceaux de cadavre, physique de l'hôte, même endroit partout, enregistrés avec les cadavres du niveau |
 | Rides sur l'eau (Options RT) | ✅ | ronds et sillages de ce qui bouge dans l'eau, simulés sur chaque machine à partir des mêmes positions |
 | Traces de sang (Options RT) | ✅ | empreintes de pas ensanglantées après avoir marché dans le sang, sur chaque machine à partir des mêmes positions |
+| Sprays (touche K) | ✅ | l'image de chaque joueur voyage une fois (PNG avec transparence, 128x128) ; un spray est peint au même endroit sur chaque machine, enregistré avec le niveau |
 | Pièges magiques, sorts des PNJ (champs de feu, éclairs, boules de feu) | ✅ | rejoués pour les yeux, dégâts infligés par l'hôte |
 | Champs magiques persistants (« murs bleus ») | ✅ | recréés à l'arrivée, disparaissent ensemble |
 | Joueurs en feu | ✅ | les flammes suivent le joueur |
@@ -625,6 +636,7 @@ Toutes modifiables dans *Options > Commandes*.
 | **O** | caméra libre (3e personne) |
 | **Molette** | caméra plus près / plus loin |
 | **Clic molette** | marqueur « par ici » |
+| **K** | spray (votre image sur le mur, le sol ou le plafond visé) |
 | **Clic gauche maintenu** sur un coéquipier à terre | le relever |
 | **H** en regardant un coéquipier à terre | potion de vie sur lui |
 | **F8** | menu Administration |
