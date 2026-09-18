@@ -48,6 +48,7 @@
 #include "input/Input.h"
 #include "io/log/Logger.h"
 #include "gui/Speech.h"
+#include "physics/Collisions.h"
 #include "physics/LooseObjects.h"
 #include "physics/Physics.h"
 #include "physics/Ragdoll.h"
@@ -140,16 +141,58 @@ void startKnockdown(Entity & npc) {
 	npc.ioflags |= IO_NO_COLLISIONS; // (the body lies on the floor: the standing cylinder must not block)
 }
 
+//! How far the NPC's standing cylinder is from a valid spot at  pos (0 = fine, > 0 = that deep in something)
+float standingClearance(Entity & npc, const Vec3f & pos) {
+	Cylinder cyl(pos, npc.physics.cyl.radius, npc.physics.cyl.height);
+	float anything = CheckAnythingInCylinder(cyl, &npc, CFLAG_NPC | CFLAG_JUST_TEST | CFLAG_NO_INTERCOL);
+	return anything < 0.f ? -anything : 0.f;
+}
+
+/*!
+ * A body that came to rest against a wall gets up with its cylinder inside the wall (JD's
+ * screenshot): if the resting spot is blocked, the nearest clear spot around is used.
+ */
+void standSomewhereClear(Entity & npc) {
+	constexpr float Blocked = 30.f; // units the cylinder would have to rise: more than a floor bump
+	if(standingClearance(npc, npc.pos) <= Blocked) {
+		return;
+	}
+	Vec3f best = npc.pos;
+	float bestScore = 1e9f;
+	for(float radius : { 30.f, 60.f, 90.f, 130.f, 180.f }) {
+		for(int k = 0; k < 12; k++) {
+			float angle = float(k) * (2.f * glm::pi<float>() / 12.f);
+			Vec3f candidate = npc.pos + Vec3f(std::cos(angle) * radius, 0.f, std::sin(angle) * radius);
+			float clearance = standingClearance(npc, candidate);
+			if(clearance <= Blocked) {
+				float score = radius + clearance; // the nearest clear spot, the clearest among equals
+				if(score < bestScore) {
+					bestScore = score;
+					best = candidate;
+				}
+			}
+		}
+		if(bestScore < 1e9f) {
+			break;
+		}
+	}
+	if(bestScore < 1e9f) {
+		LogInfo << "[coop] kick: " << npc.idString() << " was in a wall, stands " << int(glm::distance(best, npc.pos)) << " units away";
+		ARX_INTERACTIVE_Teleport(&npc, best, false);
+	}
+}
+
 void endKnockdown(Entity & npc, bool getUp) {
 	auto it = g_down.find(&npc);
 	if(it == g_down.end()) {
 		return;
 	}
 	if(getUp) {
-		physics::endRagdoll(npc, GetUpBlend);
+		physics::endRagdoll(npc, GetUpBlend); // (keeps the lying pose for the blend)
 		if(it->second.hadCollisions) {
 			npc.ioflags &= ~IO_NO_COLLISIONS;
 		}
+		standSomewhereClear(npc);
 		LogInfo << "[coop] kick: " << npc.idString() << " gets up";
 	}
 	g_down.erase(it);
@@ -454,6 +497,13 @@ bool isKnockedDown(const Entity & io) {
 
 size_t knockedDownCount() {
 	return g_down.size();
+}
+
+float kickTestStandClear(Entity & npc) {
+	Vec3f before = npc.pos;
+	LogInfo << "[coop] test: clearance at " << int(before.x) << "," << int(before.y) << "," << int(before.z) << " = " << standingClearance(npc, before);
+	standSomewhereClear(npc);
+	return glm::distance(npc.pos, before);
 }
 
 void kickPose(const Entity & io, EERIE_3DOBJ * obj, Skeleton & skeleton) {

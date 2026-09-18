@@ -71,6 +71,8 @@ bool isKnockedDown(const Entity & io);
 
 //! Test: the number of NPCs knocked down right now
 size_t knockedDownCount();
+//! Test: an NPC standing inside a wall is moved to the nearest clear spot; the distance moved (0 = it was fine)
+float kickTestStandClear(Entity & npc);
 
 //! Test: kick now (no key, no cooldown).
 extern bool g_kickTestRequest;

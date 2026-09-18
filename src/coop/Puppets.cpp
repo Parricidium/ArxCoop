@@ -2770,9 +2770,7 @@ void puppetsTestUpdate() {
 				player.m_skill.closeCombat = 80.f; // (the full value is recomputed from it every frame)
 				player.m_skillFull.closeCombat = 80.f;
 				victim->_npcdata->behavior |= BEHAVIOUR_FIGHT;
-				// Away from the wall we sprayed (the body must have room to fly)
-				player.angle.setYaw(MAKEANGLE(player.angle.getYaw() + 180.f));
-				player.desiredangle = player.angle;
+				// Into the wall we sprayed, 45 units behind it: it must not get up inside the wall
 				placeVictim(*victim);
 				g_kickTestRequest = true;
 				LogInfo << "[coop] test: host kicks " << kickTargetId << " again at 80 of close combat";
@@ -2807,6 +2805,33 @@ void puppetsTestUpdate() {
 			        << toMsi(now - kickStepTime) << " ms, ragdoll " << (victim ? physics::hasRagdoll(*victim) : false)
 			        << ", life " << (victim ? victim->_npcdata->lifePool.current : -1.f) << ", dead " << (victim ? IsDeadNPC(*victim) : true);
 			player.m_skill.closeCombat = kickSkillBefore;
+			// The wall case: the goblin put 12 units inside the wall we face, it must find a clear spot
+			if(victim && !IsDeadNPC(*victim)) {
+				Vec3f forward = angleToVectorXZ(player.angle.getYaw());
+				Vec3f from = player.pos;
+				Vec3f to = from + forward * 400.f;
+				float best = 400.f;
+				const EERIEPOLY * wall = nullptr;
+				for(auto tile : g_tiles->tilesAround((from + to) * 0.5f, 201.f)) {
+					for(const EERIEPOLY & polygon : tile.polygons()) {
+						if(polygon.type & (POLY_WATER | POLY_TRANS | POLY_NOCOL)) {
+							continue;
+						}
+						Vec3f hit;
+						if(RayCollidingPoly(from, to, polygon, &hit) && glm::distance(from, hit) < best) {
+							best = glm::distance(from, hit);
+							wall = &polygon;
+						}
+					}
+				}
+				if(wall) {
+					Vec3f inside = from + forward * (best + 12.f);
+					inside.y = player.basePosition().y;
+					ARX_INTERACTIVE_Teleport(victim, inside, false);
+					float moved = kickTestStandClear(*victim);
+					LogInfo << "[coop] test: " << kickTargetId << " put in the wall at " << int(best) << " units, moved " << int(moved) << " units to stand clear";
+				}
+			}
 			Logger::flush();
 		}
 		if(g_coop.isClient() && sprayStep == 0 && sprayCount() > 0) {
