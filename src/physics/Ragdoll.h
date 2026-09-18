@@ -28,6 +28,7 @@
 
 #include <glm/gtc/quaternion.hpp>
 
+#include "core/TimeTypes.h"
 #include "math/Types.h"
 
 class Entity;
@@ -65,6 +66,25 @@ void setDeathBlow(const DeathBlow & blow);
 
 //! Drop the ragdoll of an entity (being destroyed)
 void removeRagdoll(Entity & io);
+
+/*
+ * Co-op mod: a living NPC knocked down (the kick, coop/Kick.cpp). Its skeleton becomes a ragdoll
+ * thrown along a direction, like a corpse's, until it comes to rest; then endRagdoll() drops the
+ * bodies and the bones glide back to the animation over a short blend (the "getting up").
+ */
+
+//! Knock a living NPC down: thrown along  direction at  speed m/s, spun about  at. False if impossible.
+bool knockDown(Entity & io, const Vec3f & direction, float speed, const Vec3f & at);
+//! The entity's ragdoll has come to rest (or it has none)
+bool ragdollResting(const Entity & io);
+//! Velocity of the ragdoll's pelvis in m/s, world axes (zero without one)
+Vec3f ragdollVelocity(const Entity & io);
+//! End a living NPC's ragdoll: the bones blend from where they lie back to the animation over  blend
+void endRagdoll(Entity & io, GameDuration blend);
+//! Same on a mirroring machine, from the mirrored pose
+void endMirroredRagdoll(Entity & io, GameDuration blend);
+//! Visit the mirrored ragdolls
+void forEachMirroredRagdoll(const std::function<void(Entity & io)> & visit);
 
 /*!
  * Replace the animated bone transforms of an entity by its ragdoll pose.

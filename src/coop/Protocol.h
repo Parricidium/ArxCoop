@@ -37,7 +37,7 @@
  */
 namespace coop {
 
-constexpr u32 ProtocolVersion = 21; // 21: PlayerKick, kick phase behind PlayerState
+constexpr u32 ProtocolVersion = 22; // 22: living ragdolls in PhysicsState (a kicked monster gets up)
 constexpr u16 DefaultPort = 27015;
 constexpr size_t MaxPlayers = 4;
 constexpr size_t MaxNicknameLength = 24;

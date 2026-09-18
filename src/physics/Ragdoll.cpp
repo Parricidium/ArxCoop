@@ -79,10 +79,49 @@ BonePose mixPose(const BonePose & a, const BonePose & b, float t) {
 	return pose;
 }
 
+//! Getting up: the bones glide from the pose the ragdoll ended in back to the animation
+struct Recovery {
+	std::vector<BonePose> from;
+	GameInstant start;
+	GameDuration duration;
+};
+std::unordered_map<Entity *, Recovery> g_recovering;
+
+bool applyRecoveryPose(Entity & io, Skeleton & skeleton) {
+	auto it = g_recovering.find(&io);
+	if(it == g_recovering.end()) {
+		return false;
+	}
+	const Recovery & recovery = it->second;
+	float t = recovery.duration > 0 ? (g_gameTime.now() - recovery.start) / recovery.duration : 1.f;
+	if(t >= 1.f || recovery.from.size() != skeleton.bones.size()) {
+		g_recovering.erase(it);
+		return false;
+	}
+	t = t * t * (3.f - 2.f * t);
+	size_t i = 0;
+	for(VertexGroupId bone : skeleton.bones.handles()) {
+		Bone & data = skeleton.bones[bone];
+		const BonePose & from = recovery.from[i++];
+		data.anim.trans = glm::mix(from.pos, data.anim.trans, t);
+		data.anim.quat = glm::slerp(from.rot, data.anim.quat, t);
+	}
+	return true;
+}
+
+//! The mirrored pose as shown right now
+void currentMirroredPose(const MirroredRagdoll & mirrored, std::vector<BonePose> & out) {
+	float t = mirrored.from.size() == mirrored.to.size() ? mirrorFactor(mirrored.start, mirrored.duration, mirrored.active) : 1.f;
+	out.resize(mirrored.to.size());
+	for(size_t i = 0; i < mirrored.to.size(); i++) {
+		out[i] = (t >= 1.f) ? mirrored.to[i] : mixPose(mirrored.from[i], mirrored.to[i], t);
+	}
+}
+
 bool applyMirroredPose(Entity & io, Skeleton & skeleton) {
 	auto it = g_mirrored.find(&io);
 	if(it == g_mirrored.end() || it->second.to.size() != skeleton.bones.size()) {
-		return false;
+		return applyRecoveryPose(io, skeleton);
 	}
 	const MirroredRagdoll & mirrored = it->second;
 	float t = mirrored.from.size() == mirrored.to.size() ? mirrorFactor(mirrored.start, mirrored.duration, mirrored.active) : 1.f;
@@ -117,6 +156,24 @@ bool isMirrorMode() {
 }
 
 bool ragdollIsSimulated(const Entity & io); // below, per build
+
+void endMirroredRagdoll(Entity & io, GameDuration blend) {
+	auto it = g_mirrored.find(&io);
+	if(it == g_mirrored.end()) {
+		return;
+	}
+	Recovery & recovery = g_recovering[&io];
+	currentMirroredPose(it->second, recovery.from);
+	recovery.start = g_gameTime.now();
+	recovery.duration = blend;
+	g_mirrored.erase(it);
+}
+
+void forEachMirroredRagdoll(const std::function<void(Entity & io)> & visit) {
+	for(auto & entry : g_mirrored) {
+		visit(*entry.first);
+	}
+}
 
 bool hasRagdoll(const Entity & io) {
 	return g_mirrored.count(const_cast<Entity *>(&io)) != 0 || ragdollIsSimulated(io);
@@ -393,14 +450,13 @@ constexpr char SaveMagic[8] = { 'A', 'R', 'X', 'R', 'A', 'G', 'D', '1' };
 
 } // anonymous namespace
 
-void onEntityDied(Entity & io, Entity * killer) {
+namespace {
 
-	// The pending blow is for this death only, ragdoll or not
-	DeathBlow blow = g_deathBlow;
-	g_deathBlow = DeathBlow();
+//! Turn the entity's skeleton into a ragdoll from its current pose, thrown by  blow (if valid)
+bool startRagdoll(Entity & io, DeathBlow blow, Entity * killer) {
 
 	if(g_mirrorMode || !canRagdoll(io)) {
-		return;
+		return false;
 	}
 
 	PlatformInstant start = platform::getTime();
@@ -411,7 +467,7 @@ void onEntityDied(Entity & io, Entity * killer) {
 
 	RagdollInstance * instance = createRagdoll(io);
 	if(!instance) {
-		return;
+		return false;
 	}
 	LogInfo << "physics: ragdoll for " << io.idString() << " (" << instance->bones << " bones) built in "
 	        << toMsi(platform::getTime() - start) << " ms";
@@ -459,6 +515,60 @@ void onEntityDied(Entity & io, Entity * killer) {
 			}
 		}
 	}
+	return true;
+}
+
+} // anonymous namespace
+
+void onEntityDied(Entity & io, Entity * killer) {
+	// The pending blow is for this death only, ragdoll or not
+	DeathBlow blow = g_deathBlow;
+	g_deathBlow = DeathBlow();
+	startRagdoll(io, blow, killer);
+}
+
+bool knockDown(Entity & io, const Vec3f & direction, float speed, const Vec3f & at) {
+	DeathBlow blow;
+	blow.direction = direction;
+	blow.at = at;
+	blow.speed = speed;
+	blow.valid = true;
+	g_recovering.erase(&io);
+	return startRagdoll(io, blow, nullptr);
+}
+
+bool ragdollResting(const Entity & io) {
+	auto it = g_ragdolls.find(const_cast<Entity *>(&io));
+	return it == g_ragdolls.end() || !it->second.ragdoll->IsActive();
+}
+
+Vec3f ragdollVelocity(const Entity & io) {
+	auto it = g_ragdolls.find(const_cast<Entity *>(&io));
+	if(it == g_ragdolls.end() || !system()) {
+		return Vec3f(0.f);
+	}
+	JPH::Vec3 v = system()->GetBodyInterface().GetLinearVelocity(it->second.ragdoll->GetBodyID(0));
+	return Vec3f(v.GetX(), v.GetY(), v.GetZ());
+}
+
+void endRagdoll(Entity & io, GameDuration blend) {
+	auto it = g_ragdolls.find(&io);
+	if(it == g_ragdolls.end() || !system()) {
+		return;
+	}
+	Recovery & recovery = g_recovering[&io];
+	recovery.from.resize(it->second.bones);
+	const JPH::BodyInterface & bodies = system()->GetBodyInterface();
+	for(size_t i = 0; i < it->second.bones; i++) {
+		JPH::RVec3 position;
+		JPH::Quat rotation;
+		bodies.GetPositionAndRotation(it->second.ragdoll->GetBodyID(int(i)), position, rotation);
+		recovery.from[i].pos = fromJolt(JPH::Vec3(position));
+		recovery.from[i].rot = fromJolt(rotation);
+	}
+	recovery.start = g_gameTime.now();
+	recovery.duration = blend;
+	removeRagdoll(io);
 }
 
 std::string serializeRagdolls() {
@@ -629,6 +739,7 @@ void restoreRagdolls(std::string_view buffer) {
 void removeRagdoll(Entity & io) {
 
 	g_mirrored.erase(&io);
+	g_recovering.erase(&io);
 
 	auto it = g_ragdolls.find(&io);
 	if(it == g_ragdolls.end()) {
@@ -648,7 +759,7 @@ bool applyRagdollPose(Entity & io, Skeleton & skeleton) {
 
 	auto it = g_ragdolls.find(&io);
 	if(it == g_ragdolls.end()) {
-		return false;
+		return applyRecoveryPose(io, skeleton);
 	}
 	JPH::PhysicsSystem * world = system();
 	if(!world || it->second.bones != skeleton.bones.size()) {
@@ -718,6 +829,7 @@ void updateRagdolls() {
 }
 
 void clearRagdolls() {
+	g_recovering.clear();
 
 	g_mirrored.clear();
 	if(system()) {
@@ -779,10 +891,17 @@ void dumpRagdolls() {
 namespace physics {
 
 void onEntityDied(Entity & io, Entity * killer) { ARX_UNUSED(io), ARX_UNUSED(killer); }
-void removeRagdoll(Entity & io) { g_mirrored.erase(&io); }
+bool knockDown(Entity & io, const Vec3f & direction, float speed, const Vec3f & at) {
+	ARX_UNUSED(io), ARX_UNUSED(direction), ARX_UNUSED(speed), ARX_UNUSED(at);
+	return false;
+}
+bool ragdollResting(const Entity & io) { ARX_UNUSED(io); return true; }
+Vec3f ragdollVelocity(const Entity & io) { ARX_UNUSED(io); return Vec3f(0.f); }
+void endRagdoll(Entity & io, GameDuration blend) { ARX_UNUSED(io), ARX_UNUSED(blend); }
+void removeRagdoll(Entity & io) { g_mirrored.erase(&io); g_recovering.erase(&io); }
 bool applyRagdollPose(Entity & io, Skeleton & skeleton) { return applyMirroredPose(io, skeleton); }
 void updateRagdolls() { }
-void clearRagdolls() { g_mirrored.clear(); }
+void clearRagdolls() { g_mirrored.clear(); g_recovering.clear(); }
 bool getRagdollPose(const Entity & io, Vec3f & pos, bool & active, std::vector<BonePose> & bones) {
 	ARX_UNUSED(io), ARX_UNUSED(pos), ARX_UNUSED(active), ARX_UNUSED(bones);
 	return false;

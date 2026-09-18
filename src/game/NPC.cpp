@@ -50,6 +50,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "graphics/effects/Decal.h"
 #include "graphics/effects/WaterRipples.h"
 
+#include "coop/Kick.h"
 #include "coop/Puppets.h"
 
 #include <stddef.h>
@@ -948,9 +949,13 @@ void ARX_PHYSICS_Apply() {
 		if(IsDeadNPC(*io)) {
 			continue;
 		}
-		
+
 		if(io->coopPuppet || coop::npcsAreMirrored()) {
 			continue; // Driven by the network, see coop/Puppets.cpp
+		}
+
+		if(coop::isKnockedDown(*io)) {
+			continue; // Co-op mod: the ragdoll moves it (coop/Kick.cpp)
 		}
 		
 		if(io->ioflags & IO_PHYSICAL_OFF) {
@@ -2312,7 +2317,12 @@ static void ManageNPCMovement(Entity * io) {
 		io->ioflags |= IO_NO_COLLISIONS;
 		return;
 	}
-	
+
+	// Co-op mod: knocked down by a kick, the ragdoll has the body
+	if(coop::isKnockedDown(*io)) {
+		return;
+	}
+
 	AnimLayer & layer0 = io->animlayer[0];
 	
 	// Using USER animation ?

@@ -18,6 +18,8 @@
  */
 
 #include "coop/PhysicsSync.h"
+#include <algorithm>
+#include "game/NPC.h"
 
 #include <chrono>
 #include <iterator>
@@ -67,6 +69,8 @@ void writeRagdoll(Writer & out, Entity & io, const Vec3f & pos, bool active) {
 void applyState(Reader & reader) {
 
 	u16 ragdolls = reader.u16_();
+	static std::vector<Entity *> listed;
+	listed.clear();
 	for(u16 n = 0; n < ragdolls; n++) {
 		std::string id = reader.string();
 		Vec3f pos = reader.vec3<Vec3f>();
@@ -82,8 +86,24 @@ void applyState(Reader & reader) {
 			poses[i].rot = glm::normalize(glm::quat(w, x, y, z));
 		}
 		if(Entity * io = entities.getById(id)) {
+			if((io->ioflags & IO_NPC) && !IsDeadNPC(*io) && !physics::hasRagdoll(*io)) {
+				LogInfo << "[coop] ragdoll of the living " << io->idString() << " starts (knocked down on the host)";
+			}
 			physics::mirrorRagdoll(*io, pos, active, poses);
+			listed.push_back(io);
 		}
+	}
+	// A living monster's ragdoll that the host no longer sends has ended there: it gets up here too
+	static std::vector<Entity *> ended;
+	ended.clear();
+	physics::forEachMirroredRagdoll([&](Entity & io) {
+		if((io.ioflags & IO_NPC) && !IsDeadNPC(io) && std::find(listed.begin(), listed.end(), &io) == listed.end()) {
+			ended.push_back(&io);
+		}
+	});
+	for(Entity * io : ended) {
+		physics::endMirroredRagdoll(*io, std::chrono::milliseconds(500));
+		LogInfo << "[coop] ragdoll of " << io->idString() << " ended on the host: it gets up";
 	}
 
 	u16 objects = reader.u16_();
@@ -113,12 +133,18 @@ void hostSend() {
 	// What moves, what just stopped, and everything now and then
 	Writer ragdolls;
 	u16 ragdollCount = 0;
+	static bool sentLiving = false; // a living monster's ragdoll went last time: one more (maybe empty) state ends it
+	bool living = false;
 	physics::forEachRagdoll([&](Entity & io, bool active) {
 		SentState & sent = g_sentRagdolls[io.idString()];
 		bool keyframe = now - sent.sent > KeyframeInterval;
-		if(!active && !sent.active && !keyframe) {
+		// A living monster on the floor (a kick) is in every state: the client ends the ragdoll
+		// when it stops coming
+		bool alive = (io.ioflags & IO_NPC) && !IsDeadNPC(io);
+		if(!active && !sent.active && !keyframe && !alive) {
 			return;
 		}
+		living = living || alive;
 		Vec3f pos;
 		bool nowActive;
 		if(!physics::getRagdollPose(io, pos, nowActive, g_bones)) {
@@ -160,9 +186,10 @@ void hostSend() {
 		it = (!it->second.active) ? g_sentObjects.erase(it) : std::next(it);
 	}
 
-	if(ragdollCount == 0 && objectCount == 0) {
+	if(ragdollCount == 0 && objectCount == 0 && !sentLiving) {
 		return;
 	}
+	sentLiving = living;
 	Writer message;
 	message.u16_(ragdollCount);
 	message.bytes(ragdolls.data().data(), ragdolls.size());

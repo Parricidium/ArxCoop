@@ -22,6 +22,8 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <string_view>
+#include <unordered_map>
 
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -45,8 +47,12 @@
 #include "gui/Menu.h"
 #include "input/Input.h"
 #include "io/log/Logger.h"
+#include "gui/Speech.h"
+#include "physics/LooseObjects.h"
 #include "physics/Physics.h"
+#include "physics/Ragdoll.h"
 #include "platform/Time.h"
+#include "scene/Interactive.h"
 #include "scene/GameSound.h"
 #include "scene/Object.h"
 
@@ -63,9 +69,17 @@ constexpr PlatformDuration KickCooldown = std::chrono::milliseconds(350); //!< a
 constexpr float ImpactPhase = 0.34f;      //!< when the foot lands
 constexpr float KickReach = 135.f;        //!< world units from the player's feet, plus the target's radius
 constexpr float KickHalfAngle = 40.f;     //!< degrees either side of the facing
-constexpr float KickForce = 330.f;        //!< the shove of a monster (world units of forced move, see NPC.cpp)
-constexpr float KickDamageBase = 3.f;     //!< hit points, plus a share of the strength
-constexpr float KickDamageStrength = 0.2f;
+constexpr float PushForce = 150.f;        //!< the shove of a monster below the skill (world units of forced move, see NPC.cpp)
+constexpr float KnockdownSkill = 70.f;    //!< Close combat from which a kick knocks a monster down (ragdoll)
+constexpr float KnockdownSpeed = 6.f;     //!< m/s given to the ragdoll (4 to 5 m of flight in the open)
+constexpr float KnockdownLift = 0.45f;    //!< upward share of it (the body flies rather than skids)
+constexpr float ImmuneHeight = 200.f;     //!< world units: taller than this (a human is 180) = too big to knock down
+constexpr float ImmuneRadius = 45.f;      //!< ... or wider than this (a human is 30)
+constexpr float ImpactSpeed = 3.f;        //!< m/s of horizontal speed lost in one frame from which a ragdoll takes damage (a wall)
+constexpr float ImpactDamage = 2.f;       //!< hit points per m/s lost beyond that
+constexpr GameDuration ImpactGrace = std::chrono::milliseconds(150); //!< right after the kick the bodies settle: no damage yet
+constexpr GameDuration KnockdownMax = std::chrono::seconds(12); //!< up (or dead) after this whatever the ragdoll does
+constexpr GameDuration GetUpBlend = std::chrono::milliseconds(500);
 constexpr float ObjectSpeed = 1.2f;       //!< a loose object flies off at this (throw units)
 constexpr float StaminaCost = 0.34f;      //!< share of the stamina a kick takes (three in a row, then wait)
 constexpr float StaminaRegen = 0.28f;     //!< per second, once the delay below has passed
@@ -81,6 +95,111 @@ constexpr float KneeReturn = 35.f;        //!< coming back down
 bool g_kicking = false;
 bool g_hitDone = false;
 float g_stamina = 1.f;
+
+//! A monster knocked down (host, or single player)
+struct Knockdown {
+	GameInstant since;
+	float lastSpeed = 0.f; //!< horizontal speed of the pelvis last frame, m/s
+	bool hadCollisions = true;
+};
+std::unordered_map<Entity *, Knockdown> g_down;
+
+//! Monsters too big to be knocked down whatever their cylinder says, by class name
+constexpr std::string_view ImmuneClasses[] = { "black_beast", "golem", "dragon", "worm", "akbaa", "demon" };
+
+//! Too big (or too special) to be thrown around: it takes the short shove instead
+bool immuneToKnockdown(const Entity & npc) {
+	if(std::abs(npc.physics.cyl.height) > ImmuneHeight || npc.physics.cyl.radius > ImmuneRadius) {
+		return true;
+	}
+	std::string_view path = npc.classPath().string();
+	for(std::string_view name : ImmuneClasses) {
+		if(path.find(name) != std::string_view::npos) {
+			return true;
+		}
+	}
+	return false;
+}
+
+//! Only a monster in a fight is thrown: townsfolk and unaware creatures just stagger
+bool fighting(const Entity & npc) {
+	return npc._npcdata && (npc._npcdata->behavior & (BEHAVIOUR_FIGHT | BEHAVIOUR_DISTANT | BEHAVIOUR_MAGIC | BEHAVIOUR_FLEE));
+}
+
+//! In a scripted dialogue (a cinematic line, not a battle cry): nothing touches it
+bool talking(const Entity & npc) {
+	const Speech * speech = getSpeechForEntity(npc);
+	return speech && (speech->cine.type != ARX_CINE_SPEECH_NONE || (speech->flags & ARX_SPEECH_FLAG_UNBREAKABLE));
+}
+
+void startKnockdown(Entity & npc) {
+	Knockdown & down = g_down[&npc];
+	down.since = g_gameTime.now();
+	down.lastSpeed = 0.f;
+	down.hadCollisions = !(npc.ioflags & IO_NO_COLLISIONS);
+	npc.ioflags |= IO_NO_COLLISIONS; // (the body lies on the floor: the standing cylinder must not block)
+}
+
+void endKnockdown(Entity & npc, bool getUp) {
+	auto it = g_down.find(&npc);
+	if(it == g_down.end()) {
+		return;
+	}
+	if(getUp) {
+		physics::endRagdoll(npc, GetUpBlend);
+		if(it->second.hadCollisions) {
+			npc.ioflags &= ~IO_NO_COLLISIONS;
+		}
+		LogInfo << "[coop] kick: " << npc.idString() << " gets up";
+	}
+	g_down.erase(it);
+}
+
+//! Host / single player, every frame: the monsters on the floor
+void knockdownUpdate() {
+	for(auto it = g_down.begin(); it != g_down.end(); ) {
+		Entity * npc = it->first;
+		if(!ValidIOAddress(npc) || !(npc->ioflags & IO_NPC)) {
+			it = g_down.erase(it);
+			continue;
+		}
+		Knockdown & down = it->second;
+		++it;
+		if(IsDeadNPC(*npc)) {
+			endKnockdown(*npc, false); // (the ragdoll stays as the corpse)
+			continue;
+		}
+		if(!physics::hasRagdoll(*npc)) {
+			endKnockdown(*npc, true);
+			continue;
+		}
+		// Hitting something hard: the horizontal speed the pelvis loses in one frame beyond a
+		// threshold hurts (a wall); landing on the floor loses vertical speed, which is free
+		Vec3f velocity = physics::ragdollVelocity(*npc);
+		float speed = glm::length(Vec2f(velocity.x, velocity.z));
+		float lost = down.lastSpeed - speed;
+		down.lastSpeed = speed;
+		GameDuration age = g_gameTime.now() - down.since;
+		if(lost > ImpactSpeed && age > ImpactGrace) {
+			float damage = (lost - ImpactSpeed) * ImpactDamage;
+			Vec3f at = npc->pos;
+			damageNpc(*npc, damage, nullptr, nullptr, DAMAGE_TYPE_GENERIC, &at);
+			LogInfo << "[coop] kick: " << npc->idString() << " hits something at " << lost << " m/s, " << damage << " damage";
+			if(IsDeadNPC(*npc)) {
+				endKnockdown(*npc, false);
+				continue;
+			}
+		}
+		if(age > GameDuration(std::chrono::milliseconds(700)) && physics::ragdollResting(*npc)) {
+			endKnockdown(*npc, true);
+		} else if(age > KnockdownMax) {
+			// Still falling: a bottomless pit, the monster is gone
+			LogInfo << "[coop] kick: " << npc->idString() << " never landed, dies";
+			damageNpc(*npc, 100000.f, nullptr, nullptr, DAMAGE_TYPE_GENERIC, nullptr);
+			endKnockdown(*npc, false);
+		}
+	}
+}
 PlatformInstant g_start;
 PlatformInstant g_end;
 Vec3f g_direction(0.f);
@@ -138,17 +257,53 @@ void resolveKick(Entity * kicker, const Vec3f & from, const Vec3f & forward) {
 
 	KickResult targets = findTargets(from, forward);
 
+	if(!targets.npc) {
+		// (diagnostics: the nearest monster and why it was out of reach)
+		for(Entity & io : entities) {
+			if((io.ioflags & IO_NPC) && &io != entities.player() && !io.coopPuppet && !IsDeadNPC(io) && closerThan(io.pos, from, 300.f)) {
+				Vec3f to = io.pos - from;
+				LogInfo << "[coop] kick: nothing in front; " << io.idString() << " is " << int(glm::length(Vec2f(to.x, to.z)))
+				        << " away, dy " << int(to.y) << ", facing " << glm::dot(glm::normalize(Vec3f(to.x, 0.f, to.z)), forward)
+				        << ", show " << int(io.show) << ", nocol " << ((io.ioflags & IO_NO_COLLISIONS) ? 1 : 0);
+			}
+		}
+	}
+
 	if(Entity * npc = targets.npc) {
-		// Thrown off balance: the engine's forced move (what a weapon blow does, much stronger)
-		npc->forcedmove += forward * KickForce;
-		// The kicker's strength: a client's travels with its stats (PlayerStats), ours is at hand
+		Vec3f hit = npc->pos + Vec3f(0.f, -std::abs(npc->physics.cyl.height) * 0.5f, 0.f);
+		if(talking(*npc)) {
+			// Mid-line: a dull thud, nothing else
+			ARX_SOUND_PlayCollision("flesh", "stone", 0.6f, 1.f, hit, kicker);
+			LogInfo << "[coop] kick: " << npc->idString() << " is talking, untouched";
+			return;
+		}
+		// The kicker's skill: a client's travels with its stats (PlayerStats), ours is at hand
 		const PlayerStats * stats = actingPlayerStats();
-		float strength = stats ? stats->strength : player.m_attributeFull.strength;
-		float damage = KickDamageBase + strength * KickDamageStrength;
-		Vec3f hit = npc->pos + Vec3f(0.f, -npc->physics.cyl.height * 0.5f, 0.f);
-		ARX_SOUND_PlayCollision("flesh", "flesh", 1.f, 1.f, hit, kicker);
-		damageNpc(*npc, damage, entities.player(), nullptr, DAMAGE_TYPE_GENERIC, &hit);
-		LogInfo << "[coop] kick: " << npc->idString() << " shoved for " << damage;
+		float skill = stats ? stats->closeCombat : player.m_skillFull.closeCombat;
+		bool immune = immuneToKnockdown(*npc);
+		bool knocked = false;
+		if(skill >= KnockdownSkill && !immune && fighting(*npc) && !g_down.count(npc) && !physics::hasRagdoll(*npc)) {
+			// Its own obstacle cylinder must be gone from the physics world before the bodies
+			// are thrown, or they start inside it and lose their speed at once
+			startKnockdown(*npc);
+			physics::syncObstacles();
+			knocked = physics::knockDown(*npc, glm::normalize(forward + Vec3f(0.f, -KnockdownLift, 0.f)), KnockdownSpeed, hit); // (y down: -y is up)
+			if(!knocked) {
+				if(g_down[npc].hadCollisions) {
+					npc->ioflags &= ~IO_NO_COLLISIONS;
+				}
+				g_down.erase(npc);
+			}
+		}
+		if(!knocked) {
+			// Thrown off balance: the engine's forced move (what a weapon blow does), a metre or two
+			npc->forcedmove += forward * (immune ? PushForce * 0.3f : PushForce);
+		}
+		ARX_SOUND_PlayCollision("flesh", immune ? "stone" : "flesh", 1.f, 1.f, hit, kicker);
+		// No damage: the hit event alone, for the stagger and the anger
+		damageNpc(*npc, 0.f, entities.player(), nullptr, DAMAGE_TYPE_GENERIC, &hit);
+		LogInfo << "[coop] kick: " << npc->idString() << (knocked ? " knocked down" : immune ? " too big, nudged" : " shoved")
+		        << " (close combat " << skill << ")";
 	}
 
 	for(Entity * item : targets.objects) {
@@ -235,6 +390,10 @@ float kickPhaseOf(const Entity & io) {
 
 void kickUpdate() {
 
+	if(!npcsAreMirrored() && !g_down.empty()) {
+		knockdownUpdate();
+	}
+
 	if(!entities.player() || !entities.player()->obj || ARXmenu.mode() != Mode_InGame) {
 		return;
 	}
@@ -287,6 +446,14 @@ void kickUpdate() {
 		endKick();
 	}
 
+}
+
+bool isKnockedDown(const Entity & io) {
+	return !g_down.empty() && g_down.count(const_cast<Entity *>(&io)) != 0;
+}
+
+size_t knockedDownCount() {
+	return g_down.size();
 }
 
 void kickPose(const Entity & io, EERIE_3DOBJ * obj, Skeleton & skeleton) {
