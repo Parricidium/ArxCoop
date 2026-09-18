@@ -2711,12 +2711,21 @@ void puppetsTestUpdate() {
 			        << " pieces before, " << sprayCount() << " / " << sprayPieceCount() << " after restore";
 			Logger::flush();
 		}
-		// Kick: a live monster is put in front of the host, kicked, and must have been shoved back
+		// Kick: a live monster is put in front of the host and kicked twice - shoved below the
+		// skill, knocked down (ragdoll, then up again) at 80 of close combat
 		static int kickStep = 0;
 		static PlatformInstant kickStepTime;
 		static std::string kickTargetId;
 		static Vec3f kickTargetBefore;
 		static float kickTargetLife = 0.f;
+		static float kickSkillBefore = 0.f;
+		auto placeVictim = [&](Entity & victim) {
+			Vec3f forward = angleToVectorXZ(player.angle.getYaw());
+			ARX_INTERACTIVE_Teleport(&victim, player.basePosition() + forward * 95.f, true); // (its feet at ours)
+			victim.show = SHOW_FLAG_IN_SCENE;
+			kickTargetBefore = victim.pos;
+			kickTargetLife = victim._npcdata->lifePool.current;
+		};
 		if(g_coop.isHost() && kickStep == 0 && sprayStep == 3 && now - sprayStepTime > std::chrono::seconds(1)) {
 			kickStep = 1;
 			kickStepTime = now;
@@ -2724,19 +2733,19 @@ void puppetsTestUpdate() {
 			for(Entity & io : entities) {
 				if((io.ioflags & IO_NPC) && &io != entities.player() && !io.coopPuppet && !IsDeadNPC(io) && io.obj
 				   && io.show == SHOW_FLAG_IN_SCENE && io._npcdata && io._npcdata->lifePool.current > 0.f) {
-					victim = &io;
-					break;
+					bool rat = io.classPath().string().find("rat") != std::string::npos;
+					if(!victim || (!rat && victim->classPath().string().find("rat") != std::string::npos)) {
+						victim = &io; // (a rat dies of anything: something sturdier if there is one)
+					}
 				}
 			}
 			if(victim) {
-				Vec3f forward = angleToVectorXZ(player.angle.getYaw());
-				ARX_INTERACTIVE_Teleport(victim, player.pos + forward * 95.f, true);
+				placeVictim(*victim);
 				kickTargetId = victim->idString();
-				kickTargetBefore = victim->pos;
-				kickTargetLife = victim->_npcdata->lifePool.current;
 				g_kickTestRequest = true;
-				LogInfo << "[coop] test: host kicks " << kickTargetId << " standing at " << int(victim->pos.x) << "," << int(victim->pos.y) << "," << int(victim->pos.z)
-				        << " (life " << kickTargetLife << ")";
+				LogInfo << "[coop] test: host kicks " << kickTargetId << " (life " << kickTargetLife << ", cylinder "
+				        << victim->physics.cyl.radius << " x " << victim->physics.cyl.height << ", close combat "
+				        << player.m_skillFull.closeCombat << ")";
 			} else {
 				kickStep = 9;
 				LogInfo << "[coop] test: no live monster to kick";
@@ -2751,11 +2760,53 @@ void puppetsTestUpdate() {
 		}
 		if(g_coop.isHost() && kickStep == 2 && now - kickStepTime > std::chrono::milliseconds(1100)) {
 			kickStep = 3;
-			if(Entity * victim = entities.getById(kickTargetId)) {
-				LogInfo << "[coop] test: kicked " << kickTargetId << " moved " << int(glm::distance(victim->pos, kickTargetBefore))
-				        << " units, life " << kickTargetLife << " -> " << victim->_npcdata->lifePool.current
-				        << ", forced move left " << int(glm::length(victim->forcedmove));
+			kickStepTime = now;
+			Entity * victim = entities.getById(kickTargetId);
+			if(victim && !IsDeadNPC(*victim)) {
+				LogInfo << "[coop] test: shoved " << kickTargetId << " moved " << int(glm::distance(victim->pos, kickTargetBefore))
+				        << " units, life " << kickTargetLife << " -> " << victim->_npcdata->lifePool.current;
+				// Second kick: a fighter, and a kicker at 80 of close combat
+				kickSkillBefore = player.m_skill.closeCombat;
+				player.m_skill.closeCombat = 80.f; // (the full value is recomputed from it every frame)
+				player.m_skillFull.closeCombat = 80.f;
+				victim->_npcdata->behavior |= BEHAVIOUR_FIGHT;
+				// Away from the wall we sprayed (the body must have room to fly)
+				player.angle.setYaw(MAKEANGLE(player.angle.getYaw() + 180.f));
+				player.desiredangle = player.angle;
+				placeVictim(*victim);
+				g_kickTestRequest = true;
+				LogInfo << "[coop] test: host kicks " << kickTargetId << " again at 80 of close combat";
+			} else {
+				kickStep = 9;
+				LogInfo << "[coop] test: " << kickTargetId << (victim ? " died of the shove" : " is gone");
 			}
+			Logger::flush();
+		}
+		if(g_coop.isHost() && kickStep == 3 && now - kickStepTime > std::chrono::milliseconds(900)) {
+			kickStep = 4;
+			kickStepTime = now;
+			Entity * victim = entities.getById(kickTargetId);
+			LogInfo << "[coop] test: after the second kick: knocked down " << knockedDownCount() << ", ragdoll "
+			        << (victim ? physics::hasRagdoll(*victim) : false) << ", moved "
+			        << (victim ? int(glm::distance(victim->pos, kickTargetBefore)) : -1) << " units, life "
+			        << (victim ? victim->_npcdata->lifePool.current : -1.f);
+			GetSnapShot();
+			Logger::flush();
+		}
+		static float kickFarthest = 0.f;
+		if(g_coop.isHost() && kickStep == 4) {
+			if(Entity * victim = entities.getById(kickTargetId)) {
+				kickFarthest = std::max(kickFarthest, glm::distance(victim->pos, kickTargetBefore));
+			}
+		}
+		if(g_coop.isHost() && kickStep == 4 && (knockedDownCount() == 0 || now - kickStepTime > std::chrono::seconds(12))) {
+			kickStep = 5;
+			Entity * victim = entities.getById(kickTargetId);
+			LogInfo << "[coop] test: the body flew " << int(kickFarthest) << " units at most";
+			LogInfo << "[coop] test: " << kickTargetId << (knockedDownCount() == 0 ? " is back up" : " still down") << " after "
+			        << toMsi(now - kickStepTime) << " ms, ragdoll " << (victim ? physics::hasRagdoll(*victim) : false)
+			        << ", life " << (victim ? victim->_npcdata->lifePool.current : -1.f) << ", dead " << (victim ? IsDeadNPC(*victim) : true);
+			player.m_skill.closeCombat = kickSkillBefore;
 			Logger::flush();
 		}
 		if(g_coop.isClient() && sprayStep == 0 && sprayCount() > 0) {

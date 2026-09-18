@@ -62,6 +62,16 @@ void kickCameraEffect(Anglef & angle);
 //! Received a PlayerKick message from player \a id.
 void handlePlayerKick(PlayerId id, Reader & reader);
 
+/*!
+ * A living NPC knocked down by a kick (Close combat 70 and up): its ragdoll flies, it lies
+ * there until the ragdoll rests, then gets up. The NPC's own logic (movement, fighting,
+ * physics) is on hold meanwhile - NPC.cpp asks.
+ */
+bool isKnockedDown(const Entity & io);
+
+//! Test: the number of NPCs knocked down right now
+size_t knockedDownCount();
+
 //! Test: kick now (no key, no cooldown).
 extern bool g_kickTestRequest;
 

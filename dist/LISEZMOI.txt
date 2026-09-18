@@ -133,9 +133,12 @@ RANGEMENT ET VENTE RAPIDES
 
 COUP DE PIED (nouveau)
 - Bouton 4 de la souris (bouton lateral) ou touche Y, a changer dans Options > Controles > "Ajouts RT / coop".
-  Comme dans Dark Messiah : le pied part, ce qui est devant est repousse. Un monstre prend un peu de
-  degats (3 + un cinquieme de votre force) et est projete sur quelques metres (un trou, une corniche,
-  la lave...) ; un objet libre (avec la physique) vole. Les autres joueurs voient la jambe partir.
+  Comme dans Dark Messiah : le pied part, ce qui est devant est repousse, SANS degat.
+- Sous 70 en "Combat au corps a corps" : le monstre recule d'un metre ou deux.
+  A partir de 70 : un monstre en combat est projete en ragdoll sur quelques metres (un trou, une corniche,
+  la lave...) et se releve une fois immobile ; s'ecraser contre un mur lui fait mal selon la vitesse.
+- Trop gros pour etre projete (golems, trolls, demons, la Bete noire...) : simple bousculade. Un PNJ en
+  dialogue scripte est intouchable. Un objet libre (avec la physique) vole.
 - Un coup prend un tiers de votre ENDURANCE (barre verte a cote de la faim, en bas a gauche) ; elle
   revient en quelques secondes. Trois coups d'affilee au plus.
 - En vue a la premiere personne, votre pied monte dans l'image.
