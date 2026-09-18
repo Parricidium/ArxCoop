@@ -52,7 +52,8 @@ Page_QuitConfirm,
 	Page_CoopLobby,
 	Page_CoopAdmin,
 	Page_CoopOptions,
-	Page_OptionsHd, // ArxModern
+	Page_Customize, //!< co-op mod: face and spray tag
+Page_OptionsHd, // ArxModern
 	Page_OptionsHd2, // ArxModern RT: ray tracing and mood
 };
 

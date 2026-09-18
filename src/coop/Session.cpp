@@ -69,7 +69,9 @@ std::function<void(PlayerId, Reader &)> & playerMessageHandler(Session & session
 		case MessageType::Blood:           return session.onBlood;
 		case MessageType::PlayerSpeech:    return session.onPlayerSpeech;
 		case MessageType::Projectile:      return session.onProjectile;
-		default:                           return session.onPlayerState;
+		case MessageType::PlayerSpray:     return session.onPlayerSpray;
+		case MessageType::SprayPlaced:     return session.onSprayPlaced;
+default:                           return session.onPlayerState;
 	}
 }
 
@@ -419,7 +421,9 @@ void Session::Impl::handleClientMessage(Session & session, PlayerId id, MessageT
 		case MessageType::PlayerMarker:
 		case MessageType::Blood:
 		case MessageType::PlayerSpeech:
-		case MessageType::Projectile: {
+		case MessageType::Projectile:
+		case MessageType::PlayerSpray:
+		case MessageType::SprayPlaced: {
 			payload.u8_(); // sender id is authoritative from the host side
 			// Relay to the other clients with the real id, then handle locally
 			Writer writer;
@@ -607,7 +611,9 @@ void Session::Impl::handleServerMessage(Session & session, MessageType type, Rea
 		case MessageType::PlayerMarker:
 		case MessageType::Blood:
 		case MessageType::PlayerSpeech:
-		case MessageType::Projectile: {
+		case MessageType::Projectile:
+		case MessageType::PlayerSpray:
+		case MessageType::SprayPlaced: {
 			PlayerId id = payload.u8_();
 			auto & handler = playerMessageHandler(session, type);
 			if(id != session.m_localId && handler) {

@@ -1049,7 +1049,8 @@ set(COOP_SOURCES
 	src/coop/Puppets.cpp
 	src/coop/Roll.cpp
 	src/coop/Qol.cpp
-	src/coop/Replication.cpp
+	src/coop/Spray.cpp
+src/coop/Replication.cpp
 	src/coop/Session.cpp
 	src/coop/ThirdPerson.cpp
 )

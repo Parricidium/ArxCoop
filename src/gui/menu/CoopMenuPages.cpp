@@ -31,6 +31,7 @@
 #include "animation/AnimationRender.h"
 #include "coop/Admin.h"
 #include "coop/Faces.h"
+#include "coop/Spray.h"
 #include "coop/Text.h"
 #include "coop/Session.h"
 #include "core/Config.h"
@@ -694,21 +695,6 @@ public:
 
 class CoopOptionsMenuPage final : public MenuPage {
 
-	TextWidget * m_faceError;
-	std::vector<std::string> m_faces;
-
-	void selectFace(size_t index) {
-		std::string file = index < m_faces.size() ? m_faces[index] : std::string();
-		if(file == config.coop.face) {
-			return;
-		}
-		config.coop.face = file;
-		config.save();
-		coop::loadLocalFace();
-		ARX_PLAYER_Restore_Skin(); // back to the skin's own textures when "Personnage" is picked
-		m_faceError->setText(coop::localFaceError());
-	}
-
 	void addToggle(std::string_view key, std::string_view fallback, bool value, std::function<void(bool)> changed) {
 		auto cb = std::make_unique<CheckboxWidget>(checkboxSize(), hFontMenu, coopText(key, fallback));
 		cb->setChecked(value);
@@ -723,17 +709,7 @@ public:
 
 	CoopOptionsMenuPage()
 		: MenuPage(Page_CoopOptions)
-		, m_faceError(nullptr)
 	{ }
-
-	//! Images added to the faces folder while the page was hidden must show up in the selector.
-	void focus() override {
-		bool initialized = m_faceError != nullptr;
-		MenuPage::focus();
-		if(initialized && coop::availableFaces() != m_faces) {
-			g_mainMenu->bReInitAll = true;
-		}
-	}
 
 	void init() override {
 
@@ -745,44 +721,6 @@ public:
 			title->setEnabled(false);
 			addCenter(std::move(title));
 		}
-
-		{
-			// Custom face: the character's own skin, or an image dropped in <user dir>/coop/faces/
-			m_faces = coop::availableFaces();
-			auto slider = std::make_unique<CycleTextWidget>(sliderSize(), hFontMenu, coopText("system_menus_coop_face", "Visage"), hFontControls);
-			slider->valueChanged = [this](int pos, std::string_view /* string */) {
-				selectFace(pos <= 0 ? m_faces.size() : size_t(pos - 1));
-			};
-			slider->addEntry(coopText("system_menus_coop_face_default", "Personnage"));
-			for(const std::string & file : m_faces) {
-				slider->addEntry(file);
-				if(file == config.coop.face) {
-					slider->selectLast();
-				}
-			}
-			addCenter(std::move(slider));
-		}
-
-		addCenter(std::make_unique<HeadPreviewWidget>(float(hFontMenu->getLineHeight() * 5)));
-
-		{
-			auto txt = std::make_unique<TextWidget>(hFontControls, coopText("system_menus_coop_face_folder", "Ouvrir le dossier des visages"));
-			txt->clicked = [](Widget * /* widget */) {
-				coop::exportFaceTemplates();
-				platform::launchDefaultProgram(coop::facesDirectory().string());
-			};
-			addCenter(std::move(txt));
-		}
-
-		{
-			auto txt = std::make_unique<TextWidget>(hFontControls, coop::localFaceError());
-			txt->setEnabled(false);
-			txt->forceDisplay(TextWidget::Enabled);
-			m_faceError = txt.get();
-			addCenter(std::move(txt));
-		}
-
-		addCenter(std::make_unique<Spacer>(hFontMenu->getLineHeight() / 3));
 
 		addToggle("system_menus_coop_third_person", "Vue à la 3e personne au lancement", config.coop.thirdPerson,
 		          [](bool checked) { config.coop.thirdPerson = checked; });
@@ -1062,6 +1000,174 @@ std::unique_ptr<MenuPage> createCoopLobbyMenuPage() {
 
 std::unique_ptr<MenuPage> createCoopAdminMenuPage() {
 	return std::make_unique<CoopAdminMenuPage>();
+}
+
+//! The player's spray tag as it will be painted (transparent where the PNG is)
+class SprayPreviewWidget final : public Widget {
+
+public:
+
+	explicit SprayPreviewWidget(float size) {
+		m_rect = Rectf(Vec2f(0.f), size, size);
+	}
+
+	void render(bool /* mouseOver */) override {
+		TextureContainer * tc = coop::localSprayPreview();
+		if(!tc) {
+			return;
+		}
+		UseRenderState state(render2D());
+		EERIEDrawBitmap(m_rect, 0.001f, tc, Color::white);
+	}
+
+	WidgetType type() const override {
+		return WidgetType_Text;
+	}
+
+};
+
+//! Co-op mod: what the other players see of you - your face and your spray tag
+class CustomizeMenuPage final : public MenuPage {
+
+	TextWidget * m_faceError;
+	std::vector<std::string> m_faces;
+	TextWidget * m_sprayError;
+	std::vector<std::string> m_sprays;
+
+	void selectFace(size_t index) {
+		std::string file = index < m_faces.size() ? m_faces[index] : std::string();
+		if(file == config.coop.face) {
+			return;
+		}
+		config.coop.face = file;
+		config.save();
+		coop::loadLocalFace();
+		ARX_PLAYER_Restore_Skin(); // back to the skin's own textures when "Personnage" is picked
+		m_faceError->setText(coop::localFaceError());
+	}
+
+	void selectSpray(size_t index) {
+		std::string file = index < m_sprays.size() ? m_sprays[index] : std::string();
+		if(file == config.coop.spray) {
+			return;
+		}
+		config.coop.spray = file;
+		config.save();
+		coop::loadLocalSpray();
+		m_sprayError->setText(coop::localSprayError());
+	}
+
+public:
+
+	CustomizeMenuPage()
+		: MenuPage(Page_Customize)
+		, m_faceError(nullptr)
+		, m_sprayError(nullptr)
+	{ }
+
+	//! Images added to the folders while the page was hidden must show up in the selectors.
+	void focus() override {
+		bool initialized = m_faceError != nullptr;
+		MenuPage::focus();
+		if(initialized && (coop::availableFaces() != m_faces || coop::availableSprays() != m_sprays)) {
+			g_mainMenu->bReInitAll = true;
+		}
+	}
+
+	void init() override {
+
+		reserveTop();
+		reserveBottom();
+
+		{
+			auto title = std::make_unique<TextWidget>(hFontMenu, coopText("system_menus_customize", "Personnalisation"));
+			title->setEnabled(false);
+			addCenter(std::move(title));
+		}
+
+		{
+			// Custom face: the character's own skin, or an image dropped in <user dir>/coop/faces/
+			m_faces = coop::availableFaces();
+			auto slider = std::make_unique<CycleTextWidget>(sliderSize(), hFontMenu, coopText("system_menus_coop_face", "Visage"), hFontControls);
+			slider->valueChanged = [this](int pos, std::string_view /* string */) {
+				selectFace(pos <= 0 ? m_faces.size() : size_t(pos - 1));
+			};
+			slider->addEntry(coopText("system_menus_coop_face_default", "Personnage"));
+			for(const std::string & file : m_faces) {
+				slider->addEntry(file);
+				if(file == config.coop.face) {
+					slider->selectLast();
+				}
+			}
+			addCenter(std::move(slider));
+		}
+
+		addCenter(std::make_unique<HeadPreviewWidget>(float(hFontMenu->getLineHeight() * 5)));
+
+		{
+			auto txt = std::make_unique<TextWidget>(hFontControls, coopText("system_menus_coop_face_folder", "Ouvrir le dossier des visages"));
+			txt->clicked = [](Widget * /* widget */) {
+				coop::exportFaceTemplates();
+				platform::launchDefaultProgram(coop::facesDirectory().string());
+			};
+			addCenter(std::move(txt));
+		}
+
+		{
+			auto txt = std::make_unique<TextWidget>(hFontControls, coop::localFaceError());
+			txt->setEnabled(false);
+			txt->forceDisplay(TextWidget::Enabled);
+			m_faceError = txt.get();
+			addCenter(std::move(txt));
+		}
+
+		addCenter(std::make_unique<Spacer>(hFontMenu->getLineHeight() / 3));
+
+		addCenter(std::make_unique<Spacer>(hFontMenu->getLineHeight() / 3));
+
+		{
+			// Spray tag: an image dropped in <user dir>/coop/sprays/, painted on the walls with the spray key
+			m_sprays = coop::availableSprays();
+			auto slider = std::make_unique<CycleTextWidget>(sliderSize(), hFontMenu, coopText("system_menus_coop_spray", "Spray (tag)"), hFontControls);
+			slider->valueChanged = [this](int pos, std::string_view /* string */) {
+				selectSpray(pos <= 0 ? m_sprays.size() : size_t(pos - 1));
+			};
+			slider->addEntry(coopText("system_menus_coop_spray_none", "Aucun"));
+			for(const std::string & file : m_sprays) {
+				slider->addEntry(file);
+				if(file == config.coop.spray) {
+					slider->selectLast();
+				}
+			}
+			addCenter(std::move(slider));
+		}
+
+		addCenter(std::make_unique<SprayPreviewWidget>(float(hFontMenu->getLineHeight() * 3)));
+
+		{
+			auto txt = std::make_unique<TextWidget>(hFontControls, coopText("system_menus_coop_spray_folder", "Ouvrir le dossier des sprays"));
+			txt->clicked = [](Widget * /* widget */) {
+				platform::launchDefaultProgram(coop::spraysDirectory().string());
+			};
+			addCenter(std::move(txt));
+		}
+
+		{
+			auto txt = std::make_unique<TextWidget>(hFontControls, coop::localSprayError());
+			txt->setEnabled(false);
+			txt->forceDisplay(TextWidget::Enabled);
+			m_sprayError = txt.get();
+			addCenter(std::move(txt));
+		}
+
+		addBackButton(Page_None);
+
+	}
+
+};
+
+std::unique_ptr<MenuPage> createCustomizeMenuPage() {
+	return std::make_unique<CustomizeMenuPage>();
 }
 
 std::unique_ptr<MenuPage> createCoopOptionsMenuPage() {

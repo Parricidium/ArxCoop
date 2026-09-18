@@ -35,6 +35,8 @@ std::unique_ptr<MenuPage> createCoopAdminMenuPage();
 
 //! "Options coop" page: face, camera, dialogue and intro settings.
 std::unique_ptr<MenuPage> createCoopOptionsMenuPage();
+//! Co-op mod: the player's face and spray tag
+std::unique_ptr<MenuPage> createCustomizeMenuPage();
 
 //! Performs a pending --coop-host / --coop-join request; call from the main menu update.
 void coopMenuHandleStartup();

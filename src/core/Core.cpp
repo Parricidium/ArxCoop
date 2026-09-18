@@ -45,6 +45,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 // Copyright (c) 1999-2001 ARKANE Studios SA. All rights reserved
 
 #include "core/Core.h"
+#include "coop/Spray.h"
 #include "coop/Puppets.h"
 #include "graphics/effects/WaterRipples.h"
 
@@ -325,6 +326,7 @@ void levelInit() {
 	LastMouseClick = 0;
 	
 	PolyBoomClear();
+	coop::spraysClear();
 	clearRippleSources(); // ArxModern
 ARX_DAMAGES_Reset();
 	ARX_MISSILES_ClearAll();

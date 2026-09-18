@@ -78,7 +78,7 @@ CE QUI EST PARTAGE
     menu_panel.*       fond du cadre des menus (321x419 ; il ASSOMBRIT ce qu'il y a derriere : blanc = rien,
                        noir = opaque).
     menu_border.*      bordure du cadre (322x424 ; PNG avec transparence, ou noir = transparent).
-  "Ouvrir le dossier des visages" (Options > Cooperation) exporte les images d'origine dans
+  "Ouvrir le dossier des visages" (Personnalisation) exporte les images d'origine dans
   userdata\coop\menu_modeles\  comme point de depart.
 - Scenes scriptees (intro, dialogues qui deplacent l'hote) : a la fin de la scene, les coequipiers restes
   loin sont teleportes a cote de l'hote. Apres un changement de niveau, pareil quelques secondes plus tard.
@@ -86,7 +86,7 @@ CE QUI EST PARTAGE
   recharge (sauvegarde automatique toutes les 3 min) et l'hote le remet la ou il etait.
 - Les sons du monde de l'hote (coups, impacts, PNJ...) sont entendus par tout le monde.
 - Les voix des heros (repliques de dialogue, efforts) sont entendues par les autres joueurs.
-- Options > Cooperation : visage, vue 3e personne au lancement, epaule, "me figer quand un
+- Menu principal > Personnalisation : visage et spray. Options > Cooperation : vue 3e personne au lancement, epaule, "me figer quand un
   coequipier dialogue" (les autres ne bougent plus pendant un dialogue cinematique), intro.
 - A gauche de l'ecran : pseudo, barre de vie (rouge) et barre de faim (orange) des coequipiers.
   En bas a gauche, a la place de l'orbe rouge : les memes barres pour vous (pseudo, vie avec le
@@ -131,13 +131,23 @@ RANGEMENT ET VENTE RAPIDES
 - Boutique ou coffre ouvert : MAJ + clic gauche sur un objet de votre inventaire l'y met directement
   (vendu chez un marchand, range dans un coffre), au lieu de le glisser.
 
-VISAGES PERSONNALISES (nouveau)
+SPRAYS (tags, nouveau)
+- Touche K (a changer dans Options > Controles > "Ajouts RT / coop") : peint votre image sur le mur,
+  le sol ou le plafond que vous regardez, a portee de bras. Tous les joueurs la voient au meme endroit,
+  eclairee comme la surface, avec la transparence de votre PNG (un JPG donne un rectangle).
+- Menu principal > Personnalisation > "Spray" : "Ouvrir le dossier des sprays" cree et ouvre
+  userdata\coop\sprays\ ; deposez-y un png/jpg (n'importe quelle taille, reduit a 128x128), revenez
+  et choisissez-le (apercu dessous). L'image part une fois aux autres joueurs, jamais ecrite chez eux.
+- Les sprays restent avec le niveau (enregistres avec lui, envoyes a qui rejoint) ; au-dela de 48 par
+  niveau, les plus anciens s'effacent. Deux secondes entre deux sprays.
+
+VISAGES PERSONNALISES
 - "Visage" : "Personnage" = la tete choisie a la creation du perso (comme avant),
   ou une image a vous. Les autres joueurs la voient sur votre personnage (et vous dans le livre).
-- Menu Options > Cooperation > "Visage" : la tete du personnage s'affiche en 3D en dessous, avec
+- Menu principal > Personnalisation > "Visage" : la tete du personnage s'affiche en 3D en dessous, avec
   le visage choisi (comme a la creation du personnage).
 - Cliquer "Ouvrir le dossier des visages" : le jeu cree le dossier  userdata\coop\faces\  (dans le
-  dossier du jeu) et l'ouvre. Deposez-y votre image, revenez sur la page Cooperation, choisissez-la
+  dossier du jeu) et l'ouvre. Deposez-y votre image, revenez sur la page Personnalisation, choisissez-la
   dans "Visage" (apercu affiche dessous).
 - PHOTO (le plus simple) : n'importe quel jpg/png, cadre SERRE sur le visage, de face, du haut du
   front au menton, sans les cheveux ni les epaules (voir visages\cadrage_photo.png : tout ce qui est

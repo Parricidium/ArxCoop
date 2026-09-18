@@ -42,6 +42,7 @@
 #include "coop/Replication.h"
 #include "coop/Roll.h"
 #include "coop/Session.h"
+#include "coop/Spray.h"
 #include "coop/Text.h"
 #include "coop/ThirdPerson.h"
 #include "physics/Ragdoll.h"
@@ -2638,6 +2639,64 @@ void puppetsTestUpdate() {
 			waterStep = 4;
 			GetSnapShot();
 			LogInfo << "[coop] test: ripples snapshot 2";
+			Logger::flush();
+		}
+		// Spray tag: the host faces the nearest wall and paints its spray, the client must get it
+		static int sprayStep = 0;
+		static PlatformInstant sprayStepTime;
+		if(g_coop.isHost() && sprayStep == 0 && (waterStep == 4 || waterStep == 9) && now - waterStepTime > std::chrono::seconds(2)) {
+			sprayStep = 1;
+			sprayStepTime = now;
+			const EERIEPOLY * wall = nullptr;
+			float bestDist = 500.f;
+			for(auto tile : g_tiles->tilesAround(player.pos, 500.f)) {
+				for(const EERIEPOLY & poly : tile.polygons()) {
+					if((poly.type & (POLY_WATER | POLY_TRANS | POLY_NOCOL)) || std::abs(poly.norm.y) > 0.3f || poly.area < 2000.f) {
+						continue;
+					}
+					float dist = glm::distance(poly.center, player.pos);
+					if(dist < bestDist && dist > 60.f && std::abs(poly.center.y - player.pos.y) < 150.f) {
+						bestDist = dist;
+						wall = &poly;
+					}
+				}
+			}
+			if(wall) {
+				// Two steps in front of it, at the height we stand
+				Vec3f spot = wall->center + wall->norm * 140.f;
+				spot.y = player.pos.y;
+				ARX_INTERACTIVE_Teleport(entities.player(), spot, true);
+				Vec3f to = wall->center - player.pos;
+				player.angle.setYaw(MAKEANGLE(glm::degrees(std::atan2(-to.x, to.z))));
+				player.angle.setPitch(0.f);
+				player.desiredangle = player.angle;
+				LogInfo << "[coop] test: host faces a wall at " << int(wall->center.x) << "," << int(wall->center.y) << "," << int(wall->center.z)
+				        << " (" << int(bestDist) << " units)";
+			} else {
+				LogInfo << "[coop] test: host found no wall nearby";
+			}
+		}
+		if(g_coop.isHost() && sprayStep == 1 && now - sprayStepTime > std::chrono::milliseconds(600)) {
+			sprayStep = 2;
+			sprayStepTime = now;
+			sprayTestPlace();
+			Logger::flush();
+		}
+		if(g_coop.isHost() && sprayStep == 2 && now - sprayStepTime > std::chrono::milliseconds(700)) {
+			sprayStep = 3;
+			sprayStepTime = now;
+			GetSnapShot();
+			std::string blob = serializeSprays();
+			size_t before = sprayCount(), piecesBefore = sprayPieceCount();
+			spraysClear();
+			restoreSprays(blob);
+			LogInfo << "[coop] test: spray snapshot; sprays block " << blob.size() << " bytes, " << before << " sprays / " << piecesBefore
+			        << " pieces before, " << sprayCount() << " / " << sprayPieceCount() << " after restore";
+			Logger::flush();
+		}
+		if(g_coop.isClient() && sprayStep == 0 && sprayCount() > 0) {
+			sprayStep = 1;
+			LogInfo << "[coop] test: client has " << sprayCount() << " spray(s), " << sprayPieceCount() << " pieces";
 			Logger::flush();
 		}
 		if(listed && ((itemStep == 4 && now - itemStepTime > std::chrono::seconds(g_coop.isHost() ? 14 : 12))

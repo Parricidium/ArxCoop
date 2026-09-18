@@ -46,6 +46,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "game/Player.h"
 
+#include "coop/Spray.h"
 #include "coop/Faces.h"
 #include "coop/Puppets.h"
 #include "coop/Roll.h"
@@ -2485,6 +2486,7 @@ void ARX_GAME_Reset() {
 
 	// PolyBooms
 	PolyBoomClear();
+	coop::spraysClear();
 
 	// Magical Flares
 	ARX_MAGICAL_FLARES_KillAll();
