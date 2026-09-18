@@ -1451,10 +1451,11 @@ void npcSyncSend() {
 
 Vec3f nearestPlayerEyePos(const Vec3f & from) {
 	Vec3f best = player.pos;
-	if(!g_coop.isHost()) {
+	if(!g_coop.isActive()) {
 		return best;
 	}
-	// A downed host is no target (like downed puppets below), unless nobody else stands
+	// (on a client too: a mirrored statue stares at the same player as on the host)
+// A downed host is no target (like downed puppets below), unless nobody else stands
 	float bestDist = isLocalDowned() ? std::numeric_limits<float>::max() : arx::distance2(from, best);
 	for(const auto & entry : g_remote) {
 		const Entity * io = findPuppet(entry.first);

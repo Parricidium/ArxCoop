@@ -950,6 +950,17 @@ void ARX_PHYSICS_Apply() {
 			continue;
 		}
 
+		if(!io->coopPuppet && coop::npcsAreMirrored() && (io->ioflags & IO_PHYSICAL_OFF)
+		   && (io->_npcdata->behavior & BEHAVIOUR_STARE_AT)) {
+			// Co-op mod: a statue that follows the players with its eyes (the crypt's gargoyles).
+			// Its head turn is not in the NPC state: done here like on the host, toward the
+			// nearest player (nearestPlayerEyePos knows the puppets on every machine)
+			GetTargetPos(io);
+			if(!g_gameTime.isPaused() && !(io->animlayer[0].flags & EA_FORCEPLAY)) {
+				StareAtTarget(io);
+			}
+		}
+
 		if(io->coopPuppet || coop::npcsAreMirrored()) {
 			continue; // Driven by the network, see coop/Puppets.cpp
 		}

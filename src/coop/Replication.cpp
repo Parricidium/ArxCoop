@@ -62,6 +62,7 @@
 #include "io/resource/PakReader.h"
 #include "io/resource/ResourcePath.h"
 #include "script/Script.h"
+#include "ai/Paths.h"
 #include "scene/Interactive.h"
 #include "audio/AudioTypes.h"
 #include "script/ScriptEvent.h"
@@ -484,7 +485,11 @@ void applyForwardedEvent(PlayerId from, Reader & reader) {
 
 	Entity * entity = entities.getById(entityId);
 	if(!entity) {
-		LogWarning << "[coop] player " << int(from) << " sent an event to unknown entity " << entityId;
+		if(entityId.compare(0, 12, "coop_player_") == 0) {
+			LogDebug("[coop] player " << int(from) << " sent " << eventName << " to a puppet, ignored");
+		} else {
+			LogWarning << "[coop] player " << int(from) << " sent an event to unknown entity " << entityId;
+		}
 		return;
 	}
 
@@ -1001,6 +1006,13 @@ void hideTakenItem(Entity & item) {
 	// otherwise the owner would get a duplicate back with the next level sync
 	item.ioflags |= IO_NOSAVE;
 	if(item.show != SHOW_FLAG_MEGAHIDE) {
+		// Out of its controlled zone first: the zone update skips hidden entities, the
+		// controller would never learn the item is gone (a puzzle stone lifted off its pillar)
+		if(item.inzone) {
+			LogInfo << "[coop] " << item.idString() << " leaves zone " << item.inzone->name << " (taken)";
+			ARX_INTERACTIVE_ForceIOLeaveZone(&item);
+			item.inzone = nullptr;
+		}
 		item.show = SHOW_FLAG_MEGAHIDE;
 		LogInfo << "[coop] " << item.idString() << " was taken by another player";
 	}
