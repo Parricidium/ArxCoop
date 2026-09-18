@@ -19,8 +19,10 @@
 
 #include "game/magic/RuneDraw.h"
 
+#include "coop/ThirdPerson.h"
 #include "core/Core.h"
 #include "core/GameTime.h"
+#include "platform/Time.h"
 #include "game/Entity.h"
 #include "game/EntityManager.h"
 #include "graphics/particle/MagicFlare.h"
@@ -170,13 +172,18 @@ void ARX_SPELLS_UpdateSymbolDraw() {
 	GameInstant now = g_gameTime.now();
 	
 	for(Entity & entity : entities) {
-		
-		if(entity == *entities.player()) {
+
+		// Co-op mod: the player's own runes are traced here too when the spell bar incants
+		// (coop/SpellBar.cpp) - on the screen in first person, like the mouse would draw them,
+		// in front of the body in third person
+		const bool isPlayer = (entity == *entities.player());
+		if(isPlayer && !entity.symboldraw) {
 			continue;
 		}
-		
+		Entity * flareIo = (isPlayer && !coop::thirdPersonActive()) ? nullptr : &entity;
+
 		IO_SPELLCAST_DATA & spellcast = entity.spellcast_data;
-		if(spellcast.castingspell != SPELL_NONE && !entity.symboldraw) {
+		if(!isPlayer && spellcast.castingspell != SPELL_NONE && !entity.symboldraw) {
 			
 			bool tst = false;
 			if(!(spellcast.spell_flags & SPELLCAST_FLAG_NOANIM) && (entity.ioflags & IO_NPC)) {
@@ -219,8 +226,10 @@ void ARX_SPELLS_UpdateSymbolDraw() {
 			
 		}
 		
-		updateIOLight(&entity);
-		
+		if(!isPlayer) {
+			updateIOLight(&entity);
+		}
+
 		if(!entity.symboldraw) {
 			continue;
 		}
@@ -251,12 +260,25 @@ void ARX_SPELLS_UpdateSymbolDraw() {
 		AnimationDuration oldtime = std::min(sd->elapsed, sd->duration);
 		sd->elapsed = elapsed;
 		
-		Vec2s pos1 = Vec2s(g_size.center()) - symbolVecScale * short(2) + sd->cPosStart * symbolVecScale;
+		// Co-op mod: the player's own rune is traced big (the NPC size is a scribble from up close),
+		// and not more than sixty flares a second like the mouse drawing
+		const Vec2s unit = isPlayer ? symbolVecScale * short(2) : symbolVecScale;
+		static PlatformInstant playerFlareTime = 0;
+		bool addFlare = true;
+		if(isPlayer) {
+			PlatformInstant frame = g_platformTime.frameStart();
+			addFlare = (frame - playerFlareTime >= std::chrono::microseconds(1s) / 60);
+			if(addFlare) {
+				playerFlareTime = frame;
+			}
+		}
+		
+		Vec2s pos1 = Vec2s(g_size.center()) - unit * short(2) + sd->cPosStart * unit;
 		
 		Vec2s old_pos = pos1;
 		for(size_t j = 0; j < nbcomponents; j++) {
 			Vec2s vect = GetSymbVector(sd->sequence[j]);
-			vect *= symbolVecScale;
+			vect *= unit;
 			vect += vect / Vec2s(2);
 			if(oldtime <= ti) {
 				float ratio = oldtime / ti;
@@ -269,13 +291,15 @@ void ARX_SPELLS_UpdateSymbolDraw() {
 		
 		for(size_t j = 0; j < nbcomponents; j++) {
 			Vec2s vect = GetSymbVector(sd->sequence[j]);
-			vect *= symbolVecScale;
+			vect *= unit;
 			vect += vect / Vec2s(2);
 			if(newtime <= ti) {
 				float ratio = newtime / ti;
 				pos1 += Vec2s(Vec2f(vect) * ratio);
-				AddFlare(Vec2f(pos1), 0.1f, 1, &entity);
-				FlareLine(Vec2f(old_pos), Vec2f(pos1), &entity);
+				if(addFlare) {
+					AddFlare(Vec2f(pos1), flareIo ? 0.1f : 0.6f, 1, flareIo);
+				}
+				FlareLine(Vec2f(old_pos), Vec2f(pos1), flareIo);
 				break;
 			}
 			pos1 += vect;
@@ -294,10 +318,10 @@ void ARX_SPELLS_ClearAllSymbolDraw() {
 }
 
 static void ARX_SPELLS_RequestSymbolDrawCommon(Entity * io, GameDuration duration,
-                                               const RuneInfo & info) {
-	
+                                               const RuneInfo & info, bool inWorld = false) {
+
 	SYMBOL_DRAW * sd;
-	if(io != entities.player()) {
+	if(io != entities.player() || inWorld) {
 		if(!io->symboldraw) {
 			io->symboldraw = new SYMBOL_DRAW;
 		}
@@ -329,14 +353,14 @@ void ARX_SPELLS_RequestSymbolDraw(Entity * io, std::string_view name, GameDurati
 	
 }
 
-void ARX_SPELLS_RequestSymbolDraw2(Entity * io, Rune symb, GameDuration duration) {
-	
+void ARX_SPELLS_RequestSymbolDraw2(Entity * io, Rune symb, GameDuration duration, bool inWorld) {
+
 	for(const RuneInfo & info : runeInfos) {
 		if(info.rune == symb) {
-			ARX_SPELLS_RequestSymbolDrawCommon(io, duration, info);
+			ARX_SPELLS_RequestSymbolDrawCommon(io, duration, info, inWorld);
 			break;
 		}
 	}
-	
+
 }
 

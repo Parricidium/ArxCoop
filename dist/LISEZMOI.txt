@@ -144,6 +144,22 @@ COUP DE PIED (nouveau)
 - En vue a la premiere personne, votre pied monte dans l'image.
 - Pas en l'air, en levitation, en escalade, en mode magie ni pendant une roulade.
 
+BARRE DE SORTS (nouveau)
+- En bas de l'ecran, comme dans un MMORPG. Les trois premieres cases sont les pre-incantations du jeu
+  (parchemin lu, runes dessinees en tenant Maj) : touches 1, 2, 3 comme avant. Le 4 annule toujours le
+  sort en cours. Les six cases suivantes, touches 5 a 0, recoivent les sorts que vous assignez.
+- Assigner : ouvrez le livre de sorts (F2), survolez ou cliquez un sort, appuyez sur la touche de la
+  case (5 a 0). La meme touche sur le meme sort vide la case. Un sort n'est que dans une case.
+- Lancer : la touche de la case. Le sort n'est pas dessine, il est INCANTE : les runes s'allument une a
+  une devant vous (0,4 s par rune, le personnage les prononce), puis le sort part a votre niveau du
+  moment, pour UN DIXIEME DE MANA EN PLUS qu'un sort dessine. Un coup recu, une roulade, un coup de
+  pied, le livre, le menu ou la meme touche interrompent l'incantation (le dixieme est perdu).
+- Une case est grisee tant qu'il vous manque les runes ou le mana. Les sorts a cible (Malediction,
+  Paralysie, Enchantement d'arme...) gardent le curseur de visee du jeu.
+- Les assignations sont enregistrees dans votre cfg.ini (comme le visage), pas dans la sauvegarde.
+- La barre passe au-dessus de l'inventaire quand il est ouvert. Options > Cooperation pour la couper ;
+  les touches se changent dans Options > Controles > "Ajouts RT / coop".
+
 SPRAYS (tags, nouveau)
 - Touche K (a changer dans Options > Controles > "Ajouts RT / coop") : peint votre image sur le mur,
   le sol ou le plafond que vous regardez, a portee de bras. Tous les joueurs la voient au meme endroit,

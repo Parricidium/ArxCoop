@@ -3571,7 +3571,6 @@ void localHudDraw(const Rectf & rect, float scale, Color lifeColor, float life) 
 		fillRect(Vec2f(x, y), half * hunger, hungerHeight, Color(215, 140, 40));
 	}
 	float stamina = glm::clamp(kickStamina(), 0.f, 1.f);
-	if(stamina < 0.99f) { static int n = 0; if(n++ % 30 == 0) LogInfo << "[coop] hud stamina " << stamina << " half " << half << " width " << width; } // TODO(dev)
 	fillRect(Vec2f(x + half + barGap, y), half, hungerHeight, Color(25, 25, 25, 170));
 	if(stamina > 0.f) {
 		fillRect(Vec2f(x + half + barGap, y), half * stamina, hungerHeight, Color(120, 200, 90));

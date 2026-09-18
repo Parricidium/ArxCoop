@@ -89,6 +89,12 @@ enum ControlAction {
 	CONTROLS_CUST_ROLL,            //!< co-op mod: dodge roll (coop/Roll.cpp)
 	CONTROLS_CUST_SPRAY,           //!< co-op mod: paint the spray tag (coop/Spray.cpp)
 	CONTROLS_CUST_KICK,            //!< co-op mod: the kick (coop/Kick.cpp)
+	CONTROLS_CUST_SPELL1,          //!< co-op mod: the spell bar, bound spells (coop/SpellBar.cpp)
+	CONTROLS_CUST_SPELL2,
+	CONTROLS_CUST_SPELL3,
+	CONTROLS_CUST_SPELL4,
+	CONTROLS_CUST_SPELL5,
+	CONTROLS_CUST_SPELL6,
 NUM_ACTION_KEY
 };
 
@@ -297,6 +303,9 @@ float lava; // lava shader strength, 0 = the original overlay
 		
 		std::string face; //!< Custom face image (file name in <user dir>/coop/faces/), empty = the character's skin
 		std::string spray; //!< Spray tag image (file name in <user dir>/coop/sprays/), empty = none
+
+		bool spellBar; //!< the spell bar at the bottom of the screen (coop/SpellBar.cpp)
+		std::string spellBarSlots; //!< its bound spells, "name,name,..." (empty name = empty case)
 
 		std::string favorites; //!< "name|address:port;name|address:port"
 

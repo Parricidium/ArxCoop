@@ -26,6 +26,7 @@
 #include <utility>
 
 #include "animation/AnimationRender.h"
+#include "coop/SpellBar.h"
 #include "core/Application.h"
 #include "core/Core.h"
 #include "core/GameTime.h"
@@ -1404,7 +1405,8 @@ void SpellsPage::drawSpells() const {
 		
 		if(MouseInBookRect(fPos, Vec2f(48, 48) * scale)) {
 			flyingover = 1;
-			
+			coop::spellBarBookHover(spellInfo.spellid);
+
 			cursorSetInteraction();
 			UNICODE_ARXDrawTextCenter(hFontInBook, bookPos + Vec2f(111, 26) * scale,
 			                          getLocalised(spellInfo.name), Color());
@@ -1436,8 +1438,9 @@ void SpellsPage::drawSpells() const {
 				color = Color::white;
 				
 				if(eeMouseDown1()) {
+					coop::spellBarBookClick(spellInfo.spellid);
 					player.SpellToMemorize.bSpell = true;
-					
+
 					arx_assert(std::size(player.SpellToMemorize.iSpellSymbols) == std::size(spellInfo.symbols));
 					for(size_t j = 0; j < std::size(spellInfo.symbols); j++) {
 						player.SpellToMemorize.iSpellSymbols[j] = spellInfo.symbols[j];
