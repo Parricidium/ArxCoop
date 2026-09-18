@@ -183,7 +183,7 @@ protocol).
 - **Spray tag** (**K**): paints your own image, like the sprays of Counter-Strike, on the wall, floor or
   ceiling you look at (within reach): everybody sees it there, lit like the surface, with the transparency
   of your PNG. Pick the image under *Personnalisation > Spray*; the sprays stay with the level (saved with
-  it, sent to whoever joins), the oldest fade out beyond 48 per level.
+  it, sent to whoever joins); one per player and level, a new one replaces your previous one.
 
 **Death and revival**
 - At 0 HP you stay **down** ("X is down!" + sound) with a 2-minute countdown.
@@ -238,7 +238,7 @@ protocol).
 | Severed parts (dismemberment) | ✅ | stay on the ground as corpse pieces, host physics, same spot everywhere, saved with the level's corpses |
 | Water ripples (Options RT) | ✅ | rings and wakes from what moves in the water, simulated on every machine from the same positions |
 | Blood trails (Options RT) | ✅ | bloody footprints after stepping in blood, on every machine from the same positions |
-| Spray tags (K key) | ✅ | each player's image travels once (PNG with alpha, 128x128); a tag is painted at the same spot on every machine, saved with the level |
+| Spray tags (K key) | ✅ | each player's image travels once (PNG with alpha, 128x128); a tag is painted at the same spot on every machine, one per player and level, saved with the level |
 | Magic traps, NPC spells (fire fields, lightning, fireballs) | ✅ | replayed for the eyes, damage dealt by the host |
 | Persistent magic fields ("blue walls") | ✅ | recreated on arrival, end together |
 | Burning players | ✅ | flames follow the player |
@@ -508,7 +508,7 @@ Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition RT (p
 - **Spray** (**K**) : peint votre propre image, comme les sprays de Counter-Strike, sur le mur, le sol ou le
   plafond visé (à portée) : tout le monde la voit là, éclairée comme la surface, avec la transparence de
   votre PNG. Image à choisir dans *Personnalisation > Spray* ; les sprays restent avec le niveau (enregistrés
-  avec lui, envoyés à qui rejoint), les plus anciens s'effacent au-delà de 48 par niveau.
+  avec lui, envoyés à qui rejoint) ; un par joueur et par niveau, le nouveau remplace le précédent.
 
 **Mort et réanimation**
 - À 0 PV on reste **à terre** (« X est à terre ! » + signal sonore) avec un compte à rebours de 2 minutes.
@@ -562,7 +562,7 @@ Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition RT (p
 | Morceaux tranchés (démembrement) | ✅ | restent au sol comme des morceaux de cadavre, physique de l'hôte, même endroit partout, enregistrés avec les cadavres du niveau |
 | Rides sur l'eau (Options RT) | ✅ | ronds et sillages de ce qui bouge dans l'eau, simulés sur chaque machine à partir des mêmes positions |
 | Traces de sang (Options RT) | ✅ | empreintes de pas ensanglantées après avoir marché dans le sang, sur chaque machine à partir des mêmes positions |
-| Sprays (touche K) | ✅ | l'image de chaque joueur voyage une fois (PNG avec transparence, 128x128) ; un spray est peint au même endroit sur chaque machine, enregistré avec le niveau |
+| Sprays (touche K) | ✅ | l'image de chaque joueur voyage une fois (PNG avec transparence, 128x128) ; un spray est peint au même endroit sur chaque machine, un par joueur et par niveau, enregistré avec le niveau |
 | Pièges magiques, sorts des PNJ (champs de feu, éclairs, boules de feu) | ✅ | rejoués pour les yeux, dégâts infligés par l'hôte |
 | Champs magiques persistants (« murs bleus ») | ✅ | recréés à l'arrivée, disparaissent ensemble |
 | Joueurs en feu | ✅ | les flammes suivent le joueur |

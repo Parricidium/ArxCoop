@@ -68,7 +68,7 @@ constexpr size_t SprayBorder = 2;          //!< transparent frame, so that the c
 constexpr float SprayHalfWidth = 42.f;     //!< world units either side of the aimed point
 constexpr float SprayRange = 330.f;        //!< how far the player can reach (about twice their height)
 constexpr float SprayThickness = 14.f;     //!< world units either side of the surface a polygon may sit at
-constexpr size_t MaxSpraysPerLevel = 48;   //!< beyond that the oldest is painted over
+constexpr size_t MaxSpraysPerLevel = 48;   //!< safety net: one per player anyway (the new one replaces the old)
 constexpr PlatformDuration SprayCooldown = 2s;
 
 //! A player's image, as it travels (PNG with alpha) and as it is painted
@@ -79,6 +79,7 @@ struct SprayImage {
 
 //! A painted spray: the polygons it covers and where each shows it
 struct Spray {
+	std::string owner; //!< nickname: a player has one spray per level, the new one replaces the old
 	std::vector<u8> encoded;
 	TextureContainer * texture = nullptr;
 	Vec3f pos = Vec3f(0.f);
@@ -402,6 +403,12 @@ void addSpray(Spray spray) {
 	if(spray.pieces.empty()) {
 		return;
 	}
+	// One per player: the previous one goes (like Counter-Strike)
+	if(!spray.owner.empty()) {
+		g_sprays.erase(std::remove_if(g_sprays.begin(), g_sprays.end(), [&spray](const Spray & other) {
+			return other.owner == spray.owner;
+		}), g_sprays.end());
+	}
 	while(g_sprays.size() >= MaxSpraysPerLevel) {
 		g_sprays.erase(g_sprays.begin());
 	}
@@ -473,12 +480,19 @@ bool aimSpray(Vec3f & pos, Vec3f & normal, Vec3f & right, Vec3f & up) {
 	return true;
 }
 
+//! The nickname a player's spray is filed under
+std::string ownerName(PlayerId id) {
+	const Player * who = g_coop.player(id);
+	return who ? who->name : "player " + std::to_string(int(id));
+}
+
 void placeSpray(PlayerId owner, const std::vector<u8> & encoded, const Vec3f & pos, const Vec3f & normal,
                 const Vec3f & right, const Vec3f & up) {
 	if(encoded.empty()) {
 		return;
 	}
 	Spray spray;
+	spray.owner = ownerName(owner);
 	spray.encoded = encoded;
 	spray.pos = pos;
 	spray.normal = normal;
@@ -486,7 +500,6 @@ void placeSpray(PlayerId owner, const std::vector<u8> & encoded, const Vec3f & p
 	spray.up = up;
 	addSpray(std::move(spray));
 	ARX_SOUND_PlaySFX(g_snd.TORCH_END, &pos, 1.6f);
-	ARX_UNUSED(owner);
 }
 
 void sendSpray(const Vec3f & pos, const Vec3f & normal, const Vec3f & right, const Vec3f & up) {
@@ -735,9 +748,10 @@ std::string serializeSprays() {
 		return std::string();
 	}
 	Writer writer;
-	writer.u32_(1); // version
+	writer.u32_(2); // version (2: the owner's nickname)
 	writer.u32_(u32(g_sprays.size()));
 	for(const Spray & spray : g_sprays) {
+		writer.string(spray.owner);
 		writer.u32_(u32(spray.encoded.size()));
 		writer.bytes(spray.encoded.data(), spray.encoded.size());
 		for(const Vec3f * v : { &spray.pos, &spray.normal, &spray.right, &spray.up }) {
@@ -757,16 +771,18 @@ void restoreSprays(std::string_view buffer) {
 	try {
 		Reader reader(reinterpret_cast<const u8 *>(buffer.data()), buffer.size());
 		u32 version = reader.u32_();
-		if(version != 1) {
+		if(version != 1 && version != 2) {
 			return;
 		}
 		u32 count = std::min(reader.u32_(), u32(MaxSpraysPerLevel));
 		for(u32 i = 0; i < count; i++) {
+			std::string owner = (version >= 2) ? reader.string() : std::string();
 			u32 size = reader.u32_();
 			if(size > MaxSprayBytes || size > reader.remaining()) {
 				throw ReadError("bad spray size");
 			}
 			Spray spray;
+			spray.owner = owner;
 			auto span = reader.rest();
 			spray.encoded.assign(span.first, span.first + size);
 			reader.skip(size);

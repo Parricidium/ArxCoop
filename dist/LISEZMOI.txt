@@ -138,8 +138,8 @@ SPRAYS (tags, nouveau)
 - Menu principal > Personnalisation > "Spray" : "Ouvrir le dossier des sprays" cree et ouvre
   userdata\coop\sprays\ ; deposez-y un png/jpg (n'importe quelle taille, reduit a 128x128), revenez
   et choisissez-le (apercu dessous). L'image part une fois aux autres joueurs, jamais ecrite chez eux.
-- Les sprays restent avec le niveau (enregistres avec lui, envoyes a qui rejoint) ; au-dela de 48 par
-  niveau, les plus anciens s'effacent. Deux secondes entre deux sprays.
+- Un seul spray par joueur et par niveau, comme dans CS : en refaire un efface le precedent. Les sprays
+  restent avec le niveau (enregistres avec lui, envoyes a qui rejoint). Deux secondes entre deux sprays.
 
 VISAGES PERSONNALISES
 - "Visage" : "Personnage" = la tete choisie a la creation du perso (comme avant),

@@ -2680,6 +2680,11 @@ void puppetsTestUpdate() {
 			sprayStep = 2;
 			sprayStepTime = now;
 			sprayTestPlace();
+			// Twice: one spray per player, the second must replace the first
+			player.angle.setPitch(25.f);
+			player.desiredangle = player.angle;
+			sprayTestPlace();
+			LogInfo << "[coop] test: host sprayed twice, " << sprayCount() << " spray(s) kept";
 			Logger::flush();
 		}
 		if(g_coop.isHost() && sprayStep == 2 && now - sprayStepTime > std::chrono::milliseconds(700)) {
@@ -2696,6 +2701,10 @@ void puppetsTestUpdate() {
 		}
 		if(g_coop.isClient() && sprayStep == 0 && sprayCount() > 0) {
 			sprayStep = 1;
+			sprayStepTime = now;
+		}
+		if(g_coop.isClient() && sprayStep == 1 && now - sprayStepTime > std::chrono::seconds(2)) {
+			sprayStep = 2;
 			LogInfo << "[coop] test: client has " << sprayCount() << " spray(s), " << sprayPieceCount() << " pieces";
 			Logger::flush();
 		}
