@@ -88,6 +88,7 @@ enum ControlAction {
 	CONTROLS_CUST_ADMIN,           //!< co-op mod: in-game administration / tools page
 	CONTROLS_CUST_ROLL,            //!< co-op mod: dodge roll (coop/Roll.cpp)
 	CONTROLS_CUST_SPRAY,           //!< co-op mod: paint the spray tag (coop/Spray.cpp)
+	CONTROLS_CUST_KICK,            //!< co-op mod: the kick (coop/Kick.cpp)
 NUM_ACTION_KEY
 };
 

@@ -57,6 +57,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "coop/PhysicsSync.h"
 #include "coop/Puppets.h"
 #include "coop/Admin.h"
+#include "coop/Kick.h"
 #include "coop/Qol.h"
 #include "coop/Spray.h"
 #include "coop/Replication.h"
@@ -713,6 +714,13 @@ static void listTest(u32 frames) {
 }
 ARX_PROGRAM_OPTION_ARG("listtest", "", "Log the entities of the level and their positions at frame N", &listTest, "FRAMES")
 
+// Co-op mod: at frame N, kick (coop/Kick.cpp); the third-person camera is set to show the leg
+static long g_kickTestFrames = -1000;
+static void kickTest(u32 frames) {
+	g_kickTestFrames = long(frames);
+}
+ARX_PROGRAM_OPTION_ARG("kicktest", "", "Kick at frame N, seen from the side in third person (animation test)", &kickTest, "FRAMES")
+
 // Co-op mod: at frame N, paint the spray tag (config coop.spray) where the player looks
 static long g_sprayTestFrames = -1000;
 static void sprayTest(u32 frames) {
@@ -1066,6 +1074,7 @@ bool ArxGame::initGame()
 	ARX_PLAYER_LoadHeroAnimsAndMesh();
 	coop::facesInit(); // needs the hero head textures and the renderer
 	coop::sprayInit(); // after facesInit(): chains its player callbacks
+	coop::kickInit();
 coop::qolInit();
 	
 	GLOBAL_EERIETEXTUREFLAG_LOADSCENE_RELEASE = old;
@@ -1508,7 +1517,8 @@ void ArxGame::updateFirstPersonCamera() {
 
 		g_playerCamera.angle = player.angle;
 		coop::rollCameraEffect(g_playerCamera.angle); // (dodge roll: the view dips)
-		
+		coop::kickCameraEffect(g_playerCamera.angle); // (kick: the view lunges)
+
 		if(VertexId viewVertex = io->obj->fastaccess.view_attach) {
 			
 			g_playerCameraStablePos = g_playerCamera.m_pos = io->obj->vertexWorldPositions[viewVertex].v;
@@ -1869,7 +1879,8 @@ void ArxGame::updateLevel() {
 		manageEditorControls();
 
 		coop::rollUpdate();
-		if(!BLOCK_PLAYER_CONTROLS && !coop::dialogueHold()) {
+		coop::kickUpdate();
+if(!BLOCK_PLAYER_CONTROLS && !coop::dialogueHold()) {
 			managePlayerControls();
 		}
 	}
@@ -2341,6 +2352,14 @@ void ArxGame::render() {
 			for(Entity & entity : entities) {
 				LogInfo << "listtest: " << entity.idString() << " at " << entity.pos.x << ' ' << entity.pos.y << ' ' << entity.pos.z;
 			}
+			if(entities.player() && entities.player()->obj) {
+				// The hero skeleton (bone names for the procedural animations, coop/Kick.cpp)
+				std::string groups;
+				for(VertexGroupId group : entities.player()->obj->grouplist.handles()) {
+					groups += " " + entities.player()->obj->grouplist[group].name;
+				}
+				LogInfo << "listtest: player groups:" << groups;
+			}
 			for(size_t i = 0; i < g_staticLights.size(); i++) {
 				const EERIE_LIGHT & light = g_staticLights[i];
 				LogInfo << "listtest: staticlight_" << i << " at " << light.pos.x << ' ' << light.pos.y << ' ' << light.pos.z
@@ -2350,6 +2369,16 @@ void ArxGame::render() {
 		g_listTestFrames--;
 	}
 	
+	if(g_kickTestFrames > -1000 && ARXmenu.mode() == Mode_InGame && !isInCinematic()) {
+		if(g_kickTestFrames == 30) {
+			coop::thirdPersonTestSet(true, true, false, 90.f); // the camera on the player's left, the right leg in view
+		}
+		if(g_kickTestFrames == 0) {
+			coop::g_kickTestRequest = true;
+		}
+		g_kickTestFrames--;
+	}
+
 	if(g_sprayTestFrames > -1000 && ARXmenu.mode() == Mode_InGame && !isInCinematic()) {
 		if(g_sprayTestFrames == 0) {
 			coop::sprayTestPlace();

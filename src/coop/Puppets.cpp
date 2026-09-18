@@ -41,6 +41,7 @@
 #include "coop/Qol.h"
 #include "coop/Replication.h"
 #include "coop/Roll.h"
+#include "coop/Kick.h"
 #include "coop/Session.h"
 #include "coop/Spray.h"
 #include "coop/Text.h"
@@ -178,6 +179,7 @@ struct PlayerSnapshot {
 	float ignition = 0.f;    //!< on fire (the engine's Entity::ignition of the player)
 	float roll = 0.f;        //!< dodge roll progress, 0 = none (coop/Roll.cpp)
 	float rollYaw = 0.f;     //!< yaw of the roll's direction (player.angle convention)
+	float kick = 0.f;        //!< kick progress, 0 = none (coop/Kick.cpp)
 IO_HALO slotHalo[3];     //!< helmet, armor, leggings glow, drawn on the puppet's mesh (puppetSlotHalo)
 	PlatformInstant received;
 };
@@ -766,6 +768,7 @@ void handlePlayerState(PlayerId id, Reader & reader) {
 	state.ignition = reader.remaining() >= sizeof(float) ? reader.f32_() : 0.f;
 	state.roll = reader.remaining() >= sizeof(float) ? reader.f32_() : 0.f;
 	state.rollYaw = reader.remaining() >= sizeof(float) ? reader.f32_() : 0.f;
+	state.kick = reader.remaining() >= sizeof(float) ? reader.f32_() : 0.f;
 state.received = platform::getTime();
 
 }
@@ -1499,6 +1502,14 @@ float puppetRollPhase(const Entity & puppet) {
 	return it == g_remote.end() ? 0.f : it->second.roll;
 }
 
+float puppetKickPhase(const Entity & puppet) {
+	if(!puppet.coopPuppet) {
+		return 0.f;
+	}
+	auto it = g_remote.find(puppetOwner(puppet));
+	return it == g_remote.end() ? 0.f : it->second.kick;
+}
+
 float puppetRollYaw(const Entity & puppet) {
 	if(!puppet.coopPuppet) {
 		return 0.f;
@@ -1668,6 +1679,7 @@ void puppetsSendLocalState() {
 	writer.f32_(std::max(io.ignition, 0.f));
 	writer.f32_(rollPhase());
 	writer.f32_(rollDirectionYaw());
+	writer.f32_(kickPhase());
 
 	g_coop.sendToOthers(MessageType::PlayerState, writer);
 	sendEquipmentIfNeeded(false);
@@ -2699,6 +2711,47 @@ void puppetsTestUpdate() {
 			        << " pieces before, " << sprayCount() << " / " << sprayPieceCount() << " after restore";
 			Logger::flush();
 		}
+		// Kick: a live monster is put in front of the host, kicked, and must have been shoved back
+		static int kickStep = 0;
+		static PlatformInstant kickStepTime;
+		static std::string kickTargetId;
+		static Vec3f kickTargetBefore;
+		static float kickTargetLife = 0.f;
+		if(g_coop.isHost() && kickStep == 0 && sprayStep == 3 && now - sprayStepTime > std::chrono::seconds(1)) {
+			kickStep = 1;
+			kickStepTime = now;
+			Entity * victim = nullptr;
+			for(Entity & io : entities) {
+				if((io.ioflags & IO_NPC) && &io != entities.player() && !io.coopPuppet && !IsDeadNPC(io) && io.obj
+				   && io.show == SHOW_FLAG_IN_SCENE && io._npcdata && io._npcdata->lifePool.current > 0.f) {
+					victim = &io;
+					break;
+				}
+			}
+			if(victim) {
+				Vec3f forward = angleToVectorXZ(player.angle.getYaw());
+				ARX_INTERACTIVE_Teleport(victim, player.pos + forward * 95.f, true);
+				kickTargetId = victim->idString();
+				kickTargetBefore = victim->pos;
+				kickTargetLife = victim->_npcdata->lifePool.current;
+				g_kickTestRequest = true;
+				LogInfo << "[coop] test: host kicks " << kickTargetId << " standing at " << int(victim->pos.x) << "," << int(victim->pos.y) << "," << int(victim->pos.z)
+				        << " (life " << kickTargetLife << ")";
+			} else {
+				kickStep = 9;
+				LogInfo << "[coop] test: no live monster to kick";
+			}
+			Logger::flush();
+		}
+		if(g_coop.isHost() && kickStep == 1 && now - kickStepTime > std::chrono::milliseconds(1500)) {
+			kickStep = 2;
+			if(Entity * victim = entities.getById(kickTargetId)) {
+				LogInfo << "[coop] test: kicked " << kickTargetId << " moved " << int(glm::distance(victim->pos, kickTargetBefore))
+				        << " units, life " << kickTargetLife << " -> " << victim->_npcdata->lifePool.current
+				        << ", forced move left " << int(glm::length(victim->forcedmove));
+			}
+			Logger::flush();
+		}
 		if(g_coop.isClient() && sprayStep == 0 && sprayCount() > 0) {
 			sprayStep = 1;
 			sprayStepTime = now;
@@ -2706,6 +2759,7 @@ void puppetsTestUpdate() {
 		if(g_coop.isClient() && sprayStep == 1 && now - sprayStepTime > std::chrono::seconds(2)) {
 			sprayStep = 2;
 			LogInfo << "[coop] test: client has " << sprayCount() << " spray(s), " << sprayPieceCount() << " pieces";
+			g_kickTestRequest = true; // (the host must hear the client's kick)
 			Logger::flush();
 		}
 		if(listed && ((itemStep == 4 && now - itemStepTime > std::chrono::seconds(g_coop.isHost() ? 14 : 12))

@@ -1048,8 +1048,9 @@ set(COOP_SOURCES
 	src/coop/PhysicsSync.cpp
 	src/coop/Puppets.cpp
 	src/coop/Roll.cpp
+	src/coop/Kick.cpp
 	src/coop/Qol.cpp
-	src/coop/Spray.cpp
+src/coop/Spray.cpp
 src/coop/Replication.cpp
 	src/coop/Session.cpp
 	src/coop/ThirdPerson.cpp

@@ -83,6 +83,8 @@ PlayerId puppetOwner(const Entity & io);
 
 //! Progress of a puppet's dodge roll (0 = none), from its player state.
 float puppetRollPhase(const Entity & puppet);
+//! The kick phase of a puppet from its last player state (0 = none), see coop/Kick.cpp
+float puppetKickPhase(const Entity & puppet);
 
 //! The yaw of a puppet's dodge roll direction (player.angle convention), from its player state.
 float puppetRollYaw(const Entity & puppet);
