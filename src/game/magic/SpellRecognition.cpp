@@ -24,6 +24,7 @@
 #include <memory>
 #include <string>
 
+#include "coop/SpellBar.h"
 #include "core/Config.h"
 
 #include "game/EntityManager.h"
@@ -750,8 +751,9 @@ static void handleRuneDetection(Rune rune) {
 	if(CurrSpellSymbol >= MAX_SPELL_SYMBOLS) {
 		CurrSpellSymbol = MAX_SPELL_SYMBOLS - 1;
 	}
-	
+
 	ARX_SOUND_PlaySFX(g_snd.SYMB[rune]);
+	coop::runeShown(rune, std::chrono::milliseconds(500)); // co-op mod: the others see it traced by our puppet
 }
 
 static void unrecognizedRune() {

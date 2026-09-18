@@ -171,6 +171,7 @@ ef update().
 	std::function<void(PlayerId id, Reader & payload)> onPlayerSpray; //!< same routing, a player's spray tag image
 	std::function<void(PlayerId id, Reader & payload)> onSprayPlaced; //!< same routing, a spray tag painted
 	std::function<void(PlayerId id, Reader & payload)> onPlayerKick;  //!< same routing, a kick landing
+	std::function<void(PlayerId id, Reader & payload)> onPlayerRune;  //!< same routing, a rune drawn
 
 	//! Client: round trip time to the host in ms (0 until measured).
 	u16 ownLatency() const { return m_ownLatency; }

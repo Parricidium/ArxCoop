@@ -157,6 +157,8 @@ BARRE DE SORTS (nouveau)
 - Une case est grisee tant qu'il vous manque les runes ou le mana. Les sorts a cible (Malediction,
   Paralysie, Enchantement d'arme...) gardent le curseur de visee du jeu.
 - Les assignations sont enregistrees dans votre cfg.ini (comme le visage), pas dans la sauvegarde.
+- Les runes que vous dessinez a la souris ou que la barre incante sont vues par les autres joueurs :
+  tracees en lumiere devant votre personnage, avec la rune prononcee.
 - La barre passe au-dessus de l'inventaire quand il est ouvert. Options > Cooperation pour la couper ;
   les touches se changent dans Options > Controles > "Ajouts RT / coop".
 
