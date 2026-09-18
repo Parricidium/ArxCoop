@@ -222,6 +222,7 @@ constexpr const ActionKey actions[NUM_ACTION_KEY] = {
 	ActionKey(Keyboard::Key_F8), // ADMIN
 	ActionKey(Keyboard::Key_Z), // ROLL (the physical key left of X / crouch; W on an AZERTY keyboard)
 	ActionKey(Keyboard::Key_K), // SPRAY (T is the torch)
+	ActionKey(Mouse::Button_3, Keyboard::Key_Y), // KICK (a side mouse button, or Y)
 };
 
 } // namespace Default
@@ -399,6 +400,7 @@ constexpr const std::string_view actions[NUM_ACTION_KEY] = {
 	"admin",
 	"roll",
 	"spray",
+	"kick",
 };
 
 // Misc options

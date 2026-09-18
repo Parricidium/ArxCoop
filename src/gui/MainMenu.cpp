@@ -1795,6 +1795,7 @@ public:
 		addControlRow(CONTROLS_CUST_CAMERA_ZOOM_OUT, "system_menus_options_input_customize_controls_camera_zoom_out", "Caméra plus loin (3e pers.)");
 		addControlRow(CONTROLS_CUST_ROLL,            "system_menus_options_input_customize_controls_roll", "Roulade (esquive)");
 		addControlRow(CONTROLS_CUST_SPRAY,           "system_menus_options_input_customize_controls_spray", "Spray (tag sur le mur)");
+		addControlRow(CONTROLS_CUST_KICK,            "system_menus_options_input_customize_controls_kick", "Coup de pied");
 addControlRow(CONTROLS_CUST_PING,            "system_menus_options_input_customize_controls_ping", "Marqueur « par ici » (coop)");
 		addControlRow(CONTROLS_CUST_ADMIN,           "system_menus_options_input_customize_controls_admin", "Administration / outils (coop)");
 

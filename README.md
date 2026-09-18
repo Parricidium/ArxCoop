@@ -180,6 +180,10 @@ protocol).
 - Off-screen teammates: arrow at the edge of the screen with the distance, shown on the minimap and
   the book map.
 - **Middle click**: "over here" marker (red double circle with the distance, 12 s, seen by all).
+- **Kick** (**mouse button 4** or **Y**), after Dark Messiah: the right foot goes out, whatever stands in
+  front is shoved back - a monster is hurt a little (3 + a fifth of your strength) and thrown off balance
+  over a few metres (into a pit, off a ledge, into the lava...), a loose object flies off. Seen on the other
+  players; the shove is the host's, so everybody sees the same thing.
 - **Spray tag** (**K**): paints your own image, like the sprays of Counter-Strike, on the wall, floor or
   ceiling you look at (within reach): everybody sees it there, lit like the surface, with the transparency
   of your PNG. Pick the image under *Personnalisation > Spray*; the sprays stay with the level (saved with
@@ -238,6 +242,7 @@ protocol).
 | Severed parts (dismemberment) | ✅ | stay on the ground as corpse pieces, host physics, same spot everywhere, saved with the level's corpses |
 | Water ripples (Options RT) | ✅ | rings and wakes from what moves in the water, simulated on every machine from the same positions |
 | Blood trails (Options RT) | ✅ | bloody footprints after stepping in blood, on every machine from the same positions |
+| Kick (mouse button 4 / Y) | ✅ | the leg on every copy of the kicker (player state), the shove and damage by the host with the kicker's strength |
 | Spray tags (K key) | ✅ | each player's image travels once (PNG with alpha, 128x128); a tag is painted at the same spot on every machine, one per player and level, saved with the level |
 | Magic traps, NPC spells (fire fields, lightning, fireballs) | ✅ | replayed for the eyes, damage dealt by the host |
 | Persistent magic fields ("blue walls") | ✅ | recreated on arrival, end together |
@@ -311,6 +316,7 @@ All configurable in *Options > Controls*.
 | **Wheel** | camera closer / further |
 | **Middle click** | "over here" marker |
 | **K** | spray tag (your image on the wall, floor or ceiling you look at) |
+| **Mouse button 4** or **Y** | kick |
 | **Hold left click** on a downed teammate | revive them |
 | **H** while looking at a downed teammate | life potion on them |
 | **F8** | admin menu |
@@ -505,6 +511,10 @@ Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition RT (p
 - Pseudo, vie et faim des coéquipiers à gauche de l'écran ; ping à côté des noms ; temps de jeu en haut.
 - Coéquipiers hors champ : flèche au bord de l'écran avec la distance, présence sur la mini-carte et la carte du livre.
 - **Clic molette** : marqueur « par ici » (double cercle rouge avec la distance, 12 s, visible par tous).
+- **Coup de pied** (**bouton 4 de la souris** ou **Y**), façon Dark Messiah : le pied droit part, ce qui est
+  devant est repoussé — un monstre est un peu blessé (3 + un cinquième de votre force) et projeté sur
+  quelques mètres (dans un trou, en bas d'une corniche, dans la lave…), un objet libre vole. Vu par les
+  autres joueurs ; la poussée est celle de l'hôte, tout le monde voit la même chose.
 - **Spray** (**K**) : peint votre propre image, comme les sprays de Counter-Strike, sur le mur, le sol ou le
   plafond visé (à portée) : tout le monde la voit là, éclairée comme la surface, avec la transparence de
   votre PNG. Image à choisir dans *Personnalisation > Spray* ; les sprays restent avec le niveau (enregistrés
@@ -562,6 +572,7 @@ Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition RT (p
 | Morceaux tranchés (démembrement) | ✅ | restent au sol comme des morceaux de cadavre, physique de l'hôte, même endroit partout, enregistrés avec les cadavres du niveau |
 | Rides sur l'eau (Options RT) | ✅ | ronds et sillages de ce qui bouge dans l'eau, simulés sur chaque machine à partir des mêmes positions |
 | Traces de sang (Options RT) | ✅ | empreintes de pas ensanglantées après avoir marché dans le sang, sur chaque machine à partir des mêmes positions |
+| Coup de pied (bouton 4 souris / Y) | ✅ | la jambe sur chaque copie du joueur (état joueur), poussée et dégâts par l'hôte avec la force du joueur |
 | Sprays (touche K) | ✅ | l'image de chaque joueur voyage une fois (PNG avec transparence, 128x128) ; un spray est peint au même endroit sur chaque machine, un par joueur et par niveau, enregistré avec le niveau |
 | Pièges magiques, sorts des PNJ (champs de feu, éclairs, boules de feu) | ✅ | rejoués pour les yeux, dégâts infligés par l'hôte |
 | Champs magiques persistants (« murs bleus ») | ✅ | recréés à l'arrivée, disparaissent ensemble |
@@ -637,6 +648,7 @@ Toutes modifiables dans *Options > Commandes*.
 | **Molette** | caméra plus près / plus loin |
 | **Clic molette** | marqueur « par ici » |
 | **K** | spray (votre image sur le mur, le sol ou le plafond visé) |
+| **Bouton 4 de la souris** ou **Y** | coup de pied |
 | **Clic gauche maintenu** sur un coéquipier à terre | le relever |
 | **H** en regardant un coéquipier à terre | potion de vie sur lui |
 | **F8** | menu Administration |

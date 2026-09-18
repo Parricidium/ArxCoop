@@ -56,6 +56,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 
 #include "game/Damage.h"
 #include "coop/Puppets.h"
+#include "coop/Kick.h"
 #include "coop/Roll.h"
 #include "game/Equipment.h"
 #include "game/EntityManager.h"
@@ -1497,7 +1498,10 @@ static void animateSkeleton(EERIE_3DOBJ * eobj, AnimLayer * animlayer,
 	
 	// Perform animation in Local space
 	Cedric_AnimateObject(&skeleton, animlayer);
-	
+	if(io) {
+		coop::kickPose(*io, eobj, skeleton); // (a player's kick: the right leg swings)
+	}
+
 	if(BH_MODE && eobj->fastaccess.head_group) {
 		Bone & bone = skeleton.bones[eobj->fastaccess.head_group];
 		bone.init.scale += Vec3f(1.f);

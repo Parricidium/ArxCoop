@@ -37,7 +37,7 @@
  */
 namespace coop {
 
-constexpr u32 ProtocolVersion = 20; // 20: PlayerSpray + SprayPlaced (spray tags)
+constexpr u32 ProtocolVersion = 21; // 21: PlayerKick, kick phase behind PlayerState
 constexpr u16 DefaultPort = 27015;
 constexpr size_t MaxPlayers = 4;
 constexpr size_t MaxNicknameLength = 24;
@@ -112,6 +112,7 @@ enum class MessageType : u16 {
 	Projectile    = 83, //!< like PlayerState: u8 shooter, f32 pos[3], f32 vect[3], f32 gravity, f32 quat[4] (x y z w), u8 fiery: this player shot an arrow (flies the same path everywhere, damage on the shooter's side only)
 	PlayerSpray   = 84, //!< like PlayerState: u8 id, u32 size, PNG bytes: this player's spray tag image (see coop/Spray.h)
 	SprayPlaced   = 85, //!< like PlayerState: u8 id, u32 area, f32 pos[3], f32 normal[3], f32 right[3], f32 up[3]: this player painted its spray there
+	PlayerKick    = 86, //!< like PlayerState: u8 id, f32 from[3], f32 forward[3]: this player's kick lands (the host shoves what is in front, see coop/Kick.cpp)
 	PhysicsState  = 80, //!< H->C: u16 n ragdolls (string id, f32 pos[3], u8 active, u16 bones, bones x f32[7] pos + quat xyzw), u16 n objects (string id, f32 pos[3], f32 angle[3], u8 active), see coop/PhysicsSync.cpp
 
 };
