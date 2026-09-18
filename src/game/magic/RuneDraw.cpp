@@ -262,7 +262,7 @@ void ARX_SPELLS_UpdateSymbolDraw() {
 		
 		// Co-op mod: the player's own rune is traced big (the NPC size is a scribble from up close),
 		// and not more than sixty flares a second like the mouse drawing
-		const Vec2s unit = isPlayer ? symbolVecScale * short(2) : symbolVecScale;
+		const Vec2s unit = (isPlayer || entity.coopPuppet) ? symbolVecScale * short(2) : symbolVecScale;
 		static PlatformInstant playerFlareTime = 0;
 		bool addFlare = true;
 		if(isPlayer) {

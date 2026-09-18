@@ -33,10 +33,14 @@
  */
 #include <cstddef>
 
+#include "coop/Protocol.h"
+#include "core/TimeTypes.h"
 #include "game/magic/SpellData.h"
 #include "math/Rectangle.h"
 
 namespace coop {
+
+class Reader;
 
 //! The number of bound-spell cases (keys 5 to 0)
 constexpr size_t SpellBarSlots = 6;
@@ -59,6 +63,15 @@ bool spellBarCasting();
 //! Book, spells page: the spell under the mouse this frame / the spell just clicked.
 void spellBarBookHover(SpellType spell);
 void spellBarBookClick(SpellType spell);
+
+/*!
+ * A rune we drew with the mouse (SpellRecognition.cpp) or incanted from the bar: the other players
+ * see it traced in front of our puppet, \a duration long, and hear it (PlayerRune).
+ */
+void runeShown(Rune rune, GameDuration duration);
+
+//! Received a PlayerRune message from player \a id.
+void handlePlayerRune(PlayerId id, Reader & reader);
 
 //! Test: bind \a spell to \a slot (0-based) without the book
 void spellBarTestBind(size_t slot, SpellType spell);

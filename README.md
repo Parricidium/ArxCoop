@@ -174,7 +174,8 @@ protocol).
 **The other players**
 - Seen with their head (or **custom face**), armour, weapon, torch and animations (running, jumping,
   crouching, fighting, casting, leaning, talking head).
-- Teammates' spells are visible (damage computed by the caster).
+- Teammates' spells are visible (damage computed by the caster), and so are the **runes** they draw or
+  incant: glowing glyphs traced in front of their character, with the spoken rune.
 - **Hand over an item**: right-click it in your inventory, then click the teammate.
 - Teammates' name, life and hunger on the left of the screen; ping next to the names; play time at the top.
   Your own bars bottom left, where the red orb was: life, mana (the blue orb goes), then hunger and stamina.
@@ -256,7 +257,8 @@ protocol).
 | Blood trails (Options RT) | ✅ | bloody footprints after stepping in blood, on every machine from the same positions |
 | Kick (mouse button 4 / Y) | ✅ | the leg on every copy of the kicker (player state); the shove, the ragdoll throw and the get-up by the host with the kicker's skill, the ragdoll mirrored like a corpse's |
 | Spray tags (K key) | ✅ | each player's image travels once (PNG with alpha, 128x128); a tag is painted at the same spot on every machine, one per player and level, saved with the level |
-| Spell bar (keys 5-0) | ✅ | the incantation is local; the spell leaves through the same path as a drawn one (seen by all, damage by the host); the bindings live in each player's config |
+| Spell bar (keys 5-0) | ✅ | the spell leaves through the same path as a drawn one (seen by all, damage by the host); the bindings live in each player's config |
+| Runes (drawn or incanted) | ✅ | each rune a player draws with the mouse or incants from the bar is traced in front of their character on every machine, with its sound (PlayerRune) |
 | Magic traps, NPC spells (fire fields, lightning, fireballs) | ✅ | replayed for the eyes, damage dealt by the host |
 | Persistent magic fields ("blue walls") | ✅ | recreated on arrival, end together |
 | Burning players | ✅ | flames follow the player |
@@ -520,7 +522,8 @@ Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition RT (p
 **Les autres joueurs**
 - Vus avec leur tête (ou leur **visage personnalisé**), leur armure, leur arme, leur torche, leurs
   animations (course, saut, accroupi, combat, sorts, penchés, tête qui parle).
-- Sorts des coéquipiers visibles (dégâts calculés chez le lanceur).
+- Sorts des coéquipiers visibles (dégâts calculés chez le lanceur), et les **runes** qu'ils dessinent ou
+  incantent aussi : glyphes lumineux tracés devant leur personnage, avec la rune prononcée.
 - **Donner un objet** : clic droit sur l'objet dans l'inventaire, puis clic sur le coéquipier.
 - Pseudo, vie et faim des coéquipiers à gauche de l'écran ; ping à côté des noms ; temps de jeu en haut.
   Vos propres barres en bas à gauche, à la place de l'orbe rouge : vie, mana (l'orbe bleu disparaît), puis faim et endurance.
@@ -603,7 +606,8 @@ Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition RT (p
 | Traces de sang (Options RT) | ✅ | empreintes de pas ensanglantées après avoir marché dans le sang, sur chaque machine à partir des mêmes positions |
 | Coup de pied (bouton 4 souris / Y) | ✅ | la jambe sur chaque copie du joueur (état joueur) ; poussée, projection en ragdoll et relevé par l'hôte avec la compétence du joueur, ragdoll reflété comme celui d'un cadavre |
 | Sprays (touche K) | ✅ | l'image de chaque joueur voyage une fois (PNG avec transparence, 128x128) ; un spray est peint au même endroit sur chaque machine, un par joueur et par niveau, enregistré avec le niveau |
-| Barre de sorts (touches 5-0) | ✅ | l'incantation est locale ; le sort part par le même chemin qu'un sort dessiné (vu par tous, dégâts par l'hôte) ; les assignations sont dans la config de chaque joueur |
+| Barre de sorts (touches 5-0) | ✅ | le sort part par le même chemin qu'un sort dessiné (vu par tous, dégâts par l'hôte) ; les assignations sont dans la config de chaque joueur |
+| Runes (dessinées ou incantées) | ✅ | chaque rune qu'un joueur dessine à la souris ou incante depuis la barre est tracée devant son personnage sur chaque machine, avec son son (PlayerRune) |
 | Pièges magiques, sorts des PNJ (champs de feu, éclairs, boules de feu) | ✅ | rejoués pour les yeux, dégâts infligés par l'hôte |
 | Champs magiques persistants (« murs bleus ») | ✅ | recréés à l'arrivée, disparaissent ensemble |
 | Joueurs en feu | ✅ | les flammes suivent le joueur |

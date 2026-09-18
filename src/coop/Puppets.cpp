@@ -43,6 +43,7 @@
 #include "coop/Roll.h"
 #include "coop/Kick.h"
 #include "coop/Session.h"
+#include "coop/SpellBar.h"
 #include "coop/Spray.h"
 #include "coop/Text.h"
 #include "coop/ThirdPerson.h"
@@ -2842,6 +2843,18 @@ void puppetsTestUpdate() {
 			sprayStep = 2;
 			LogInfo << "[coop] test: client has " << sprayCount() << " spray(s), " << sprayPieceCount() << " pieces";
 			g_kickTestRequest = true; // (the host must hear the client's kick)
+			Logger::flush();
+		}
+		if(g_coop.isClient() && sprayStep == 2 && now - sprayStepTime > std::chrono::seconds(4)) {
+			sprayStep = 3;
+			// The spell bar: the host must see the runes traced by our puppet, then the fireball
+			ARX_PLAYER_Rune_Add_All();
+			player.m_attribute.mind = std::max(player.m_attribute.mind, 40.f);
+			ARX_PLAYER_ComputePlayerFullStats();
+			player.manaPool.current = player.manaPool.max;
+			spellBarTestBind(0, SPELL_FIREBALL);
+			spellBarTestPress(0);
+			LogInfo << "[coop] test: client incants a fireball from the spell bar";
 			Logger::flush();
 		}
 		if(listed && ((itemStep == 4 && now - itemStepTime > std::chrono::seconds(g_coop.isHost() ? 14 : 12))

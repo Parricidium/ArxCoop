@@ -37,7 +37,7 @@
  */
 namespace coop {
 
-constexpr u32 ProtocolVersion = 22; // 22: living ragdolls in PhysicsState (a kicked monster gets up)
+constexpr u32 ProtocolVersion = 23; // 23: PlayerRune (the runes a player draws or incants, seen by all)
 constexpr u16 DefaultPort = 27015;
 constexpr size_t MaxPlayers = 4;
 constexpr size_t MaxNicknameLength = 24;
@@ -113,7 +113,8 @@ enum class MessageType : u16 {
 	PlayerSpray   = 84, //!< like PlayerState: u8 id, u32 size, PNG bytes: this player's spray tag image (see coop/Spray.h)
 	SprayPlaced   = 85, //!< like PlayerState: u8 id, u32 area, f32 pos[3], f32 normal[3], f32 right[3], f32 up[3]: this player painted its spray there
 	PlayerKick    = 86, //!< like PlayerState: u8 id, f32 from[3], f32 forward[3]: this player's kick lands (the host shoves what is in front, see coop/Kick.cpp)
-	PhysicsState  = 80, //!< H->C: u16 n ragdolls (string id, f32 pos[3], u8 active, u16 bones, bones x f32[7] pos + quat xyzw), u16 n objects (string id, f32 pos[3], f32 angle[3], u8 active), see coop/PhysicsSync.cpp
+	PlayerRune    = 87, //!< like PlayerState: u8 id, u8 rune, u16 ms: this player drew (or incanted) a rune, traced in front of its puppet (see coop/SpellBar.cpp)
+PhysicsState  = 80, //!< H->C: u16 n ragdolls (string id, f32 pos[3], u8 active, u16 bones, bones x f32[7] pos + quat xyzw), u16 n objects (string id, f32 pos[3], f32 angle[3], u8 active), see coop/PhysicsSync.cpp
 
 };
 

@@ -27,7 +27,9 @@
 
 #include "animation/Animation.h"
 #include "coop/Kick.h"
+#include "coop/Puppets.h"
 #include "coop/Roll.h"
+#include "coop/Session.h"
 #include "coop/Text.h"
 #include "coop/ThirdPerson.h"
 #include "core/Config.h"
@@ -191,6 +193,7 @@ void startCast(size_t slot) {
 	}
 
 	if(!knowsSpell(spell) || !GLOBAL_MAGIC_MODE) {
+		LogInfo << "[coop] spell bar: cannot cast " << getSpellName(spell) << " (runes " << knowsSpell(spell) << ", magic " << GLOBAL_MAGIC_MODE << ")";
 		ARX_SOUND_PlaySpeech("player_cantcast");
 		return;
 	}
@@ -198,6 +201,7 @@ void startCast(size_t slot) {
 	float cost = manaCost(spell);
 	float surcharge = cost * ManaSurcharge;
 	if(player.manaPool.current < cost + surcharge) {
+		LogInfo << "[coop] spell bar: not enough mana for " << getSpellName(spell) << " (" << player.manaPool.current << " < " << cost + surcharge << ")";
 		ARX_SOUND_PlaySFX(g_snd.MAGIC_FIZZLE);
 		notification_add("player_cantcast");
 		return;
@@ -233,6 +237,7 @@ void drawRune(Rune rune) {
 	// In first person the runes are traced on the screen like the mouse would (RuneDraw.cpp takes
 	// the player's symboldraw as "in front of the camera"); in third person, in front of the body
 	ARX_SPELLS_RequestSymbolDraw2(entities.player(), rune, RuneTime, true);
+	runeShown(rune, RuneTime);
 }
 
 void launchCast() {
@@ -356,8 +361,34 @@ Rectf shrink(const Rectf & rect, float by) {
 
 } // anonymous namespace
 
+void runeShown(Rune rune, GameDuration duration) {
+	if(!g_coop.isActive() || rune == RUNE_NONE) {
+		return;
+	}
+	Writer writer;
+	writer.u8_(g_coop.localId());
+	writer.u8_(u8(rune));
+	writer.u16_(u16(glm::clamp(long(toMsf(duration)), 50l, 5000l)));
+	g_coop.sendToOthers(MessageType::PlayerRune, writer);
+}
+
+void handlePlayerRune(PlayerId id, Reader & reader) {
+	u8 rune = reader.u8_();
+	u16 ms = reader.u16_();
+	Entity * puppet = puppetOf(id);
+	if(!puppet || rune >= RUNE_COUNT) {
+		return;
+	}
+	LogInfo << "[coop] rune " << int(rune) << " from player " << int(id) << " traced by its puppet (" << ms << " ms)";
+	ARX_SOUND_PlaySFX(g_snd.SYMB[rune], &puppet->pos);
+	// The puppet is an NPC for RuneDraw.cpp: the rune is traced in front of it with the flares
+	// tied to it (MagicFlare.cpp hangs them at chest height, the puppet's pos is at the eyes)
+	ARX_SPELLS_RequestSymbolDraw2(puppet, Rune(rune), std::chrono::milliseconds(ms));
+}
+
 void spellBarInit() {
 
+	g_coop.onPlayerRune = handlePlayerRune;
 	g_slots.fill(SPELL_NONE);
 
 	std::string_view value = config.coop.spellBarSlots;
@@ -416,6 +447,12 @@ void spellBarUpdate() {
 
 	if(!spellBarActive()) {
 		interruptCast("menu"); // the arms come down when the game resumes
+		for(bool & press : g_testPress) {
+			if(press) {
+				LogInfo << "[coop] spell bar: test press while inactive (enabled " << config.coop.spellBar << ", menu " << int(ARXmenu.mode()) << ")";
+				press = false;
+			}
+		}
 		return;
 	}
 
@@ -435,12 +472,16 @@ void spellBarUpdate() {
 	}
 
 	if(player.Interface & INTER_PLAYERBOOK) {
+		LogInfo << "[coop] spell bar: key " << pressed << " in the book";
 		bindSlot(pressed, bookCandidate());
 		return;
 	}
 
 	if(BLOCK_PLAYER_CONTROLS || player.lifePool.current <= 0.f || player.m_paralysed
 	   || cinematicBorder.isActive() || !(player.Interface & INTER_LIFE_MANA)) {
+		LogInfo << "[coop] spell bar: key ignored (controls blocked " << BLOCK_PLAYER_CONTROLS << ", paralysed "
+		        << player.m_paralysed << ", cinematic " << cinematicBorder.isActive() << ", hud "
+		        << ((player.Interface & INTER_LIFE_MANA) != 0) << ")";
 		return;
 	}
 	if(g_cast.spell != SPELL_NONE) {
@@ -450,15 +491,19 @@ void spellBarUpdate() {
 		return;
 	}
 	if(g_slots[pressed] == SPELL_NONE) {
+		LogInfo << "[coop] spell bar: key " << pressed << " on an empty case";
 		notification_add(trs("coop_spellbar_empty", "Case vide : ouvrez le livre de sorts pour y ranger un sort"));
 		return;
 	}
 	// Same guards as the precast keys (Interface.cpp)
 	if(!(((player.Interface & INTER_COMBATMODE) && !player.isAiming()) || !player.doingmagic)) {
+		LogInfo << "[coop] spell bar: key ignored (magic mode)";
 		return;
 	}
 	if(rollActive() || kickPhase() > 0.f || player.jumpphase != NotJumping
 	   || (g_lastLaunch != 0 && g_gameTime.now() - g_lastLaunch < CastCooldown)) {
+		LogInfo << "[coop] spell bar: key ignored (roll " << rollActive() << ", kick " << kickPhase() << ", jump "
+		        << (player.jumpphase != NotJumping) << ", cooldown " << (g_lastLaunch != 0) << ")";
 		return;
 	}
 	startCast(pressed);
