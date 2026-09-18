@@ -2446,12 +2446,41 @@ bool cutsceneStarts(std::string_view command, const script::Context & context) {
 	return command == "cine";
 }
 
+/*!
+ * The cutscene the host took over, while it lasts. Its script often ends it from a timer armed
+ * before the take-over ("TIMERmummy 1 6 GOTO deactivate", then SET_PLAYER_CONTROLS OFF): that
+ * timer still acts as the client, and its CAMERA_ACTIVATE NONE / SET_PLAYER_CONTROLS ON /
+ * CINEMASCOPE OFF were redirected to the client, leaving the host stuck in the scene (JD, the
+ * mummy behind the window of the crypt, 18/09). While the host is in a scene taken over from
+ * player N, what that player's actions direct at "the player" is the host's.
+ */
+struct Takeover {
+	PlayerId from = InvalidPlayerId;
+	PlatformInstant since;
+};
+Takeover g_takeover;
+
+bool cutsceneTakenOver() {
+	if(g_takeover.from == InvalidPlayerId) {
+		return false;
+	}
+	if(platform::getTime() - g_takeover.since > std::chrono::seconds(2)
+	   && !cinematicBorder.isActive() && !BLOCK_PLAYER_CONTROLS) {
+		LogInfo << "[coop] the cutscene taken over from player " << int(g_takeover.from) << " is over";
+		g_takeover.from = InvalidPlayerId;
+		return false;
+	}
+	return true;
+}
+
 void takeOverCutscene(const Entity & npc) {
 	Entity * puppet = puppetOf(g_actingPlayer);
 	Entity * me = entities.player();
 	if(!puppet || !me || puppet->show != SHOW_FLAG_IN_SCENE) {
 		return; // the client is not in our level: the scene stays theirs
 	}
+	g_takeover.from = g_actingPlayer;
+	g_takeover.since = platform::getTime();
 	// Stand where they stand (a little to the side), facing the NPC
 	Vec3f toNpc = npc.pos - puppet->pos;
 	toNpc.y = 0.f;
@@ -2480,7 +2509,8 @@ CommandSync commandSync(std::string_view command, const script::Context & contex
 	}
 
 	if(g_actingPlayer != InvalidPlayerId && g_actingPlayer != g_coop.localId() && !entity->coopProxy
-	   && !isPlayerSide(entity) && cutsceneStarts(command, context)) {
+	   && !isPlayerSide(entity) && cutsceneStarts(command, context)
+	   && !(g_actingPlayer == g_takeover.from && cutsceneTakenOver())) { // (already ours: no second teleport)
 		takeOverCutscene(*entity);
 	}
 
@@ -2541,6 +2571,9 @@ CommandSync commandSync(std::string_view command, const script::Context & contex
 			// "-e <command when done>": the host must run the animation too so that the script goes
 			// on when it ends; the acting client gets the animation alone (see commandReplicated)
 			return CommandSync::Replicate;
+		}
+		if(g_actingPlayer == g_takeover.from && cutsceneTakenOver()) {
+			return CommandSync::Local; // the scene we took over goes on (and ends) here
 		}
 		return g_actingPlayer != g_coop.localId() ? CommandSync::Redirect : CommandSync::Local;
 	}
