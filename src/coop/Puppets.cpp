@@ -2743,8 +2743,14 @@ void puppetsTestUpdate() {
 			}
 			Logger::flush();
 		}
-		if(g_coop.isHost() && kickStep == 1 && now - kickStepTime > std::chrono::milliseconds(1500)) {
+		if(g_coop.isHost() && kickStep == 1 && now - kickStepTime > std::chrono::milliseconds(400)) {
 			kickStep = 2;
+			kickStepTime = now;
+			GetSnapShot(); // (the leg out, the stamina bar down)
+			LogInfo << "[coop] test: kick snapshot, phase " << kickPhase() << " stamina " << kickStamina();
+		}
+		if(g_coop.isHost() && kickStep == 2 && now - kickStepTime > std::chrono::milliseconds(1100)) {
+			kickStep = 3;
 			if(Entity * victim = entities.getById(kickTargetId)) {
 				LogInfo << "[coop] test: kicked " << kickTargetId << " moved " << int(glm::distance(victim->pos, kickTargetBefore))
 				        << " units, life " << kickTargetLife << " -> " << victim->_npcdata->lifePool.current
@@ -3477,13 +3483,30 @@ void localHudDraw(const Rectf & rect, float scale, Color lifeColor, float life) 
 	float width = rect.width();
 	float y = rect.bottom;
 
-	// Bottom up, so the bars stay anchored where the orb was
+	// Bottom up, so the bars stay anchored where the orb was: hunger and stamina side by side,
+	// then mana (the blue orb is not drawn in co-op), then life, then the name line
 	float hungerHeight = 5.f * scale;
 	y -= hungerHeight;
+	float barGap = 3.f * scale;
+	float half = (width - barGap) * 0.5f;
 	float hunger = glm::clamp(player.hunger * 0.01f, 0.f, 1.f);
-	fillRect(Vec2f(x, y), width, hungerHeight, Color(25, 25, 25, 170));
+	fillRect(Vec2f(x, y), half, hungerHeight, Color(25, 25, 25, 170));
 	if(hunger > 0.f) {
-		fillRect(Vec2f(x, y), width * hunger, hungerHeight, Color(215, 140, 40));
+		fillRect(Vec2f(x, y), half * hunger, hungerHeight, Color(215, 140, 40));
+	}
+	float stamina = glm::clamp(kickStamina(), 0.f, 1.f);
+	if(stamina < 0.99f) { static int n = 0; if(n++ % 30 == 0) LogInfo << "[coop] hud stamina " << stamina << " half " << half << " width " << width; } // TODO(dev)
+	fillRect(Vec2f(x + half + barGap, y), half, hungerHeight, Color(25, 25, 25, 170));
+	if(stamina > 0.f) {
+		fillRect(Vec2f(x + half + barGap, y), half * stamina, hungerHeight, Color(120, 200, 90));
+	}
+
+	float manaHeight = 6.f * scale;
+	y -= manaHeight + 2.f * scale;
+	float mana = player.manaPool.max > 0.f ? glm::clamp(player.manaPool.current / player.manaPool.max, 0.f, 1.f) : 0.f;
+	fillRect(Vec2f(x, y), width, manaHeight, Color(25, 25, 25, 170));
+	if(mana > 0.f) {
+		fillRect(Vec2f(x, y), width * mana, manaHeight, Color(70, 110, 230));
 	}
 
 	float lifeHeight = 10.f * scale;

@@ -716,10 +716,14 @@ ARX_PROGRAM_OPTION_ARG("listtest", "", "Log the entities of the level and their 
 
 // Co-op mod: at frame N, kick (coop/Kick.cpp); the third-person camera is set to show the leg
 static long g_kickTestFrames = -1000;
-static void kickTest(u32 frames) {
-	g_kickTestFrames = long(frames);
+static bool g_kickTestFollow = false; // the regular third-person camera instead of the side view
+static bool g_kickTestFirstPerson = false;
+static void kickTest(const std::string & spec) {
+	g_kickTestFrames = std::atol(spec.c_str());
+	g_kickTestFollow = spec.find("follow") != std::string::npos;
+	g_kickTestFirstPerson = spec.find("fp") != std::string::npos;
 }
-ARX_PROGRAM_OPTION_ARG("kicktest", "", "Kick at frame N, seen from the side in third person (animation test)", &kickTest, "FRAMES")
+ARX_PROGRAM_OPTION_ARG("kicktest", "", "Kick at frame N (\"N\" = seen from the side, \"N,follow\" = the usual third-person view, \"N,fp\" = first person)", &kickTest, "SPEC")
 
 // Co-op mod: at frame N, paint the spray tag (config coop.spray) where the player looks
 static long g_sprayTestFrames = -1000;
@@ -2370,11 +2374,27 @@ void ArxGame::render() {
 	}
 	
 	if(g_kickTestFrames > -1000 && ARXmenu.mode() == Mode_InGame && !isInCinematic()) {
-		if(g_kickTestFrames == 30) {
-			coop::thirdPersonTestSet(true, true, false, 90.f); // the camera on the player's left, the right leg in view
+		if(g_kickTestFrames == 30 && !g_kickTestFirstPerson) {
+			if(g_kickTestFollow) {
+				coop::thirdPersonTestSet(true, false, false, 0.f);
+			} else {
+				coop::thirdPersonTestSet(true, true, false, 90.f); // the camera on the player's left, the right leg in view
+			}
 		}
 		if(g_kickTestFrames == 0) {
 			coop::g_kickTestRequest = true;
+		}
+		if(g_kickTestFrames == -30 && entities.player() && entities.player()->obj) {
+			// Where the foot went: ahead of the hip along the facing, or behind
+			EERIE_3DOBJ * obj = entities.player()->obj;
+			VertexGroupId foot = EERIE_OBJECT_GetGroup(obj, "right_foot");
+			VertexGroupId hip = EERIE_OBJECT_GetGroup(obj, "right_hip");
+			if(foot && hip) {
+				Vec3f d = obj->vertexWorldPositions[obj->grouplist[foot].origin].v - obj->vertexWorldPositions[obj->grouplist[hip].origin].v;
+				Vec3f forward = angleToVectorXZ(player.angle.getYaw());
+				LogInfo << "kicktest: foot " << glm::dot(d, forward) << " units ahead of the hip, " << -d.y << " above it (yaw "
+				        << player.angle.getYaw() << ", follow " << g_kickTestFollow << ")";
+			}
 		}
 		g_kickTestFrames--;
 	}

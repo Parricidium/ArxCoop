@@ -47,6 +47,9 @@ void kickUpdate();
 //! Our own kick's progress, 0 = none, 1 = done.
 float kickPhase();
 
+//! Our stamina, 0..1: a kick costs a share of it, it comes back with time (see the local HUD).
+float kickStamina();
+
 //! The kick to show on an entity: the local player's, or a puppet's (from its player state).
 float kickPhaseOf(const Entity & io);
 

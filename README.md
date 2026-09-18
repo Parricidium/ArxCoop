@@ -177,13 +177,15 @@ protocol).
 - Teammates' spells are visible (damage computed by the caster).
 - **Hand over an item**: right-click it in your inventory, then click the teammate.
 - Teammates' name, life and hunger on the left of the screen; ping next to the names; play time at the top.
+  Your own bars bottom left, where the red orb was: life, mana (the blue orb goes), then hunger and stamina.
 - Off-screen teammates: arrow at the edge of the screen with the distance, shown on the minimap and
   the book map.
 - **Middle click**: "over here" marker (red double circle with the distance, 12 s, seen by all).
 - **Kick** (**mouse button 4** or **Y**), after Dark Messiah: the right foot goes out, whatever stands in
   front is shoved back - a monster is hurt a little (3 + a fifth of your strength) and thrown off balance
   over a few metres (into a pit, off a ledge, into the lava...), a loose object flies off. Seen on the other
-  players; the shove is the host's, so everybody sees the same thing.
+  players (and your own boot in first person); the shove is the host's, so everybody sees the same thing.
+  A kick takes a third of your **stamina** (the green bar, next to hunger), back in a few seconds.
 - **Spray tag** (**K**): paints your own image, like the sprays of Counter-Strike, on the wall, floor or
   ceiling you look at (within reach): everybody sees it there, lit like the surface, with the transparency
   of your PNG. Pick the image under *Personnalisation > Spray*; the sprays stay with the level (saved with
@@ -509,12 +511,15 @@ Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition RT (p
 - Sorts des coéquipiers visibles (dégâts calculés chez le lanceur).
 - **Donner un objet** : clic droit sur l'objet dans l'inventaire, puis clic sur le coéquipier.
 - Pseudo, vie et faim des coéquipiers à gauche de l'écran ; ping à côté des noms ; temps de jeu en haut.
+  Vos propres barres en bas à gauche, à la place de l'orbe rouge : vie, mana (l'orbe bleu disparaît), puis faim et endurance.
 - Coéquipiers hors champ : flèche au bord de l'écran avec la distance, présence sur la mini-carte et la carte du livre.
 - **Clic molette** : marqueur « par ici » (double cercle rouge avec la distance, 12 s, visible par tous).
 - **Coup de pied** (**bouton 4 de la souris** ou **Y**), façon Dark Messiah : le pied droit part, ce qui est
   devant est repoussé — un monstre est un peu blessé (3 + un cinquième de votre force) et projeté sur
   quelques mètres (dans un trou, en bas d'une corniche, dans la lave…), un objet libre vole. Vu par les
-  autres joueurs ; la poussée est celle de l'hôte, tout le monde voit la même chose.
+  autres joueurs (et votre propre pied en vue à la première personne) ; la poussée est celle de l'hôte, tout le
+  monde voit la même chose. Un coup prend un tiers de votre **endurance** (barre verte, à côté de la faim),
+  revenue en quelques secondes.
 - **Spray** (**K**) : peint votre propre image, comme les sprays de Counter-Strike, sur le mur, le sol ou le
   plafond visé (à portée) : tout le monde la voit là, éclairée comme la surface, avec la transparence de
   votre PNG. Image à choisir dans *Personnalisation > Spray* ; les sprays restent avec le niveau (enregistrés

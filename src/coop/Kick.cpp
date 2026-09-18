@@ -67,7 +67,10 @@ constexpr float KickForce = 330.f;        //!< the shove of a monster (world uni
 constexpr float KickDamageBase = 3.f;     //!< hit points, plus a share of the strength
 constexpr float KickDamageStrength = 0.2f;
 constexpr float ObjectSpeed = 1.2f;       //!< a loose object flies off at this (throw units)
-constexpr float ViewLunge = 5.f;          //!< degrees, first-person forward dip at the impact
+constexpr float StaminaCost = 0.34f;      //!< share of the stamina a kick takes (three in a row, then wait)
+constexpr float StaminaRegen = 0.28f;     //!< per second, once the delay below has passed
+constexpr PlatformDuration StaminaDelay = std::chrono::milliseconds(900); //!< after a kick, before it comes back
+constexpr float ViewLunge = 22.f;         //!< degrees, first-person forward dip at the impact (brings the boot into view)
 
 // The leg, degrees. Thigh: forward is positive; knee: bent is positive.
 constexpr float ThighBack = -18.f;        //!< wind-up
@@ -77,6 +80,7 @@ constexpr float KneeReturn = 35.f;        //!< coming back down
 
 bool g_kicking = false;
 bool g_hitDone = false;
+float g_stamina = 1.f;
 PlatformInstant g_start;
 PlatformInstant g_end;
 Vec3f g_direction(0.f);
@@ -207,6 +211,10 @@ void kickInit() {
 	g_coop.onPlayerKick = handlePlayerKick;
 }
 
+float kickStamina() {
+	return g_stamina;
+}
+
 float kickPhase() {
 	if(!g_kicking) {
 		return 0.f;
@@ -231,6 +239,11 @@ void kickUpdate() {
 		return;
 	}
 
+	// The stamina comes back once the last kick is behind (not while kicking)
+	if(!g_kicking && g_stamina < 1.f && g_platformTime.frameStart() - g_start >= StaminaDelay) {
+		g_stamina = std::min(1.f, g_stamina + StaminaRegen * toMsf(g_platformTime.lastFrameDuration()) * 0.001f);
+	}
+
 	if(!g_kicking) {
 		bool pressed = GInput->actionNowPressed(CONTROLS_CUST_KICK) || g_kickTestRequest;
 		bool test = g_kickTestRequest;
@@ -241,6 +254,10 @@ void kickUpdate() {
 		   || rollActive() || g_platformTime.frameStart() - g_end < KickCooldown) {
 			return;
 		}
+		if(g_stamina < StaminaCost - 0.001f && !test) {
+			return; // out of breath: the bar in the HUD says so
+		}
+		g_stamina = std::max(0.f, g_stamina - StaminaCost);
 		g_kicking = true;
 		g_hitDone = false;
 		g_start = g_platformTime.frameStart();
@@ -274,9 +291,7 @@ void kickUpdate() {
 
 void kickPose(const Entity & io, EERIE_3DOBJ * obj, Skeleton & skeleton) {
 
-	if(&io == entities.player() && !thirdPersonActive() && !EXTERNALVIEW) {
-		return; // first person: nothing of the body shows
-	}
+	// (first person too: the body is drawn, the boot comes up into the view with the dip)
 	float phase = kickPhaseOf(io);
 	if(phase <= 0.f || !obj) {
 		return;
@@ -298,12 +313,13 @@ void kickPose(const Entity & io, EERIE_3DOBJ * obj, Skeleton & skeleton) {
 	float thigh, knee;
 	legAngles(phase, thigh, knee);
 	// In the bone's own frame (the object's axes at rest): the thigh swings about the sideways
-	// axis, the knee bends back about the same
+	// axis (a negative angle about X sends it forward, measured with --kicktest), the knee bends
+	// back about the same
 	skeleton.bones[leg.hip].init.quat = skeleton.bones[leg.hip].init.quat
-	                                    * glm::angleAxis(glm::radians(thigh), Vec3f(1.f, 0.f, 0.f));
+	                                    * glm::angleAxis(glm::radians(-thigh), Vec3f(1.f, 0.f, 0.f));
 	if(leg.knee) {
 		skeleton.bones[leg.knee].init.quat = skeleton.bones[leg.knee].init.quat
-		                                     * glm::angleAxis(glm::radians(-knee), Vec3f(1.f, 0.f, 0.f));
+		                                     * glm::angleAxis(glm::radians(knee), Vec3f(1.f, 0.f, 0.f));
 	}
 
 }
