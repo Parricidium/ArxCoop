@@ -84,6 +84,8 @@ DECLARE_FLAGS_OPERATORS(DeleteByIndexFlags)
 
 void ARX_INTERACTIVE_TWEAK_Icon(Entity * io, const res::path & s1);
 void ARX_INTERACTIVE_DestroyDynamicInfo(Entity * io);
+//! The zone controller learns that \a io left its zone (CONTROLLEDZONE_LEAVE), if it was in one
+void ARX_INTERACTIVE_ForceIOLeaveZone(Entity * io);
 void ARX_INTERACTIVE_HideGore(Entity * io, bool unhideNonGore = true);
 void ARX_INTERACTIVE_Show_Hide_1st(Entity * io, bool hide1st);
 

@@ -68,7 +68,7 @@ void puppetsReset();
 //! Third person: shows the local player's lit torch at the hip (a display copy). Call once per in-game frame.
 void localTorchDisplayUpdate();
 
-//! Host: eye position of the nearest player (ourselves or a puppet) to a position; player.pos otherwise.
+//! Eye position of the nearest player (ourselves or a puppet) to a position; player.pos outside co-op.
 Vec3f nearestPlayerEyePos(const Vec3f & from);
 
 /*!

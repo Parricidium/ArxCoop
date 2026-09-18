@@ -167,13 +167,13 @@ s32 ARX_INTERACTIVE_GetSellValue(Entity * item, Entity * shop, long count) {
 	return s32(price + price * player.m_skillFull.intuition * 0.005f);
 }
 
-static void ARX_INTERACTIVE_ForceIOLeaveZone(Entity * io) {
-	
+void ARX_INTERACTIVE_ForceIOLeaveZone(Entity * io) {
+
 	Zone * op = io->inzone;
 	if(!op || op->controled.empty()) {
 		return;
 	}
-	
+
 	if(Entity * controller = entities.getById(op->controled)) {
 		ScriptParameters parameters;
 		parameters.emplace_back(io->idString());
