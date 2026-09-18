@@ -131,6 +131,13 @@ RANGEMENT ET VENTE RAPIDES
 - Boutique ou coffre ouvert : MAJ + clic gauche sur un objet de votre inventaire l'y met directement
   (vendu chez un marchand, range dans un coffre), au lieu de le glisser.
 
+COUP DE PIED (nouveau)
+- Bouton 4 de la souris (bouton lateral) ou touche Y, a changer dans Options > Controles > "Ajouts RT / coop".
+  Comme dans Dark Messiah : le pied part, ce qui est devant est repousse. Un monstre prend un peu de
+  degats (3 + un cinquieme de votre force) et est projete sur quelques metres (un trou, une corniche,
+  la lave...) ; un objet libre (avec la physique) vole. Les autres joueurs voient la jambe partir.
+- Pas en l'air, en levitation, en escalade, en mode magie ni pendant une roulade.
+
 SPRAYS (tags, nouveau)
 - Touche K (a changer dans Options > Controles > "Ajouts RT / coop") : peint votre image sur le mur,
   le sol ou le plafond que vous regardez, a portee de bras. Tous les joueurs la voient au meme endroit,
