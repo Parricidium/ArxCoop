@@ -2858,6 +2858,37 @@ void puppetsTestUpdate() {
 			}
 			Logger::flush();
 		}
+		{
+			// A client's cutscene the host takes over, ended by a timer armed as the client before
+			// the take-over (camera_0018 of the crypt): the host must get its controls back
+			static int cutStep = 0;
+			static PlatformInstant cutTime;
+			if(g_coop.isHost() && kickStep >= 5 && cutStep == 0) {
+				Entity * stage = entities.getById("goblin_base_0021");
+				if(stage) {
+					cutStep = 1;
+					cutTime = now;
+					PlayerActorScope actor(1);
+					runScriptLine(*stage, "timertestA -m 1 3000 set_player_controls on");
+					runScriptLine(*stage, "timertestB -m 1 3000 cinemascope -s off");
+					runScriptLine(*stage, "set_player_controls off");
+					runScriptLine(*stage, "cinemascope -s on");
+					logCutsceneState("taken over from player 1, +0s");
+					Logger::flush();
+				} else {
+					cutStep = 3;
+				}
+			}
+			if(cutStep == 1 && now - cutTime > std::chrono::seconds(1)) {
+				cutStep = 2;
+				logCutsceneState("taken over, +1s");
+			}
+			if(cutStep == 2 && now - cutTime > std::chrono::seconds(5)) {
+				cutStep = 3;
+				logCutsceneState("taken over, +5s (must be free)");
+				Logger::flush();
+			}
+		}
 		if(g_coop.isClient() && sprayStep == 0 && sprayCount() > 0) {
 			sprayStep = 1;
 			sprayStepTime = now;
