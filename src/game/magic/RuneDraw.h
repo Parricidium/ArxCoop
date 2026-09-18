@@ -52,6 +52,7 @@ void ARX_SPELLS_UpdateBookSymbolDraw(const Rect & bookRect);
 void ARX_SPELLS_ClearAllSymbolDraw();
 
 void ARX_SPELLS_RequestSymbolDraw(Entity * io, std::string_view name, GameDuration duration);
-void ARX_SPELLS_RequestSymbolDraw2(Entity * io, Rune symb, GameDuration duration);
+//! \a inWorld: for the player, trace the rune in front of him (co-op mod, spell bar) instead of in the book
+void ARX_SPELLS_RequestSymbolDraw2(Entity * io, Rune symb, GameDuration duration, bool inWorld = false);
 
 #endif // ARX_GAME_MAGIC_RUNEDRAW_H

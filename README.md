@@ -188,6 +188,14 @@ protocol).
   to the speed. Too big to throw (golems, trolls, demons, the Black Beast...): a nudge. In a scripted
   dialogue: untouchable. A loose object flies off. A kick takes a third of your **stamina** (the green bar,
   next to hunger), back in a few seconds. The shove is the host's, so everybody sees the same thing.
+- **Spell bar** (bottom of the screen, like an MMORPG's): the first three cases are the game's precast
+  slots (a scroll read, runes drawn while sneaking), keys **1-3** as always; **4** still cancels the current
+  spell; the six cases **5 to 0** hold spells you bind from the spell book (hover or click a spell, press
+  the case's key; again on the same spell to clear it). Pressing a case **incants** the spell instead of
+  drawing it: the runes light up one by one in front of you (0.4 s each, spoken like a drawn rune), then
+  the spell leaves at your current level for a **tenth more mana**. A hit, a roll, a kick, the book or the
+  same key again interrupts it. Bindings are yours (config), not the save game; a case is greyed while you
+  lack the runes or the mana. The bar moves above the inventory when it is open. Off: *Options > Co-op*.
 - **Spray tag** (**K**): paints your own image, like the sprays of Counter-Strike, on the wall, floor or
   ceiling you look at (within reach): everybody sees it there, lit like the surface, with the transparency
   of your PNG. Pick the image under *Personnalisation > Spray*; the sprays stay with the level (saved with
@@ -248,6 +256,7 @@ protocol).
 | Blood trails (Options RT) | ✅ | bloody footprints after stepping in blood, on every machine from the same positions |
 | Kick (mouse button 4 / Y) | ✅ | the leg on every copy of the kicker (player state); the shove, the ragdoll throw and the get-up by the host with the kicker's skill, the ragdoll mirrored like a corpse's |
 | Spray tags (K key) | ✅ | each player's image travels once (PNG with alpha, 128x128); a tag is painted at the same spot on every machine, one per player and level, saved with the level |
+| Spell bar (keys 5-0) | ✅ | the incantation is local; the spell leaves through the same path as a drawn one (seen by all, damage by the host); the bindings live in each player's config |
 | Magic traps, NPC spells (fire fields, lightning, fireballs) | ✅ | replayed for the eyes, damage dealt by the host |
 | Persistent magic fields ("blue walls") | ✅ | recreated on arrival, end together |
 | Burning players | ✅ | flames follow the player |
@@ -321,6 +330,7 @@ All configurable in *Options > Controls*.
 | **Middle click** | "over here" marker |
 | **K** | spray tag (your image on the wall, floor or ceiling you look at) |
 | **Mouse button 4** or **Y** | kick |
+| **5** to **0** | spell bar: incant the bound spell (in the spell book: bind the hovered or clicked spell) |
 | **Hold left click** on a downed teammate | revive them |
 | **H** while looking at a downed teammate | life potion on them |
 | **F8** | admin menu |
@@ -516,6 +526,16 @@ Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition RT (p
   Vos propres barres en bas à gauche, à la place de l'orbe rouge : vie, mana (l'orbe bleu disparaît), puis faim et endurance.
 - Coéquipiers hors champ : flèche au bord de l'écran avec la distance, présence sur la mini-carte et la carte du livre.
 - **Clic molette** : marqueur « par ici » (double cercle rouge avec la distance, 12 s, visible par tous).
+- **Barre de sorts** (en bas de l'écran, comme dans un MMORPG) : les trois premières cases sont les
+  pré-incantations du jeu (parchemin lu, runes dessinées en furtif), touches **1-3** comme toujours ; le **4**
+  annule toujours le sort en cours ; les six cases **5 à 0** reçoivent les sorts que vous assignez depuis le
+  livre de sorts (survolez ou cliquez un sort, appuyez sur la touche de la case ; à nouveau sur le même sort
+  pour la vider). Appuyer sur une case **incante** le sort au lieu de le dessiner : les runes s'allument
+  une à une devant vous (0,4 s chacune, prononcées comme une rune dessinée), puis le sort part à votre
+  niveau du moment pour **un dixième de mana en plus**. Un coup reçu, une roulade, un coup de pied, le livre
+  ou la même touche l'interrompent. Les assignations sont à vous (config), pas dans la sauvegarde ; une case
+  est grisée tant que les runes ou le mana manquent. La barre monte au-dessus de l'inventaire quand il est
+  ouvert. Désactivable : *Options > Coopération*.
 - **Coup de pied** (**bouton 4 de la souris** ou **Y**), façon Dark Messiah : le pied droit part (votre propre
   pied en vue à la première personne), ce qui est devant est repoussé, sans dégât. Sous 70 en *Combat au corps à
   corps* un monstre recule d'un mètre ou deux ; à partir de 70, un monstre en combat est **projeté en ragdoll**
@@ -583,6 +603,7 @@ Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition RT (p
 | Traces de sang (Options RT) | ✅ | empreintes de pas ensanglantées après avoir marché dans le sang, sur chaque machine à partir des mêmes positions |
 | Coup de pied (bouton 4 souris / Y) | ✅ | la jambe sur chaque copie du joueur (état joueur) ; poussée, projection en ragdoll et relevé par l'hôte avec la compétence du joueur, ragdoll reflété comme celui d'un cadavre |
 | Sprays (touche K) | ✅ | l'image de chaque joueur voyage une fois (PNG avec transparence, 128x128) ; un spray est peint au même endroit sur chaque machine, un par joueur et par niveau, enregistré avec le niveau |
+| Barre de sorts (touches 5-0) | ✅ | l'incantation est locale ; le sort part par le même chemin qu'un sort dessiné (vu par tous, dégâts par l'hôte) ; les assignations sont dans la config de chaque joueur |
 | Pièges magiques, sorts des PNJ (champs de feu, éclairs, boules de feu) | ✅ | rejoués pour les yeux, dégâts infligés par l'hôte |
 | Champs magiques persistants (« murs bleus ») | ✅ | recréés à l'arrivée, disparaissent ensemble |
 | Joueurs en feu | ✅ | les flammes suivent le joueur |
@@ -658,6 +679,7 @@ Toutes modifiables dans *Options > Commandes*.
 | **Clic molette** | marqueur « par ici » |
 | **K** | spray (votre image sur le mur, le sol ou le plafond visé) |
 | **Bouton 4 de la souris** ou **Y** | coup de pied |
+| **5** à **0** | barre de sorts : incanter le sort assigné (dans le livre de sorts : assigner le sort survolé ou cliqué) |
 | **Clic gauche maintenu** sur un coéquipier à terre | le relever |
 | **H** en regardant un coéquipier à terre | potion de vie sur lui |
 | **F8** | menu Administration |

@@ -730,6 +730,8 @@ public:
 		          [](bool checked) { config.coop.dialogueHold = checked; });
 		addToggle("system_menus_coop_skip_intro", "Sauter la cinématique d'intro", config.misc.skipIntro,
 		          [](bool checked) { config.misc.skipIntro = checked; });
+		addToggle("system_menus_coop_spell_bar", "Barre de sorts (touches 5 à 0, livre de sorts pour l'assigner)", config.coop.spellBar,
+		          [](bool checked) { config.coop.spellBar = checked; });
 
 		addBackButton(Page_Options);
 

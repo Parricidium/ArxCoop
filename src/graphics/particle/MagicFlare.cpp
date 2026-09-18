@@ -27,6 +27,9 @@
 #include "core/Config.h"
 #include "core/GameTime.h"
 
+#include "game/EntityManager.h"
+#include "game/Player.h"
+
 #include "input/Input.h"
 
 #include "scene/Light.h"
@@ -188,7 +191,15 @@ void AddFlare(const Vec2f & pos, float sm, short typ, Entity * io, bool bookDraw
 	flare.pos.y = pos.y - Random::getf(0.f, 4.f);
 
 	if(!bookDraw) {
-		if(io) {
+		if(io == entities.player()) {
+			// Co-op mod (spell bar, third person): the rune hangs a metre in front of the chest, the
+			// screen offsets laid along the facing (the player's angles are not an NPC's)
+			Vec3f forward = angleToVectorXZ(player.angle.getYaw());
+			Vec3f right(-forward.z, 0.f, forward.x);
+			flare.p = player.basePosition() + forward * 100.f + Vec3f(0.f, -150.f, 0.f);
+			flare.p += right * ((flare.pos.x - g_size.center().x) * 0.38f);
+			flare.p.y += (flare.pos.y - g_size.center().y) * 0.3f;
+		} else if(io) {
 			float vx = -(flare.pos.x - g_size.center().x) * 0.2173913f;
 			float vy = (flare.pos.y - g_size.center().y) * 0.1515151515151515f;
 			flare.p = io->pos;

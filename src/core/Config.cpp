@@ -72,6 +72,7 @@ constexpr const std::string_view
 	coopAddress = "127.0.0.1",
 	coopFace = "",
 	coopSpray = "",
+	coopSpellBarSlots = "",
 coopFavorites = "",
 	bufferUpload,
 	extensionOverride,
@@ -104,6 +105,7 @@ constexpr const int
 	coopDialogueHold = false,
 	coopThirdPerson = false,
 	coopRightShoulder = true,
+	coopSpellBar = true,
 	bufferSize = 0,
 	quickLevelTransition = JumpToChangeLevel;
 
@@ -223,6 +225,12 @@ constexpr const ActionKey actions[NUM_ACTION_KEY] = {
 	ActionKey(Keyboard::Key_Z), // ROLL (the physical key left of X / crouch; W on an AZERTY keyboard)
 	ActionKey(Keyboard::Key_K), // SPRAY (T is the torch)
 	ActionKey(Mouse::Button_3, Keyboard::Key_Y), // KICK (a side mouse button, or Y)
+	ActionKey(Keyboard::Key_5), // SPELL1 (1-3 are the precast slots, 4 cancels the current spell)
+	ActionKey(Keyboard::Key_6), // SPELL2
+	ActionKey(Keyboard::Key_7), // SPELL3
+	ActionKey(Keyboard::Key_8), // SPELL4
+	ActionKey(Keyboard::Key_9), // SPELL5
+	ActionKey(Keyboard::Key_0), // SPELL6
 };
 
 } // namespace Default
@@ -401,6 +409,12 @@ constexpr const std::string_view actions[NUM_ACTION_KEY] = {
 	"roll",
 	"spray",
 	"kick",
+	"spell1",
+	"spell2",
+	"spell3",
+	"spell4",
+	"spell5",
+	"spell6",
 };
 
 // Misc options
@@ -419,6 +433,8 @@ constexpr const std::string_view
 	coopPort = "port",
 	coopFace = "face",
 	coopSpray = "spray",
+	coopSpellBar = "spell_bar",
+	coopSpellBarSlots = "spell_bar_slots",
 coopFavorites = "favorites",
 	coopDialogueHold = "dialogue_hold",
 	coopThirdPerson = "third_person",
@@ -679,6 +695,8 @@ writer.writeKey(Key::lava, video.lava);
 	writer.writeKey(Key::coopPort, coop.port);
 	writer.writeKey(Key::coopFace, coop.face);
 	writer.writeKey(Key::coopSpray, coop.spray);
+	writer.writeKey(Key::coopSpellBar, coop.spellBar);
+	writer.writeKey(Key::coopSpellBarSlots, coop.spellBarSlots);
 writer.writeKey(Key::coopFavorites, coop.favorites);
 	writer.writeKey(Key::coopDialogueHold, coop.dialogueHold);
 	writer.writeKey(Key::coopThirdPerson, coop.thirdPerson);
@@ -852,6 +870,8 @@ video.lava = reader.getKey(Section::Video, Key::lava, Default::lava);
 	coop.port = reader.getKey(Section::Coop, Key::coopPort, Default::coopPort);
 	coop.face = reader.getKey(Section::Coop, Key::coopFace, Default::coopFace);
 	coop.spray = reader.getKey(Section::Coop, Key::coopSpray, Default::coopSpray);
+	coop.spellBar = reader.getKey(Section::Coop, Key::coopSpellBar, Default::coopSpellBar);
+	coop.spellBarSlots = reader.getKey(Section::Coop, Key::coopSpellBarSlots, Default::coopSpellBarSlots);
 coop.favorites = reader.getKey(Section::Coop, Key::coopFavorites, Default::coopFavorites);
 	coop.dialogueHold = reader.getKey(Section::Coop, Key::coopDialogueHold, Default::coopDialogueHold);
 	coop.thirdPerson = reader.getKey(Section::Coop, Key::coopThirdPerson, Default::coopThirdPerson);

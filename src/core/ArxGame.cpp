@@ -60,6 +60,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "coop/Kick.h"
 #include "coop/Qol.h"
 #include "coop/Spray.h"
+#include "coop/SpellBar.h"
 #include "coop/Replication.h"
 #include "coop/Roll.h"
 #include "coop/Session.h"
@@ -126,6 +127,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "gui/Cursor.h"
 #include "gui/Hud.h"
 #include "gui/Interface.h"
+#include "gui/book/Book.h"
 #include "gui/LoadLevelScreen.h"
 #include "gui/Logo.h"
 #include "gui/Menu.h"
@@ -725,6 +727,21 @@ static void kickTest(const std::string & spec) {
 }
 ARX_PROGRAM_OPTION_ARG("kicktest", "", "Kick at frame N (\"N\" = seen from the side, \"N,follow\" = the usual third-person view, \"N,fp\" = first person)", &kickTest, "SPEC")
 
+// Co-op mod: at frame N, the spell bar: all runes known, fireball bound to the first case (key 5) and
+// its key pressed ("N,book" = the book open on the spells page and the binding done through it instead,
+// "N,3p" = third person, "N,twice" = the key again 10 frames later, which gives the incantation up)
+static long g_spellBarTestFrames = -1000;
+static bool g_spellBarTestBook = false;
+static bool g_spellBarTestThird = false;
+static bool g_spellBarTestTwice = false;
+static void spellBarTest(const std::string & spec) {
+	g_spellBarTestFrames = std::atol(spec.c_str());
+	g_spellBarTestBook = spec.find("book") != std::string::npos;
+	g_spellBarTestThird = spec.find("3p") != std::string::npos;
+	g_spellBarTestTwice = spec.find("twice") != std::string::npos;
+}
+ARX_PROGRAM_OPTION_ARG("spellbartest", "", "Spell bar test at frame N (\"N\", \"N,book\", \"N,3p\", \"N,twice\")", &spellBarTest, "SPEC")
+
 // Co-op mod: at frame N, paint the spray tag (config coop.spray) where the player looks
 static long g_sprayTestFrames = -1000;
 static void sprayTest(u32 frames) {
@@ -1079,6 +1096,7 @@ bool ArxGame::initGame()
 	coop::facesInit(); // needs the hero head textures and the renderer
 	coop::sprayInit(); // after facesInit(): chains its player callbacks
 	coop::kickInit();
+	coop::spellBarInit();
 coop::qolInit();
 	
 	GLOBAL_EERIETEXTUREFLAG_LOADSCENE_RELEASE = old;
@@ -1884,6 +1902,7 @@ void ArxGame::updateLevel() {
 
 		coop::rollUpdate();
 		coop::kickUpdate();
+		coop::spellBarUpdate();
 if(!BLOCK_PLAYER_CONTROLS && !coop::dialogueHold()) {
 			managePlayerControls();
 		}
@@ -2397,6 +2416,37 @@ void ArxGame::render() {
 			}
 		}
 		g_kickTestFrames--;
+	}
+
+	if(g_spellBarTestFrames > -1000 && ARXmenu.mode() == Mode_InGame && !isInCinematic()) {
+		if(g_spellBarTestFrames == 40) {
+			ARX_PLAYER_Rune_Add_All();
+			player.m_attribute.mind = std::max(player.m_attribute.mind, 12.f); // mana for a fireball or two
+			ARX_PLAYER_ComputePlayerFullStats();
+			player.manaPool.current = player.manaPool.max;
+			if(g_spellBarTestThird) {
+				coop::thirdPersonTestSet(true, false, false, 0.f);
+			}
+			if(g_spellBarTestBook) {
+				g_playerBook.openPage(BOOKMODE_SPELLS, false);
+				coop::spellBarBookClick(SPELL_FIREBALL);
+			} else {
+				coop::spellBarTestBind(0, SPELL_FIREBALL);
+			}
+		}
+		if(g_spellBarTestFrames == 0) {
+			LogInfo << "spellbartest: press (book " << g_spellBarTestBook << ", mana " << player.manaPool.current << ")";
+			coop::spellBarTestPress(0);
+		}
+		if(g_spellBarTestFrames == -10 && g_spellBarTestTwice) {
+			coop::spellBarTestPress(0);
+		}
+		if(g_spellBarTestFrames < 0 && g_spellBarTestFrames % 40 == 0 && g_spellBarTestFrames >= -600) {
+			LogInfo << "spellbartest: frame " << g_spellBarTestFrames << " casting " << coop::spellBarCasting()
+			        << " mana " << player.manaPool.current << " spells " << []() { size_t n = 0; for(const Spell & spell : spells.byCaster(EntityHandle_Player)) { ARX_UNUSED(spell); n++; } return n; }()
+			        << " book " << ((player.Interface & INTER_PLAYERBOOK) != 0) << " slots " << config.coop.spellBarSlots;
+		}
+		g_spellBarTestFrames--;
 	}
 
 	if(g_sprayTestFrames > -1000 && ARXmenu.mode() == Mode_InGame && !isInCinematic()) {

@@ -25,6 +25,7 @@
 #include <sstream>
 
 #include "coop/Puppets.h"
+#include "coop/SpellBar.h"
 #include "core/Application.h"
 #include "core/ArxGame.h"
 #include "core/Config.h"
@@ -935,7 +936,7 @@ PrecastSpellsGui::PrecastSpellsGui()
 { }
 
 bool PrecastSpellsGui::isVisible() {
-	return !(player.Interface & INTER_PLAYERBOOK);
+	return !(player.Interface & INTER_PLAYERBOOK) && !coop::spellBarActive(); // co-op mod: the bar shows them
 }
 
 void PrecastSpellsGui::updateRect(const Rectf & parent) {
@@ -1543,7 +1544,9 @@ void HudRoot::draw() {
 	activeSpellsGui.update(hudSlider);
 	activeSpellsGui.updateInput(mousePos);
 	activeSpellsGui.draw();
-	
+
+	coop::spellBarDraw(Rectf(g_size), m_scale);
+
 }
 
 void HudRoot::recalcScale() {
