@@ -19,6 +19,8 @@
 
 #include "game/magic/spells/SpellsLvl10.h"
 
+#include "coop/Puppets.h"
+#include "coop/Replication.h"
 #include "core/Application.h"
 #include "core/Core.h"
 #include "core/Config.h"
@@ -64,9 +66,12 @@ void MassLightningStrikeSpell::Launch() {
 		Entity * io = entities[m_caster];
 		m_pos = io->pos + Vec3f(0.f, -20.f, 0.f);
 		beta = io->angle.getYaw();
+		float pitch;
+		coop::puppetAim(*io, pitch, beta); // co-op mod: another player, where they look
 	}
 	m_pos += angleToVectorXZ(beta) * 500.f;
-	
+	coop::spellPlaced(m_type, entities.get(m_caster), m_pos, beta);
+
 	GameDuration minDuration = 500ms * m_level;
 	GameDuration maxDuration = 0;
 	
@@ -189,10 +194,16 @@ bool ControlTargetSpell::CanLaunch() {
 }
 
 void ControlTargetSpell::Launch() {
-	
-	eSrc = player.pos;
-	
-	float fBetaRad = glm::radians(player.angle.getYaw());
+
+	eSrc = m_caster_pos;
+
+	float beta = player.angle.getYaw();
+	if(Entity * caster = entities.get(m_caster)) {
+		float pitch;
+		coop::puppetAim(*caster, pitch, beta); // co-op mod: another player, from its puppet along where they look
+	}
+	coop::spellPlaced(m_type, entities.get(m_caster), eSrc, beta);
+	float fBetaRad = glm::radians(beta);
 	eTarget = eSrc + Vec3f(-glm::sin(fBetaRad) * 1000.f, 100.f, glm::cos(fBetaRad) * 1000.f);
 	
 	for(Entity & npc : entities.inScene(IO_NPC)) {

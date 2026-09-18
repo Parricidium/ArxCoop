@@ -52,10 +52,13 @@ void RaiseDeadSpell::GetTargetAndBeta(Vec3f & target, float & beta) {
 		target = entities[m_caster]->pos;
 		beta = entities[m_caster]->angle.getYaw();
 		displace = (entities[m_caster]->ioflags & IO_NPC) == IO_NPC;
+		float pitch;
+		coop::puppetAim(*entities[m_caster], pitch, beta); // co-op mod: another player, where they look
 	}
 	if(displace) {
 		target += angleToVectorXZ(beta) * 300.f;
 	}
+	coop::spellPlaced(m_type, entities.get(m_caster), target, beta);
 }
 
 RaiseDeadSpell::RaiseDeadSpell()
@@ -292,11 +295,14 @@ void CreateFieldSpell::Launch() {
 		target = io->pos;
 		beta = io->angle.getYaw();
 		displace = (io->ioflags & IO_NPC) == IO_NPC;
+		float pitch;
+		coop::puppetAim(*io, pitch, beta); // co-op mod: another player, where they look (its pos is at the eyes like ours)
 	}
 	if(displace) {
 		target += angleToVectorXZ(beta) * 250.f;
 	}
-	
+	coop::spellPlaced(m_type, entities.get(m_caster), target, beta);
+
 	// Don't play sound for persistent fields
 	if(!(m_flags & SPELLCAST_FLAG_RESTORE)) {
 		ARX_SOUND_PlaySFX(g_snd.SPELL_CREATE_FIELD, &target);
@@ -376,7 +382,7 @@ void DisarmTrapSpell::Launch() {
 	m_hasDuration = true;
 	
 	Sphere sphere;
-	sphere.origin = player.pos;
+	sphere.origin = m_caster_pos; // (co-op mod: around the caster, not always around us)
 	sphere.radius = 400.f;
 	
 	for(Spell & spell : spells.ofType(SPELL_RUNE_OF_GUARDING)) {

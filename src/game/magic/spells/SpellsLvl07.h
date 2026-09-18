@@ -103,6 +103,7 @@ private:
 };
 
 class LightningStrikeSpell final : public Spell {
+	bool m_placedLogged = false; //!< co-op mod: the placement is logged once
 	
 public:
 	

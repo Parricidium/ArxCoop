@@ -925,7 +925,7 @@ void handleSpellCast(PlayerId from, Reader & reader) {
 	if(remote != g_remote.end()) {
 		savedRemote = remote->second.angle;
 		remote->second.angle.setPitch(pitch);
-		remote->second.angle.setYaw(yaw);
+		remote->second.angle.setYaw(MAKEANGLE(180.f - yaw)); // (the state's convention, see puppetAim)
 	}
 	g_cast = cast;
 	g_applyingRemoteSpell++;
@@ -1565,11 +1565,33 @@ bool puppetAim(const Entity & caster, float & pitch, float & yaw) {
 	if(it == g_remote.end()) {
 		return false;
 	}
-	// The owner's own angles (their player.angle, the ones their spells use): the puppet's
-	// entity yaw is the NPC one (180 - yaw), which sends a missile the mirrored way
+	// The owner's own angles (their player.angle, the ones their spells use). The state carries
+	// the player entity's yaw, which is the NPC one (180 - player.angle, Player.cpp): a spell
+	// aimed with it flies the mirrored way. The pitch is player.angle's as is.
 	pitch = it->second.angle.getPitch();
-	yaw = it->second.angle.getYaw();
+	yaw = MAKEANGLE(180.f - it->second.angle.getYaw());
 	return true;
+}
+
+Vec3f puppetBone(const Entity & puppet, const char * group, const Vec3f & fallback) {
+	if(puppet.obj) {
+		if(VertexGroupId bone = EERIE_OBJECT_GetGroup(puppet.obj, group)) {
+			Vec3f pos = puppet.obj->vertexWorldPositions[puppet.obj->grouplist[bone].origin].v;
+			if(closerThan(pos, puppet.pos, 300.f)) {
+				return pos;
+			}
+		}
+	}
+	return puppet.pos + fallback;
+}
+
+void spellPlaced(unsigned spell, const Entity * caster, const Vec3f & pos, float yaw) {
+	if(!g_coop.isActive() || g_coop.state() != State::InGame) {
+		return;
+	}
+	const char * name = getSpellName(SpellType(spell));
+	LogInfo << "[coop] spell " << (name ? name : "?") << " by " << (caster ? caster->idString() : "?")
+	        << " placed at " << int(pos.x) << "," << int(pos.y) << "," << int(pos.z) << " yaw " << int(MAKEANGLE(yaw));
 }
 
 bool puppetAimPitch(const Entity & caster, float & pitch) {
@@ -2856,6 +2878,24 @@ void puppetsTestUpdate() {
 			spellBarTestPress(0);
 			LogInfo << "[coop] test: client incants a fireball from the spell bar";
 			Logger::flush();
+		}
+		{
+			// The placed / aimed spells, one every 1.5 s: their placement is logged on both sides
+			static const SpellType placedSpells[] = {
+				SPELL_ICE_PROJECTILE, SPELL_POISON_PROJECTILE, SPELL_CREATE_FIELD, SPELL_FIRE_FIELD,
+				SPELL_ICE_FIELD, SPELL_MASS_LIGHTNING_STRIKE, SPELL_LIGHTNING_STRIKE, SPELL_RAISE_DEAD
+			};
+			static size_t placedStep = 0;
+			static PlatformInstant placedTime;
+			if(g_coop.isClient() && sprayStep == 3 && placedStep < std::size(placedSpells)
+			   && now - sprayStepTime > std::chrono::seconds(8) && now - placedTime > std::chrono::milliseconds(1500)) { // (after the fireball incantation)
+				placedTime = now;
+				SpellType spell = placedSpells[placedStep++];
+				LogInfo << "[coop] test: client casts " << getSpellName(spell) << " at yaw " << int(player.angle.getYaw());
+				ARX_SPELLS_Launch(spell, *entities.player(), SPELLCAST_FLAG_NOCHECKCANCAST | SPELLCAST_FLAG_NOMANA,
+				                  3, nullptr, GameDuration::ofRaw(-1));
+				Logger::flush();
+			}
 		}
 		if(listed && ((itemStep == 4 && now - itemStepTime > std::chrono::seconds(g_coop.isHost() ? 14 : 12))
 		              || now - arrived > std::chrono::seconds(175))) {

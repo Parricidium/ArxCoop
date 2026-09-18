@@ -19,6 +19,7 @@
 
 #include "game/magic/spells/SpellsLvl07.h"
 
+#include "coop/Puppets.h"
 #include "animation/AnimationRender.h"
 #include "coop/Replication.h"
 #include "core/Application.h"
@@ -226,10 +227,13 @@ void FireFieldSpell::Launch() {
 		target = io->pos;
 		beta = io->angle.getYaw();
 		displace = (io->ioflags & IO_NPC) == IO_NPC;
+		float pitch;
+		coop::puppetAim(*io, pitch, beta); // co-op mod: another player, where they look
 	}
 	if(displace) {
 		target += angleToVectorXZ(beta) * 250.f;
 	}
+	coop::spellPlaced(m_type, entities.get(m_caster), target, beta);
 	
 	m_pos = target + Vec3f(0, -10, 0);
 	
@@ -353,10 +357,13 @@ void IceFieldSpell::Launch() {
 		target = io->pos;
 		beta = io->angle.getYaw();
 		displace = (io->ioflags & IO_NPC) == IO_NPC;
+		float pitch;
+		coop::puppetAim(*io, pitch, beta); // co-op mod: another player, where they look
 	}
 	if(displace) {
 		target += angleToVectorXZ(beta) * 250.f;
 	}
+	coop::spellPlaced(m_type, entities.get(m_caster), target, beta);
 	
 	m_pos = target;
 	
@@ -559,14 +566,16 @@ void LightningStrikeSpell::Update() {
 	float falpha = 0.f;
 	
 	Entity * caster = entities.get(m_caster);
-	if(caster) {
+	if(caster && caster->coopPuppet) {
+		m_caster_pos = coop::puppetBone(*caster, "chest", Vec3f(0.f, -140.f, 0.f));
+	} else if(caster) {
 		if(VertexGroupId chest = EERIE_OBJECT_GetGroup(caster->obj, "chest")) {
 			m_caster_pos = caster->obj->vertexWorldPositions[caster->obj->grouplist[chest].origin].v;
 		} else {
 			m_caster_pos = caster->pos;
 		}
 	}
-	
+
 	float puppetPitch = 0.f;
 	if(m_caster == EntityHandle_Player) {
 		falpha = -player.angle.getPitch();
@@ -589,6 +598,10 @@ void LightningStrikeSpell::Update() {
 	}
 	
 	m_lightning.m_pos = m_caster_pos;
+	if(!m_placedLogged) {
+		m_placedLogged = true;
+		coop::spellPlaced(m_type, entities.get(m_caster), m_caster_pos, fBeta);
+	}
 	m_lightning.m_beta = fBeta;
 	m_lightning.m_alpha = falpha;
 	

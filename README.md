@@ -258,6 +258,7 @@ protocol).
 | Kick (mouse button 4 / Y) | ✅ | the leg on every copy of the kicker (player state); the shove, the ragdoll throw and the get-up by the host with the kicker's skill, the ragdoll mirrored like a corpse's |
 | Spray tags (K key) | ✅ | each player's image travels once (PNG with alpha, 128x128); a tag is painted at the same spot on every machine, one per player and level, saved with the level |
 | Spell bar (keys 5-0) | ✅ | the spell leaves through the same path as a drawn one (seen by all, damage by the host); the bindings live in each player's config |
+| Aimed and placed spells (fireball, ice and poison projectiles, lightning, fields, summons, mass lightning) | ✅ | the caster's aim, start point and random draws travel with the cast: the same spot and direction on every machine (verified by log, 16cc) |
 | Runes (drawn or incanted) | ✅ | each rune a player draws with the mouse or incants from the bar is traced in front of their character on every machine, with its sound (PlayerRune) |
 | Magic traps, NPC spells (fire fields, lightning, fireballs) | ✅ | replayed for the eyes, damage dealt by the host |
 | Persistent magic fields ("blue walls") | ✅ | recreated on arrival, end together |
@@ -607,6 +608,7 @@ Le zip classique n'a rien de tout ça et ne peut pas jouer avec l'édition RT (p
 | Coup de pied (bouton 4 souris / Y) | ✅ | la jambe sur chaque copie du joueur (état joueur) ; poussée, projection en ragdoll et relevé par l'hôte avec la compétence du joueur, ragdoll reflété comme celui d'un cadavre |
 | Sprays (touche K) | ✅ | l'image de chaque joueur voyage une fois (PNG avec transparence, 128x128) ; un spray est peint au même endroit sur chaque machine, un par joueur et par niveau, enregistré avec le niveau |
 | Barre de sorts (touches 5-0) | ✅ | le sort part par le même chemin qu'un sort dessiné (vu par tous, dégâts par l'hôte) ; les assignations sont dans la config de chaque joueur |
+| Sorts visés et posés (boule de feu, projectiles de glace et de poison, éclair, champs, invocations, foudre de masse) | ✅ | la visée, le point de départ et les tirages aléatoires du lanceur voyagent avec le sort : même endroit et même direction sur chaque machine (vérifié par le journal, 16cc) |
 | Runes (dessinées ou incantées) | ✅ | chaque rune qu'un joueur dessine à la souris ou incante depuis la barre est tracée devant son personnage sur chaque machine, avec son son (PlayerRune) |
 | Pièges magiques, sorts des PNJ (champs de feu, éclairs, boules de feu) | ✅ | rejoués pour les yeux, dégâts infligés par l'hôte |
 | Champs magiques persistants (« murs bleus ») | ✅ | recréés à l'arrivée, disparaissent ensemble |

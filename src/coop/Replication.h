@@ -297,6 +297,15 @@ bool puppetAimPitch(const Entity & caster, float & pitch);
 //! Same, with the owner's yaw (their player.angle, what their own spells used; the puppet's entity yaw is the NPC one).
 bool puppetAim(const Entity & caster, float & pitch, float & yaw);
 
+/*!
+ * A bone of a puppet in world space, or \a fallback above its feet when the skeleton is stale
+ * (a puppet out of view is not animated, its vertices stay where they were - or at the origin).
+ */
+Vec3f puppetBone(const Entity & puppet, const char * group, const Vec3f & fallback);
+
+//! Diagnostic: where a spell was placed / aimed (logged in co-op, compared between machines)
+void spellPlaced(unsigned spell, const Entity * caster, const Vec3f & pos, float yaw);
+
 } // namespace coop
 
 #endif // ARX_COOP_REPLICATION_H

@@ -60,6 +60,8 @@ public:
 };
 
 class FireballSpell final : public Spell {
+	bool m_moveLogged = false; //!< co-op mod: the flight direction is logged once
+	Vec3f m_castStart = Vec3f(0.f); //!< co-op mod: where the ball was launched (the same on every machine)
 	
 public:
 	
