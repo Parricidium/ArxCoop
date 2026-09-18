@@ -89,7 +89,7 @@ CE QUI EST PARTAGE
 - Menu principal > Personnalisation : visage et spray. Options > Cooperation : vue 3e personne au lancement, epaule, "me figer quand un
   coequipier dialogue" (les autres ne bougent plus pendant un dialogue cinematique), intro.
 - A gauche de l'ecran : pseudo, barre de vie (rouge) et barre de faim (orange) des coequipiers.
-  En bas a gauche, a la place de l'orbe rouge : les memes barres pour vous (pseudo, vie avec le
+  En bas a gauche, a la place des orbes rouge et bleu : vos barres (pseudo, vie avec le
   chiffre, faim). L'orbe bleue de mana reste. En haut au centre : temps de jeu.
 
 EDITION RT (zip ArxCoop-RT-* uniquement)
@@ -136,6 +136,9 @@ COUP DE PIED (nouveau)
   Comme dans Dark Messiah : le pied part, ce qui est devant est repousse. Un monstre prend un peu de
   degats (3 + un cinquieme de votre force) et est projete sur quelques metres (un trou, une corniche,
   la lave...) ; un objet libre (avec la physique) vole. Les autres joueurs voient la jambe partir.
+- Un coup prend un tiers de votre ENDURANCE (barre verte a cote de la faim, en bas a gauche) ; elle
+  revient en quelques secondes. Trois coups d'affilee au plus.
+- En vue a la premiere personne, votre pied monte dans l'image.
 - Pas en l'air, en levitation, en escalade, en mode magie ni pendant une roulade.
 
 SPRAYS (tags, nouveau)

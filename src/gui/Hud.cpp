@@ -797,6 +797,10 @@ void ManaGauge::updateInput(const Vec2f & mousePos) {
 
 void ManaGauge::draw() {
 	
+	if(coop::localHudActive()) {
+		return; // co-op: a mana bar under the life bar, bottom left (coop::localHudDraw)
+	}
+	
 	EERIEDrawBitmap2DecalY(m_rect, 0.f, m_filledTex, Color::white, (1.f - m_amount));
 	EERIEDrawBitmap(m_rect, 0.001f, m_emptyTex, Color::white);
 }
