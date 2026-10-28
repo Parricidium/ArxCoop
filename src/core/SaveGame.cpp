@@ -237,7 +237,10 @@ bool SaveGameList::save(std::string_view name, SavegameHandle overwrite, const I
 	if(!ARX_CHANGELEVEL_Save(name, savefile)) {
 		return false;
 	}
-	coop::gameSaved(name);
+	{
+		fs::path slot = savefile.parent();
+		coop::gameSaved(name, slot.filename()); // the folder tells the quicksave slots apart
+	}
 	
 	if(thumbnail.isValid() && !thumbnail.save(savefile.parent() / SAVEGAME_THUMBNAIL)) {
 		LogWarning << "Failed to save screenshot to " << (savefile.parent() / SAVEGAME_THUMBNAIL);

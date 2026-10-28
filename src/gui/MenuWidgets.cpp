@@ -144,7 +144,10 @@ void ARX_LoadGame(const SaveGame & save) {
 	g_canResumeGame = true;
 	
 	coop::playthroughStarted();
-	coop::gameLoaded(save.name);
+	{
+		fs::path slot = save.savefile.parent();
+		coop::gameLoaded(save.name, slot.filename());
+	}
 }
 
 void ARX_QuickLoad() {

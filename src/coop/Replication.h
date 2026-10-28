@@ -147,11 +147,18 @@ float damagePuppet(const Entity & puppet, float damage, unsigned type);
 //! Client: a local hit on an NPC is applied by the host.
 void forwardNpcDamage(const Entity & npc, float damage, unsigned type, const Vec3f * pos);
 
-//! Host: the game was saved under this name; clients save their character under the same name.
-void gameSaved(std::string_view name);
+/*!
+ * Host: what the clients name their character save after, for a host save of this name stored
+ * in this folder ("save0003"). The name itself, except for quicksaves: they all share one name,
+ * so the slot folder is added ("quicksave save0003"), one client save per host quicksave slot.
+ */
+std::string coopSaveKey(std::string_view name, std::string_view slot);
+
+//! Host: the game was saved under this name in this folder; clients save their character too.
+void gameSaved(std::string_view name, std::string_view slot);
 
 //! Host: a save was loaded; clients load their matching character save (if any) and resync.
-void gameLoaded(std::string_view name);
+void gameLoaded(std::string_view name, std::string_view slot);
 
 //! Client: true while a save/load requested by the host is being performed.
 bool hostDrivenSaveLoad();

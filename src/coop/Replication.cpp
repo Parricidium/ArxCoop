@@ -744,6 +744,11 @@ void applyDamageNpc(PlayerId from, Reader & reader) {
 
 bool g_hostDrivenSaveLoad = false;
 
+//! The engine names every quicksave this (SaveGame.cpp QUICKSAVE_ID, older saves add a "1")
+constexpr std::string_view QuicksavePrefix = "ARX_QUICK_ARX";
+//! What a host quicksave is called on the clients' side, followed by the host's slot folder
+constexpr std::string_view QuicksaveKey = "quicksave ";
+
 std::string coopSaveName(std::string_view hostName) {
 	return "coop: " + std::string(hostName);
 }
@@ -762,8 +767,18 @@ void applySaveRequest(Reader & reader) {
 }
 
 void applyLoadRequest(Reader & reader) {
-	std::string name = coopSaveName(reader.string());
+	std::string key = reader.string();
+	std::string name = coopSaveName(key);
 	SavegameHandle save = findSaveByName(name);
+	if(save == SavegameHandle() && key.compare(0, QuicksaveKey.size(), QuicksaveKey) == 0) {
+		// Saved before quicksave slots had their own character save: the one shared save
+		SavegameHandle legacy = findSaveByName(coopSaveName(QuicksavePrefix));
+		if(legacy != SavegameHandle()) {
+			LogInfo << "[coop] no \"" << name << "\" yet: using the older shared quicksave character";
+			name = coopSaveName(QuicksavePrefix);
+			save = legacy;
+		}
+	}
 	bool wasInLobby = g_coop.state() == State::Lobby;
 	if(wasInLobby) {
 		g_coop.resumeFromHost();
@@ -1347,15 +1362,22 @@ bool isPlaythroughStarted() {
 	return g_playthroughStarted;
 }
 
-void gameSaved(std::string_view name) {
+std::string coopSaveKey(std::string_view name, std::string_view slot) {
+	if(name.compare(0, QuicksavePrefix.size(), QuicksavePrefix) == 0 && !slot.empty()) {
+		return std::string(QuicksaveKey) + std::string(slot);
+	}
+	return std::string(name);
+}
+
+void gameSaved(std::string_view name, std::string_view slot) {
 	if(g_coop.isHost() && g_coop.state() == State::InGame) {
 		Writer writer;
-		writer.string(name);
+		writer.string(coopSaveKey(name, slot));
 		g_coop.broadcast(MessageType::SaveRequest, writer);
 	}
 }
 
-void gameLoaded(std::string_view name) {
+void gameLoaded(std::string_view name, std::string_view slot) {
 	if(!g_coop.isHost()) {
 		return;
 	}
@@ -1364,7 +1386,7 @@ void gameLoaded(std::string_view name) {
 	}
 	if(g_coop.state() == State::InGame) {
 		Writer writer;
-		writer.string(name);
+		writer.string(coopSaveKey(name, slot));
 		g_coop.broadcast(MessageType::LoadRequest, writer);
 	}
 }
