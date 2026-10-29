@@ -49,6 +49,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include <boost/algorithm/string/predicate.hpp>
 
 #include "ai/Paths.h"
+#include "coop/Replication.h"
 #include "core/GameTime.h"
 #include "game/Entity.h"
 #include "game/EntityManager.h"
@@ -864,6 +865,11 @@ void timerCommand(std::string_view name, Context & context) {
 	timer.start = g_gameTime.now();
 	timer.count = count;
 	timer.idle = idle;
+	if(count == 0 && coop::actorIsAdopted()) {
+		// An endless loop (an NPC's watch timer...) is nobody's just because a teammate happened
+		// to be the nearest player when it was armed
+		timer.coopActor = 0xFF;
+	}
 	
 }
 

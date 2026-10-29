@@ -1240,13 +1240,20 @@ void npcSyncSend() {
 
 }
 
-Vec3f nearestPlayerEyePos(const Vec3f & from) {
-	Vec3f best = player.pos;
+namespace {
+
+struct NearestPlayer {
+	Vec3f eye;
+	PlayerId id; //!< our own id when it is ourselves
+};
+
+NearestPlayer findNearestPlayer(const Vec3f & from) {
+	NearestPlayer best = { player.pos, g_coop.localId() };
 	if(!g_coop.isHost()) {
 		return best;
 	}
 	// A downed host is no target (like downed puppets below), unless nobody else stands
-	float bestDist = isLocalDowned() ? std::numeric_limits<float>::max() : arx::distance2(from, best);
+	float bestDist = isLocalDowned() ? std::numeric_limits<float>::max() : arx::distance2(from, best.eye);
 	for(const auto & entry : g_remote) {
 		const Entity * io = findPuppet(entry.first);
 		if(!io || io->show != SHOW_FLAG_IN_SCENE || !entry.second.visible || entry.second.downed) {
@@ -1256,10 +1263,24 @@ Vec3f nearestPlayerEyePos(const Vec3f & from) {
 		float dist = arx::distance2(from, eye);
 		if(dist < bestDist) {
 			bestDist = dist;
-			best = eye;
+			best = { eye, entry.first };
 		}
 	}
 	return best;
+}
+
+} // anonymous namespace
+
+Vec3f nearestPlayerEyePos(const Vec3f & from) {
+	return findNearestPlayer(from).eye;
+}
+
+PlayerId nearestPlayer(const Vec3f & from) {
+	return findNearestPlayer(from).id;
+}
+
+Entity * teammatePuppet(PlayerId id) {
+	return findPuppet(id);
 }
 
 EntityHandle attackTarget(const Entity & npc, EntityHandle target) {

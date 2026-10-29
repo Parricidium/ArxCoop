@@ -85,6 +85,7 @@ void sendInventoryAdd(const Entity & container, const Entity & item);
 namespace {
 
 PlayerId g_actingPlayer = InvalidPlayerId; //!< Host: the player whose action is being processed, if any
+PlayerId g_adoptedPlayer = InvalidPlayerId; //!< Host: g_actingPlayer was set by adoptNearestPlayer()
 
 /*!
  * Host: a script moved us around without a player behind it (intro, cutscene staging): once the
@@ -1252,6 +1253,12 @@ void replicationUpdate() {
 		settleThrownItems();
 	}
 
+	if(g_coop.isHost() && g_adoptedPlayer != InvalidPlayerId && g_actingPlayer == g_adoptedPlayer) {
+		// Outside any script event nobody is acting: an adoption that was not undone stops here
+		g_actingPlayer = InvalidPlayerId;
+		g_adoptedPlayer = InvalidPlayerId;
+	}
+
 	if(g_coop.isHost()) {
 		if(!g_pendingLevelRequests.empty() && inLevel()) {
 			for(PlayerId id : g_pendingLevelRequests) {
@@ -1279,18 +1286,51 @@ void replicationUpdate() {
 }
 
 ActorScope::ActorScope(const Entity * sender, const Entity * entity) {
-	if(g_coop.isHost() && g_actingPlayer == InvalidPlayerId && g_applyingRemote == 0
+	if(!g_coop.isHost()) {
+		return;
+	}
+	// Always restored at the end of the event: adoptNearestPlayer() may set it in between
+	m_active = true;
+	m_previous = g_actingPlayer;
+	m_previousAdopted = g_adoptedPlayer;
+	if(g_actingPlayer == InvalidPlayerId && g_applyingRemote == 0
 	   && sender && isPlayerSide(sender) && entity && !isPlayerSide(entity)) {
-		m_active = true;
-		m_previous = g_actingPlayer;
 		g_actingPlayer = g_coop.localId();
 	}
+}
+
+void adoptNearestPlayer(const Entity & entity) {
+	if(!g_coop.isHost() || g_coop.state() != State::InGame || g_actingPlayer != InvalidPlayerId
+	   || g_applyingRemote > 0 || g_levelLoading > 0) {
+		return;
+	}
+	PlayerId nearest = nearestPlayer(entity.pos);
+	if(nearest == g_coop.localId() || !g_coop.player(nearest)) {
+		return;
+	}
+	g_actingPlayer = nearest;
+	g_adoptedPlayer = nearest;
+	LogDebug("[coop] " << entity.idString() << " reacts to player " << int(nearest)
+	         << " (the nearest): the scene that may follow is theirs");
+}
+
+unsigned nearestClientActor(const Vec3f & pos) {
+	if(!g_coop.isHost() || g_coop.state() != State::InGame) {
+		return InvalidPlayerId;
+	}
+	PlayerId nearest = nearestPlayer(pos);
+	return (nearest != g_coop.localId() && g_coop.player(nearest)) ? nearest : InvalidPlayerId;
 }
 
 ActorScope::~ActorScope() {
 	if(m_active) {
 		g_actingPlayer = PlayerId(m_previous);
+		g_adoptedPlayer = PlayerId(m_previousAdopted);
 	}
+}
+
+bool actorIsAdopted() {
+	return g_coop.isHost() && g_adoptedPlayer != InvalidPlayerId && g_actingPlayer == g_adoptedPlayer;
 }
 
 unsigned currentActor() {
@@ -1817,6 +1857,13 @@ bool cinematicSpeechIsSomeoneElses() {
 	return g_coop.isHost() && g_actingPlayer != InvalidPlayerId && g_actingPlayer != g_coop.localId();
 }
 
+Entity * playerLineSpeaker() {
+	if(!cinematicSpeechIsSomeoneElses() || g_applyingRemote > 0) {
+		return nullptr;
+	}
+	return teammatePuppet(g_actingPlayer);
+}
+
 void speechSkipped() {
 	if(g_coop.isActive() && g_applyingRemote == 0) {
 		g_coop.sendToOthers(MessageType::SpeechSkip, Writer());
@@ -1954,6 +2001,12 @@ CommandSync commandSync(std::string_view command, const script::Context & contex
 			// on when it ends; the acting client gets the animation alone (see commandReplicated)
 			return CommandSync::Replicate;
 		}
+		if(command == "speak" && g_actingPlayer != g_coop.localId()) {
+			// "speak -p [line] <command when done>": the rest of the scene (cinemascope off, controls
+			// back...) runs when the line ends, so the host speaks it too, from the teammate's puppet;
+			// the acting client gets the line alone (see commandReplicated)
+			return CommandSync::Replicate;
+		}
 		return g_actingPlayer != g_coop.localId() ? CommandSync::Redirect : CommandSync::Local;
 	}
 
@@ -2006,6 +2059,13 @@ void commandReplicated(std::string_view command, const std::vector<std::string> 
 
 	if(command == "speak") {
 		bool cine = !sent.empty() && sent[0].size() > 1 && sent[0][0] == '-' && sent[0].find('c') != std::string::npos;
+		if(!sent.empty() && sent[0].size() > 1 && sent[0][0] == '-' && sent[0].find('p') != std::string::npos) {
+			// A teammate's own line in their scene: that client only (the host's copy is their puppet's)
+			if(g_actingPlayer != InvalidPlayerId && g_actingPlayer != g_coop.localId()) {
+				sendScriptCommand(g_actingPlayer, entity->idString(), command, sent);
+			}
+			return;
+		}
 		// Cinematic camera only for the acting player (or the host when nobody in particular
 		// triggered it); the others just hear the line.
 		std::vector<std::string> plain = cine ? stripCinematicSpeech(sent) : sent;

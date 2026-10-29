@@ -345,6 +345,9 @@ public:
 			flags |= (flg & flag('u')) ? ARX_SPEECH_FLAG_UNBREAKABLE : SpeechFlags(0);
 			if(flg & flag('p')) {
 				speaker = entities.player();
+				if(Entity * puppet = coop::playerLineSpeaker()) {
+					speaker = puppet; // co-op: a teammate's scene, their line (heard from their puppet here)
+				}
 			}
 			if(flg & flag('h')) {
 				mood = ANIM_TALK_HAPPY;

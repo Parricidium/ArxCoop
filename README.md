@@ -269,6 +269,8 @@ Opened in game (the world keeps running), key configurable in *Options > Control
   For everybody: *everyone to me*, *heal everyone*, *invulnerability*, *kill hostile NPCs* around me
   (20 m, to get out of a jam), *save now*.
 - **Client**: *teleport me to this player* (if you are stuck in the level).
+- **Stuck in a scene** (frozen camera, black bars, no controls, for anybody): press **F8** during the
+  scene to get your own camera and controls back. The scene itself goes on for whoever it belongs to.
 
 Console (`²` key on French keyboards, the key left of `1`, on by default in the RT edition): `tp p2`
 teleports player 2 next to you, `tp Name`, `tp all`; `or p2 100` (or `gold p2 100`) gives player 2
@@ -566,6 +568,8 @@ Ouvert en jeu (le monde continue de tourner), touche modifiable dans *Options > 
   Pour tous : *tout le monde à moi*, *soigner tout le monde*, *invulnérabilité*, *tuer les PNJ hostiles*
   autour de moi (20 m, pour se sortir d'un blocage), *sauvegarder maintenant*.
 - **Client** : *me téléporter vers ce joueur* (si vous êtes coincé dans le niveau).
+- **Coincé dans une scène** (caméra figée, bandes noires, plus de contrôles, pour tous) : appuyer sur
+  **F8** pendant la scène rend la caméra et les contrôles. La scène continue pour celui à qui elle appartient.
 
 Console (touche `²`, activée d'office dans l'édition RT) : `tp p2` téléporte le joueur 2 à côté de
 vous, `tp Pseudo`, `tp all` ; `or p2 100` donne 100 pièces d'or au joueur 2. Boutique ou coffre ouvert,

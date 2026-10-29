@@ -85,7 +85,23 @@ class ActorScope {
 public:
 	ActorScope(const Entity * sender, const Entity * entity);
 	~ActorScope();
+private:
+	unsigned m_previousAdopted = 0xFF;
 };
+
+/*!
+ * Host: a script with nobody behind it (an NPC's timer, its AI...) just measured "the player"
+ * and got a teammate's puppet as the nearest one: for the rest of this event (and the timers and
+ * speeches it starts), "the player" is that teammate. Without this the cutscene that follows
+ * (camera, cinemascope, frozen controls) would be played on the host, wherever the host is.
+ */
+void adoptNearestPlayer(const Entity & entity);
+
+//! Host: the current actor only comes from adoptNearestPlayer() (nobody actually did anything).
+bool actorIsAdopted();
+
+//! Host: the teammate nearest to pos if it is not ourselves, 0xFF otherwise (for PlayerActorScope).
+unsigned nearestClientActor(const Vec3f & pos);
 
 /*!
  * While an event caused by another player's puppet is processed on the host (walking into a
@@ -179,6 +195,9 @@ bool loadSavedCoopCharacter();
 
 //! Host: true when a cinematic speech being executed belongs to another player (no camera here).
 bool cinematicSpeechIsSomeoneElses();
+
+//! Host: who says "the player"'s line (speak -p) in another player's scene: their puppet (nullptr: us).
+Entity * playerLineSpeaker();
 
 //! Called when the local player skips a speech / cutscene: the others skip it too.
 void speechSkipped();

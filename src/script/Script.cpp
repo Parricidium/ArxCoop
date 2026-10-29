@@ -526,6 +526,7 @@ ValueType getSystemVar(const script::Context & context, std::string_view name,
 			if(name == "^&playerdist") {
 				if(context.getEntity()) {
 					*fcontent = fdist(coop::nearestPlayerEyePos(context.getEntity()->pos), context.getEntity()->pos);
+					coop::adoptNearestPlayer(*context.getEntity());
 					return TYPE_FLOAT;
 				}
 			}
@@ -549,6 +550,7 @@ ValueType getSystemVar(const script::Context & context, std::string_view name,
 			if(name == "^#playerdist") {
 				if(context.getEntity()) {
 					*lcontent = long(fdist(coop::nearestPlayerEyePos(context.getEntity()->pos), context.getEntity()->pos));
+					coop::adoptNearestPlayer(*context.getEntity());
 					return TYPE_LONG;
 				}
 			}
@@ -779,6 +781,7 @@ ValueType getSystemVar(const script::Context & context, std::string_view name,
 					Entity * target = entities.getById(name.substr(6));
 					if(target == entities.player()) {
 						*fcontent = fdist(coop::nearestPlayerEyePos(context.getEntity()->pos), context.getEntity()->pos);
+						coop::adoptNearestPlayer(*context.getEntity());
 					} else if(target
 					          && (context.getEntity()->show == SHOW_FLAG_IN_SCENE
 					              || context.getEntity()->show == SHOW_FLAG_IN_INVENTORY)
@@ -1213,6 +1216,7 @@ ValueType getSystemVar(const script::Context & context, std::string_view name,
 							UpdateIORoom(context.getEntity());
 						}
 						Vec3f playerPos = coop::nearestPlayerEyePos(context.getEntity()->pos);
+						coop::adoptNearestPlayer(*context.getEntity());
 						RoomHandle playerRoom = ARX_PORTALS_GetRoomNumForPosition(playerPos, RoomPositionForCamera);
 						*fcontent = SP_GetRoomDist(context.getEntity()->pos, playerPos, context.getEntity()->room, playerRoom);
 					} else if(target
@@ -1512,13 +1516,15 @@ struct QueuedEvent {
 	Entity * entity;
 	ScriptEventName event;
 	ScriptParameters parameters;
-	
+	unsigned coopActor = 0xFF; //!< co-op: the player whose action queued it (sendevent), like timers
+
 	void clear() {
 		exists = false;
 		sender = nullptr;
 		entity = nullptr;
 		event = ScriptEventName();
 		parameters.clear();
+		coopActor = 0xFF;
 	}
 	
 };
@@ -1563,6 +1569,8 @@ void ARX_SCRIPT_EventStackExecute(size_t limit) {
 		if(ValidIOAddress(event.entity)) {
 			Entity * sender = ValidIOAddress(event.sender) ? event.sender : nullptr;
 			LogDebug("running queued " << event.event << " for " << event.entity->idString());
+			// Co-op: a scene a teammate started goes on for them across sendevent (door -> troll -> door)
+			coop::PlayerActorScope actorScope(event.coopActor);
 			SendIOScriptEvent(sender, event.entity, event.event, event.parameters);
 		} else {
 			LogDebug("could not run queued " << event.event
@@ -1591,6 +1599,7 @@ void Stack_SendIOScriptEvent(Entity * sender, Entity * entity, const ScriptEvent
 			entry.entity = entity;
 			entry.event = event;
 			entry.parameters = parameters;
+			entry.coopActor = coop::currentActor();
 			entry.exists = true;
 			return;
 		}
@@ -1672,6 +1681,7 @@ SCR_TIMER & createScriptTimer(Entity * io, std::string && name) {
 		for(SCR_TIMER & timer : g_scriptTimers) {
 			if(!timer.exist) {
 				timer = SCR_TIMER(io, std::move(name));
+				timer.coopActor = coop::currentActor(); // same as below: a reused slot too
 				return timer;
 			}
 		}

@@ -47,6 +47,7 @@ ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
 #include "game/NPC.h"
 
 #include "coop/Puppets.h"
+#include "coop/Replication.h"
 
 #include <stddef.h>
 #include <cmath>
@@ -2605,6 +2606,8 @@ void CheckNPCEx(Entity & io) {
 		
 		if(Visible && !io._npcdata->detect) {
 			// if visible but was NOT visible, sends an Detectplayer Event
+			// Co-op: what the NPC does about it (a cutscene...) is for the player it saw
+			coop::PlayerActorScope actor(coop::nearestClientActor(io.pos));
 			SendIOScriptEvent(nullptr, &io, SM_DETECTPLAYER);
 			io._npcdata->detect = 1;
 		}

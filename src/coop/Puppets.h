@@ -68,6 +68,12 @@ void localTorchDisplayUpdate();
 //! Host: eye position of the nearest player (ourselves or a puppet) to a position; player.pos otherwise.
 Vec3f nearestPlayerEyePos(const Vec3f & from);
 
+//! Host: the player nearestPlayerEyePos() picks (our own id when it is ourselves).
+PlayerId nearestPlayer(const Vec3f & from);
+
+//! A teammate's puppet in our world, nullptr if there is none.
+Entity * teammatePuppet(PlayerId id);
+
 /*!
  * Host: the entity an NPC attacking "the player" should actually hit: the nearest standing
  * player (our own entity or a teammate's puppet). Anything else is returned unchanged.

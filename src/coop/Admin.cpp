@@ -23,6 +23,7 @@
 #include "coop/Text.h"
 #include "core/Config.h"
 #include "core/GameTime.h"
+#include "game/Camera.h"
 #include "game/Damage.h"
 #include "game/Entity.h"
 #include "game/EntityManager.h"
@@ -31,7 +32,9 @@
 #include "game/NPC.h"
 #include "game/Player.h"
 #include "graphics/Math.h"
+#include "graphics/effects/Fade.h"
 #include "gui/CinematicBorder.h"
+#include "gui/Hud.h"
 #include "gui/Interface.h"
 #include "gui/Menu.h"
 #include "gui/MenuWidgets.h"
@@ -161,11 +164,35 @@ res::path findItemClass(std::string_view name, std::vector<std::string> & simila
 
 } // anonymous namespace
 
+/*!
+ * Emergency exit from a scripted scene that never ends for us (a scene meant for a teammate that
+ * ran on our machine anyway): camera back to our character, cinemascope off, controls back.
+ * The world's scripts are not told anything: the scene goes on for whoever it belongs to.
+ */
+static void adminFreeView() {
+	LogInfo << "[coop] admin: freeing my view (script camera " << (g_cameraEntity ? g_cameraEntity->idString() : "none")
+	        << ", cinemascope " << cinematicBorder.isActive() << ", controls blocked " << BLOCK_PLAYER_CONTROLS << ")";
+	g_cameraEntity = nullptr;
+	cinematicBorder.set(false, false); // reset() alone would leave the bars drawn
+	g_hudRoot.playerInterfaceFader.requestFade(FadeDirection_In, false); // playerinterface hide
+	BLOCK_PLAYER_CONTROLS = false;
+	fadeReset();
+	ARX_PLAYER_PutPlayerInNormalStance();
+	notification_add(trs("coop_admin_view_freed", "Vue lib\xC3\xA9r\xC3\xA9" "e (sc\xC3\xA8ne interrompue)"));
+}
+
 void adminHandleInput() {
 	if(!g_coop.isActive() || g_coop.state() != State::InGame || !entities.player()) {
 		return;
 	}
-	if(ARXmenu.mode() != Mode_InGame || isInCinematic() || cinematicBorder.isActive() || BLOCK_PLAYER_CONTROLS) {
+	if(ARXmenu.mode() != Mode_InGame || isInCinematic()) {
+		return;
+	}
+	if(cinematicBorder.isActive() || BLOCK_PLAYER_CONTROLS || g_cameraEntity) {
+		// The admin key in the middle of a scene: "I am stuck in it"
+		if(GInput->actionNowPressed(CONTROLS_CUST_ADMIN)) {
+			adminFreeView();
+		}
 		return;
 	}
 	if(!GInput->actionNowPressed(CONTROLS_CUST_ADMIN)) {
